@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -590,7 +591,7 @@ func checkLog(c proto.Check, st *checkState) outcome {
 	threshold := intParam(c.Params, "threshold", 1)
 	f, err := os.Open(c.Target)
 	if err != nil {
-		return outcome{detail: cleanErr(err)}
+		return outcome{detail: readErr(c.Target, err)}
 	}
 	defer f.Close()
 	fi, err := f.Stat()
@@ -664,6 +665,16 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// readErr explains the usual reason a log can't be read: the agent runs as
+// its own unprivileged user.
+func readErr(path string, err error) string {
+	if errors.Is(err, os.ErrPermission) {
+		return "the agent can't read " + path + ": add its user to the file's group " +
+			"(on Debian/Ubuntu: sudo usermod -aG adm pulsegrid && sudo systemctl restart pulsegrid-agent)"
+	}
+	return cleanErr(err)
 }
 
 // cleanErr keeps the useful tail of Go's wrapped network errors.

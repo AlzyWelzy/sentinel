@@ -114,14 +114,17 @@ func ruleQuery(r rule) (string, error) {
 		if !ok || def.rate {
 			return "", fmt.Errorf("metric %q can't be forecast", r.Metric)
 		}
-		// Where the worst series will be in threshold hours, from the trend
-		// of the last 6 hours (or 24 for horizons beyond a day).
-		lookback := "6h"
+		// Where the worst series will be in threshold hours, from two
+		// trends: a short one catches a sudden fill (a runaway log), a long
+		// one steady growth; either reaching the limit counts.
+		short, long := "1h", "6h"
 		if r.Threshold > 24 {
-			lookback = "24h"
+			short, long = "6h", "24h"
 		}
 		sel := def.name + matchers(def.matcher, hostMatcher(r))
-		return fmt.Sprintf("max by (host_id) (predict_linear(%s[%s], %d))", sel, lookback, int(r.Threshold*3600)), nil
+		h := int(r.Threshold * 3600)
+		return fmt.Sprintf(`max by (host_id) (label_set(predict_linear(%[1]s[%[2]s], %[4]d), "trend", "short") or label_set(predict_linear(%[1]s[%[3]s], %[4]d), "trend", "long"))`,
+			sel, short, long, h), nil
 	}
 	if t, ok := targetMetrics[r.Kind]; ok {
 		target := ""

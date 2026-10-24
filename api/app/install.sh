@@ -300,6 +300,15 @@ install -m 0755 "$tmp/$asset" "$BIN"
 create_user
 mkdir -p "$STATE_DIR"
 setup_config_dir
+# Read-only access to system logs, for log checks: on Debian/Ubuntu they
+# belong to the adm group, the journal to systemd-journal.
+for g in adm systemd-journal; do
+    if getent group "$g" >/dev/null 2>&1; then
+        if have usermod; then usermod -aG "$g" "$SERVICE_USER" 2>/dev/null || true
+        elif have adduser; then adduser "$SERVICE_USER" "$g" 2>/dev/null || true
+        fi
+    fi
+done
 
 "$BIN" register --url "$INGEST_URL" --key "$KEY" --tags "$TAGS" --state-dir "$STATE_DIR"
 chown -R "$SERVICE_USER" "$STATE_DIR"

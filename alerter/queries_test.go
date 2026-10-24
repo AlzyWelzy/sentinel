@@ -30,7 +30,7 @@ func TestRuleQuery(t *testing.T) {
 		{rule{Kind: "custom", Target: "jobs_waiting", Labels: map[string]string{"queue": "mail", "tenant_id": "x"}},
 			`max by (host_id) (last_over_time(pulsegrid_custom_jobs_waiting{queue="mail"}[3m]))`},
 		{rule{Kind: "forecast", Metric: "disk", Threshold: 72},
-			`max by (host_id) (predict_linear(pulsegrid_disk_used_percent{}[24h], 259200))`},
+			`max by (host_id) (label_set(predict_linear(pulsegrid_disk_used_percent{}[6h], 259200), "trend", "short") or label_set(predict_linear(pulsegrid_disk_used_percent{}[24h], 259200), "trend", "long"))`},
 	}
 	for _, c := range cases {
 		got, err := ruleQuery(c.r)
