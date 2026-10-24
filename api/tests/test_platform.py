@@ -402,7 +402,8 @@ async def test_inventory(alice: User):
     async with ServiceSession() as db, db.begin():
         await db.execute(
             text(
-                "INSERT INTO host_inventory (host_id, tenant_id, data, changes) VALUES (:h, :t, :d, '[]')"
+                "INSERT INTO host_inventory (host_id, tenant_id, data, changes) "
+                "VALUES (:h, :t, :d, '[]')"
             ),
             {
                 "h": host,
@@ -462,7 +463,8 @@ async def test_monthly_report_job_queues_once(alice: User):
         n = (
             await db.execute(
                 text(
-                    "SELECT count(*) FROM outbound_messages WHERE tenant_id = :t AND kind = 'report'"
+                    "SELECT count(*) FROM outbound_messages "
+                    "WHERE tenant_id = :t AND kind = 'report'"
                 ),
                 {"t": tid},
             )
@@ -470,7 +472,8 @@ async def test_monthly_report_job_queues_once(alice: User):
         payload = (
             await db.execute(
                 text(
-                    "SELECT payload FROM outbound_messages WHERE tenant_id = :t AND kind = 'report' LIMIT 1"
+                    "SELECT payload FROM outbound_messages "
+                    "WHERE tenant_id = :t AND kind = 'report' LIMIT 1"
                 ),
                 {"t": tid},
             )

@@ -106,7 +106,9 @@ def upgrade() -> None:
             -- From the inventory: actions the host's allow-list permits.
             ADD COLUMN allowed_actions text[] NOT NULL DEFAULT '{}'
     """)
-    op.execute("CREATE INDEX ix_hosts_probes ON hosts (probe_region) WHERE probe_region IS NOT NULL")
+    op.execute(
+        "CREATE INDEX ix_hosts_probes ON hosts (probe_region) WHERE probe_region IS NOT NULL"
+    )
 
     # ── Checks ───────────────────────────────────────────────────────────────
     op.execute(f"""
@@ -266,7 +268,9 @@ def upgrade() -> None:
             finished_at   timestamptz
         )
     """)
-    op.execute("CREATE INDEX ix_host_actions_pending ON host_actions (host_id) WHERE status = 'pending'")
+    op.execute(
+        "CREATE INDEX ix_host_actions_pending ON host_actions (host_id) WHERE status = 'pending'"
+    )
     op.execute("CREATE INDEX ix_host_actions_host ON host_actions (host_id, created_at DESC)")
     _rls("host_actions")
 
@@ -346,7 +350,9 @@ def upgrade() -> None:
     op.execute("GRANT SELECT ON host_inventory TO pulsegrid_app")
     op.execute("GRANT INSERT ON incidents TO pulsegrid_app")
     op.execute("GRANT UPDATE (monthly_report) ON tenants TO pulsegrid_app")
-    op.execute("GRANT SELECT, UPDATE ON checks, status_pages, status_page_items TO pulsegrid_service")
+    op.execute(
+        "GRANT SELECT, UPDATE ON checks, status_pages, status_page_items TO pulsegrid_service"
+    )
     op.execute(
         "GRANT SELECT, INSERT, UPDATE, DELETE ON incident_events, host_actions, host_inventory "
         "TO pulsegrid_service"

@@ -167,7 +167,8 @@ async def open_incident(tenant_id: uuid.UUID, rule_id: str, host_id: uuid.UUID) 
         ).scalar_one()
         await db.execute(
             text(
-                "INSERT INTO alert_states (rule_id, subject_id, host_id, tenant_id, state, incident_id) "
+                "INSERT INTO alert_states "
+                "(rule_id, subject_id, host_id, tenant_id, state, incident_id) "
                 "VALUES (:r, :h, :h, :t, 'firing', :i)"
             ),
             {"t": tenant_id, "r": rule_id, "h": host_id, "i": incident_id},
