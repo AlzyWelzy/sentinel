@@ -11,15 +11,18 @@ from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-from sqlalchemy import func, select
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.internal import verify_internal_api_key
 from app.config import settings
 from app.db import service_session
-from app.models import Host, Tenant
+from app.models import AgentKey, Host, Tenant
+from app.routes.v1 import cloud_init, install_command, install_command_windows
 from app.services import heartbeats
+from app.services.secrets import new_agent_key
+from app.validation import normalize_tags
 
 router = APIRouter(prefix="/internal/v1", dependencies=[Depends(verify_internal_api_key)])
 
@@ -97,3 +100,56 @@ async def purge(external_account_id: str, db: ServiceDB) -> None:
         # Keep the tenant row so the console can retry the whole purge.
         raise HTTPException(status_code=503, detail="Metrics store unavailable") from None
     await db.delete(tenant)
+
+
+class ProvisionIn(BaseModel):
+    email: str | None = None
+    name: str | None = None
+    key_name: str = Field(min_length=1, max_length=100)
+    tags: list[str] = Field(default_factory=list)
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, v: list[str]) -> list[str]:
+        return normalize_tags(v)
+
+
+class ProvisionOut(BaseModel):
+    key: str
+    install_command: str
+    install_command_windows: str
+    cloud_init: str
+
+
+@router.post("/tenants/{external_account_id}/agent-keys", status_code=status.HTTP_201_CREATED)
+async def provision_agent_key(
+    external_account_id: str, body: ProvisionIn, db: ServiceDB
+) -> ProvisionOut:
+    """An install key for a console user, made by the console itself (e.g. to
+    install the agent on a VM it launches for them). Creates the tenant, as a
+    first visit to the dashboard would, if the user has none yet."""
+    row = (
+        await db.execute(
+            text("SELECT out_tenant_id, out_status FROM pulsegrid_resolve_tenant(:s, :e, :m, :n)"),
+            {
+                "s": settings.TENANT_SOURCE,
+                "e": external_account_id,
+                "m": body.email,
+                "n": body.name,
+            },
+        )
+    ).one()
+    if row.out_status != "active":
+        raise HTTPException(status_code=409, detail="Monitoring is suspended for this account")
+    plaintext, prefix, key_hash = new_agent_key()
+    db.add(
+        AgentKey(
+            tenant_id=row.out_tenant_id, name=body.key_name, key_prefix=prefix, key_hash=key_hash
+        )
+    )
+    return ProvisionOut(
+        key=plaintext,
+        install_command=install_command(plaintext, body.tags),
+        install_command_windows=install_command_windows(plaintext, body.tags),
+        cloud_init=cloud_init(plaintext, body.tags),
+    )

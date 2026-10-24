@@ -170,9 +170,20 @@ def upgrade() -> None:
         "TO pulsegrid_app"
     )
     op.execute("GRANT SELECT ON alert_escalation_steps, maintenance_windows TO pulsegrid_service")
+    # The console provisions install keys for its users (internal route).
+    op.execute(
+        "GRANT EXECUTE ON FUNCTION pulsegrid_resolve_tenant(text, text, text, text) "
+        "TO pulsegrid_service"
+    )
+    op.execute("GRANT INSERT ON agent_keys TO pulsegrid_service")
 
 
 def downgrade() -> None:
+    op.execute("REVOKE INSERT ON agent_keys FROM pulsegrid_service")
+    op.execute(
+        "REVOKE EXECUTE ON FUNCTION pulsegrid_resolve_tenant(text, text, text, text) "
+        "FROM pulsegrid_service"
+    )
     op.execute("DROP TABLE maintenance_windows")
     op.execute("DELETE FROM outbound_messages WHERE kind = 'alert_escalation'")
     op.execute("ALTER TABLE outbound_messages DROP CONSTRAINT outbound_messages_kind_check")

@@ -430,3 +430,28 @@ async def test_new_chart_metrics_are_queryable(alice: User):
             "GET", f"/v1/hosts/{host}/metrics", params={**params, "metric": metric}
         )
         assert r.status_code == 200, (metric, r.text)
+
+
+async def test_console_provisions_install_keys(client, alice: User):
+    headers = {"X-Internal-Api-Key": settings.INTERNAL_API_KEY}
+    uid = str(uuid.uuid4())
+    body = {"email": "new@example.com", "name": "New", "key_name": "VM web-1", "tags": ["acs"]}
+    r = await client.post(f"/internal/v1/tenants/{uid}/agent-keys", json=body, headers=headers)
+    assert r.status_code == 201, r.text
+    assert r.json()["cloud_init"].startswith("#!/bin/sh") and "--tags acs" in r.json()["cloud_init"]
+    # The new tenant exists, with its key and its default email contact.
+    async with ServiceSession() as db:
+        keys = (
+            await db.execute(
+                text(
+                    "SELECT k.name, (SELECT count(*) FROM notification_channels c "
+                    "WHERE c.tenant_id = t.id) FROM agent_keys k "
+                    "JOIN tenants t ON t.id = k.tenant_id "
+                    "WHERE t.external_account_id = :e"
+                ),
+                {"e": uid},
+            )
+        ).all()
+    assert keys == [("VM web-1", 1)]
+    r = await client.post(f"/internal/v1/tenants/{uid}/agent-keys", json=body)
+    assert r.status_code == 401
