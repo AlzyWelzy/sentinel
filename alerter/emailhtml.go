@@ -10,6 +10,9 @@ import (
 // event: a coloured banner, the facts, and the two buttons. Plain-text
 // messages (verification codes, tests) have no HTML part.
 func renderHTML(m message) string {
+	if m.HTML != "" {
+		return m.HTML
+	}
 	if m.Event == nil || m.Event["summary"] == nil {
 		return ""
 	}

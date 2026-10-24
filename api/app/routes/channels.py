@@ -46,6 +46,20 @@ CHAT_HOSTS = {
 ChannelType = Literal[
     "email", "sms", "voice", "webhook", "slack", "teams", "discord", "telegram", "pagerduty"
 ]
+Severity = Literal["critical", "warning", "info"]
+
+# Browsers' push services. The alerter POSTs to the subscription's endpoint,
+# so it must be one of these, never an arbitrary URL.
+PUSH_HOSTS = (
+    "fcm.googleapis.com",
+    "android.googleapis.com",
+    "updates.push.services.mozilla.com",
+    ".push.services.mozilla.com",
+    "web.push.apple.com",
+    ".push.apple.com",
+    ".notify.windows.com",
+)
+PUSH_KEY_RE = re.compile(r"^[A-Za-z0-9_-]{16,200}={0,2}$")
 # Targets that are secrets (anyone with the URL or key can post as you) are
 # masked whenever they're returned.
 SECRET_TARGETS = {"webhook", "slack", "teams", "discord", "telegram", "pagerduty"}
@@ -59,9 +73,15 @@ class ChannelIn(BaseModel):
     type: ChannelType
     target: str = Field(min_length=3, max_length=500)
     label: str | None = Field(default=None, max_length=100)
+    min_severity: Severity = "info"
 
     @model_validator(mode="after")
     def _validate_target(self) -> "ChannelIn":
+        if self.type not in settings.ENABLED_CHANNEL_TYPES:
+            raise ValueError(
+                f"{self.type} contacts aren't available; use one of: "
+                f"{', '.join(t for t in settings.ENABLED_CHANNEL_TYPES if t != 'push')}"
+            )
         self.target = self.target.strip()
         if self.type == "email" and not EMAIL_RE.match(self.target):
             raise ValueError("target must be an email address")
@@ -96,6 +116,13 @@ class ChannelIn(BaseModel):
 
 def mask_target(type_: str, target: str) -> str:
     """Enough to recognise a channel, not enough to use it."""
+    if type_ == "push":
+        host = urlparse(target).hostname or ""
+        return {
+            "fcm.googleapis.com": "Chrome / Edge / Android",
+            "updates.push.services.mozilla.com": "Firefox",
+            "web.push.apple.com": "Safari / iPhone",
+        }.get(host, "Browser") + " push"
     if type_ not in SECRET_TARGETS:
         return target
     if type_ == "telegram":
@@ -114,7 +141,39 @@ class ChannelOut(BaseModel):
     source: str
     is_default: bool
     verified: bool
+    min_severity: str
     created_at: datetime
+
+
+class ChannelPatch(BaseModel):
+    label: str | None = Field(default=None, max_length=100)
+    min_severity: Severity | None = None
+
+
+class PushKeys(BaseModel):
+    p256dh: str = Field(pattern=PUSH_KEY_RE.pattern)
+    auth: str = Field(pattern=PUSH_KEY_RE.pattern)
+
+
+class PushSubscriptionIn(BaseModel):
+    """What the browser's PushManager.subscribe() returns (subscription.toJSON())."""
+
+    endpoint: str = Field(min_length=10, max_length=1000)
+    keys: PushKeys
+    label: str | None = Field(default=None, max_length=100)
+    min_severity: Severity = "info"
+
+    @model_validator(mode="after")
+    def _endpoint(self) -> "PushSubscriptionIn":
+        url = urlparse(self.endpoint)
+        if url.scheme != "https" or not url.hostname or not _host_allowed(url.hostname, PUSH_HOSTS):
+            raise ValueError("endpoint isn't a known browser push service")
+        return self
+
+
+class PushConfigOut(BaseModel):
+    enabled: bool
+    public_key: str
 
 
 class VerifyIn(BaseModel):
@@ -130,6 +189,7 @@ def _out(c: NotificationChannel) -> ChannelOut:
         source=c.source,
         is_default=c.is_default,
         verified=c.verified_at is not None,
+        min_severity=c.min_severity,
         created_at=c.created_at,
     )
 
@@ -209,12 +269,70 @@ async def create_channel(body: ChannelIn, t: Tenant) -> ChannelOut:
         label=body.label,
         source="user",
         is_default=False,
+        min_severity=body.min_severity,
     )
     t.db.add(channel)
     await t.db.flush()
     await _send_code(t, channel)
     await t.db.flush()
     await t.db.refresh(channel)
+    return _out(channel)
+
+
+@router.get("/push/config")
+async def push_config(t: Tenant) -> PushConfigOut:
+    """The VAPID public key the browser subscribes with."""
+    return PushConfigOut(
+        enabled=bool(settings.VAPID_PUBLIC_KEY) and "push" in settings.ENABLED_CHANNEL_TYPES,
+        public_key=settings.VAPID_PUBLIC_KEY,
+    )
+
+
+@router.post("/push", status_code=status.HTTP_201_CREATED)
+async def add_push_subscription(body: PushSubscriptionIn, t: Tenant) -> ChannelOut:
+    """Register this browser for push notifications. The subscription is
+    proof of control (only that browser can receive on it), so it's verified
+    at once. Subscribing again from the same browser updates its keys."""
+    if not settings.VAPID_PUBLIC_KEY or "push" not in settings.ENABLED_CHANNEL_TYPES:
+        raise HTTPException(status_code=409, detail="Push notifications aren't set up")
+    channel = await t.db.scalar(
+        select(NotificationChannel).where(
+            NotificationChannel.tenant_id == t.tenant_id,
+            NotificationChannel.type == "push",
+            NotificationChannel.target == body.endpoint,
+        )
+    )
+    keys = {"p256dh": body.keys.p256dh, "auth": body.keys.auth}
+    if channel is None:
+        channel = NotificationChannel(
+            tenant_id=t.tenant_id,
+            type="push",
+            target=body.endpoint,
+            label=body.label,
+            source="user",
+            is_default=False,
+            verified_at=datetime.now(UTC),
+            config=keys,
+            min_severity=body.min_severity,
+        )
+        t.db.add(channel)
+    else:
+        channel.config = keys
+        channel.label = body.label or channel.label
+        channel.min_severity = body.min_severity
+    await t.db.flush()
+    await t.db.refresh(channel)
+    return _out(channel)
+
+
+@router.patch("/{channel_id}")
+async def update_channel(channel_id: uuid.UUID, body: ChannelPatch, t: Tenant) -> ChannelOut:
+    channel = await _get(t, channel_id)
+    if "label" in body.model_fields_set:
+        channel.label = body.label
+    if body.min_severity is not None:
+        channel.min_severity = body.min_severity
+    await t.db.flush()
     return _out(channel)
 
 
@@ -288,6 +406,10 @@ async def make_default(channel_id: uuid.UUID, t: Tenant) -> ChannelOut:
 @router.delete("/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_channel(channel_id: uuid.UUID, t: Tenant) -> None:
     channel = await _get(t, channel_id)
+    if channel.type == "push" and not channel.is_default:
+        # A browser subscription isn't anyone's only contact: email stays.
+        await t.db.delete(channel)
+        return
     successor = await t.db.scalar(
         select(NotificationChannel)
         .where(

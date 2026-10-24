@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import service_session
-from app.models import Incident
+from app.models import Incident, IncidentEvent
 
 router = APIRouter(prefix="/v1/ack", include_in_schema=False)
 
@@ -108,6 +108,15 @@ async def acknowledge(token: str, db: AsyncSession = Depends(service_session)) -
     if incident.status == "open" and incident.acknowledged_at is None:
         incident.acknowledged_at = datetime.now(UTC)
         incident.acknowledged_by = "alert link"
+        db.add(
+            IncidentEvent(
+                tenant_id=incident.tenant_id,
+                incident_id=incident.id,
+                kind="acknowledged",
+                message="Acknowledged from the link in an alert: escalation stopped",
+                actor="alert link",
+            )
+        )
     return _page(
         "Acknowledged",
         f"<h1>{summary}</h1><p>Acknowledged. No further escalation will be sent.</p>",

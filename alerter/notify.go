@@ -24,10 +24,13 @@ import (
 // message is what's stored in outbound_messages.payload. Code is kept apart
 // from Text so the dispatcher can wipe it once delivered.
 type message struct {
-	Subject string         `json:"subject"`
-	Text    string         `json:"text"`
-	Code    string         `json:"code,omitempty"`
-	Event   map[string]any `json:"event,omitempty"`
+	Subject string `json:"subject"`
+	Text    string `json:"text"`
+	// HTML, when set (reports), is the email's HTML part as is; otherwise
+	// alerts get one rendered from Event.
+	HTML  string         `json:"html,omitempty"`
+	Code  string         `json:"code,omitempty"`
+	Event map[string]any `json:"event,omitempty"`
 }
 
 func (m message) render() (subject, text string) {

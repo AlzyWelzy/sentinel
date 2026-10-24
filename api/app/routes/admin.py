@@ -1,9 +1,10 @@
-"""Staff view across every account: read-only.
+"""Staff view across every account.
 
 Console staff (a verified token whose `role` is in STAFF_ROLES) can see every
-tenant's servers, charts and incidents to support customers. Nothing here
-changes data; staff who need to act use the console's view-as-customer, which
-Pulsegrid already treats as read-only.
+tenant's servers, charts, incidents and the agent fleet to support customers.
+The only change staff make here is choosing which of our own agents act as
+public probes; anything in a customer's account is done through the
+console's view-as-customer, which Pulsegrid treats as read-only.
 
 These routes use the cross-tenant service role, so the staff check below is
 the only gate. Keep every handler behind `staff`.
@@ -16,15 +17,15 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.console import InvalidToken, Principal, admin_verifier
 from app.config import settings
 from app.db import service_session
-from app.models import Host, Incident, Tenant
-from app.routes.alerts import IncidentOut, _incident_out
+from app.models import Host, Incident, IncidentEvent, Tenant
+from app.routes.alerts import IncidentDetail, IncidentEventOut, IncidentOut, _incident_out
 from app.routes.v1 import (
     ChecksOut,
     HostOut,
@@ -245,3 +246,138 @@ async def incidents(
         )
         for r in rows
     ]
+
+
+# ── Incidents in detail ──────────────────────────────────────────────────────
+
+
+@router.get("/incidents/{incident_id}")
+async def incident_detail(incident_id: uuid.UUID, db: ServiceDB) -> IncidentDetail:
+    incident = await db.scalar(select(Incident).where(Incident.id == incident_id))
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    events = await db.scalars(
+        select(IncidentEvent)
+        .where(IncidentEvent.incident_id == incident.id)
+        .order_by(IncidentEvent.created_at, IncidentEvent.id)
+    )
+    return IncidentDetail(
+        **_incident_out(incident).model_dump(),
+        events=[
+            IncidentEventOut(
+                id=e.id, kind=e.kind, message=e.message, actor=e.actor, created_at=e.created_at
+            )
+            for e in events
+        ],
+    )
+
+
+# ── Agent fleet ──────────────────────────────────────────────────────────────
+
+
+class FleetVersion(BaseModel):
+    version: str
+    hosts: int
+
+
+class FleetHost(BaseModel):
+    id: uuid.UUID
+    hostname: str
+    agent_version: str | None
+    os: str | None
+    platform: str | None
+    online: bool
+    tenant_email: str | None
+    probe_region: str | None
+
+
+class Fleet(BaseModel):
+    latest_version: str
+    versions: list[FleetVersion]
+    outdated: list[FleetHost]
+    probes: list[FleetHost]
+
+
+@router.get("/fleet")
+async def fleet(db: ServiceDB) -> Fleet:
+    """Agent versions across every account. Agents update themselves within
+    the hour (installer timer); one stuck on an old version usually means
+    its updater can't reach the download URL."""
+    rows = (
+        await db.execute(
+            select(Host, Tenant.email)
+            .join(Tenant, Tenant.id == Host.tenant_id)
+            .where(Host.revoked_at.is_(None))
+        )
+    ).all()
+    seen = await heartbeats.last_seen([h.id for h, _ in rows])
+    counts: dict[str, int] = {}
+    outdated: list[FleetHost] = []
+    probes: list[FleetHost] = []
+    latest = settings.AGENT_VERSION
+    for h, email in rows:
+        counts[h.agent_version or "unknown"] = counts.get(h.agent_version or "unknown", 0) + 1
+        fh = FleetHost(
+            id=h.id,
+            hostname=h.hostname,
+            agent_version=h.agent_version,
+            os=h.os,
+            platform=h.platform,
+            online=heartbeats.is_online(seen.get(h.id)),
+            tenant_email=email,
+            probe_region=h.probe_region,
+        )
+        if h.probe_region:
+            probes.append(fh)
+        if latest not in ("", "latest", "dev") and h.agent_version != latest:
+            outdated.append(fh)
+    versions = [FleetVersion(version=v, hosts=n) for v, n in counts.items()]
+    versions.sort(key=lambda v: -v.hosts)
+    probes.sort(key=lambda h: (h.probe_region or "", h.hostname))
+    return Fleet(
+        latest_version=latest,
+        versions=versions,
+        outdated=sorted(outdated, key=lambda h: h.hostname)[:500],
+        probes=probes,
+    )
+
+
+# ── Probes (the one thing staff change here) ─────────────────────────────────
+
+REGION_RE = r"^[a-z0-9][a-z0-9-]{1,39}$"
+
+
+class ProbeIn(BaseModel):
+    region: str | None = Field(default=None, pattern=REGION_RE, description="null to stop probing")
+
+
+@router.put("/hosts/{host_id}/probe")
+async def set_probe(host_id: uuid.UUID, body: ProbeIn, db: ServiceDB) -> FleetHost:
+    """Make one of our own agents a public probe for a region (or stop).
+    Probes receive every account's uptime check targets, so only agents in
+    the accounts listed in PROBE_ACCOUNT_IDS qualify."""
+    row = (
+        await db.execute(
+            select(Host, Tenant).join(Tenant, Tenant.id == Host.tenant_id).where(Host.id == host_id)
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Host not found")
+    host, tenant = row
+    if tenant.external_account_id not in settings.PROBE_ACCOUNT_IDS:
+        raise HTTPException(
+            status_code=403,
+            detail="Only agents in the accounts listed in PROBE_ACCOUNT_IDS can be probes",
+        )
+    host.probe_region = body.region
+    seen = await heartbeats.last_seen([host.id])
+    return FleetHost(
+        id=host.id,
+        hostname=host.hostname,
+        agent_version=host.agent_version,
+        os=host.os,
+        platform=host.platform,
+        online=heartbeats.is_online(seen.get(host.id)),
+        tenant_email=tenant.email,
+        probe_region=host.probe_region,
+    )
