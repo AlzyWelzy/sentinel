@@ -9,6 +9,7 @@ from app.routes import (
     ack,
     admin,
     alerts,
+    apps,
     channels,
     checks,
     hostops,
@@ -35,6 +36,7 @@ app.include_router(channels.router)
 app.include_router(alerts.router)
 app.include_router(checks.router)
 app.include_router(hostops.router)
+app.include_router(apps.router)
 app.include_router(tokens.router)
 app.include_router(statuspages.router)
 app.include_router(statuspages.public)

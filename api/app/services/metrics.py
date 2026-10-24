@@ -195,9 +195,18 @@ async def query_series(
             response.raise_for_status()
     except httpx.HTTPError as exc:
         raise MetricsUnavailable(str(exc)) from exc
+
+    def labels(metric: dict[str, str]) -> dict[str, str]:
+        # "*" in legend: every label except the ones the platform sets.
+        if "*" in legend:
+            return {
+                k: v for k, v in metric.items() if k not in ("__name__", "tenant_id", "host_id")
+            }
+        return {k: metric[k] for k in legend if k in metric}
+
     return [
         {
-            "labels": {k: r["metric"][k] for k in legend if k in r["metric"]},
+            "labels": labels(r["metric"]),
             "points": [[int(ts), float(v)] for ts, v in r["values"]],
         }
         for r in response.json()["data"]["result"]
