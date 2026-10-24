@@ -31,10 +31,32 @@ MAX_CODE_ATTEMPTS = 5
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PHONE_RE = re.compile(r"^\+[1-9]\d{6,14}$")  # E.164
+# "<bot token>/<chat id>": a bot from @BotFather, and a numeric chat id or @channel.
+TELEGRAM_RE = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{30,}/(-?\d{1,20}|@[A-Za-z0-9_]{5,32})$")
+PAGERDUTY_KEY_RE = re.compile(r"^[A-Za-z0-9]{32}$")
+
+# Chat webhooks must point at the service itself: the URL is customer input,
+# and the alerter would otherwise POST wherever it says.
+CHAT_HOSTS = {
+    "slack": ("hooks.slack.com",),
+    "teams": (".webhook.office.com", ".logic.azure.com", ".powerplatform.com"),
+    "discord": ("discord.com", "discordapp.com"),
+}
+
+ChannelType = Literal[
+    "email", "sms", "voice", "webhook", "slack", "teams", "discord", "telegram", "pagerduty"
+]
+# Targets that are secrets (anyone with the URL or key can post as you) are
+# masked whenever they're returned.
+SECRET_TARGETS = {"webhook", "slack", "teams", "discord", "telegram", "pagerduty"}
+
+
+def _host_allowed(host: str, allowed: tuple[str, ...]) -> bool:
+    return any(host == a.lstrip(".") or (a.startswith(".") and host.endswith(a)) for a in allowed)
 
 
 class ChannelIn(BaseModel):
-    type: Literal["email", "sms", "webhook"]
+    type: ChannelType
     target: str = Field(min_length=3, max_length=500)
     label: str | None = Field(default=None, max_length=100)
 
@@ -43,14 +65,45 @@ class ChannelIn(BaseModel):
         self.target = self.target.strip()
         if self.type == "email" and not EMAIL_RE.match(self.target):
             raise ValueError("target must be an email address")
-        if self.type == "sms" and not PHONE_RE.match(self.target):
+        if self.type in ("sms", "voice") and not PHONE_RE.match(self.target):
             raise ValueError("target must be a phone number in E.164 format, e.g. +919876543210")
         if self.type == "webhook":
             url = urlparse(self.target)
             allowed = {"https"} if settings.ENVIRONMENT == "production" else {"https", "http"}
             if url.scheme not in allowed or not url.hostname:
                 raise ValueError(f"target must be a {' or '.join(sorted(allowed))} URL")
+        if self.type in CHAT_HOSTS:
+            url = urlparse(self.target)
+            hosts = CHAT_HOSTS[self.type]
+            if url.scheme != "https" or not url.hostname or not _host_allowed(url.hostname, hosts):
+                raise ValueError(
+                    f"target must be your {self.type.title()} webhook URL (https://{hosts[0].lstrip('.')}/...)"
+                )
+            if self.type == "discord" and not url.path.startswith("/api/webhooks/"):
+                raise ValueError(
+                    "target must be a Discord webhook URL (https://discord.com/api/webhooks/...)"
+                )
+        if self.type == "telegram" and not TELEGRAM_RE.match(self.target):
+            raise ValueError(
+                "target must be <bot token>/<chat id>, e.g. 123456:ABC.../-1001234567890"
+            )
+        if self.type == "pagerduty" and not PAGERDUTY_KEY_RE.match(self.target):
+            raise ValueError(
+                "target must be a PagerDuty Events API v2 integration key (32 characters)"
+            )
         return self
+
+
+def mask_target(type_: str, target: str) -> str:
+    """Enough to recognise a channel, not enough to use it."""
+    if type_ not in SECRET_TARGETS:
+        return target
+    if type_ == "telegram":
+        return "chat " + target.split("/", 1)[-1]
+    if type_ == "pagerduty":
+        return "key …" + target[-4:]
+    url = urlparse(target)
+    return f"{url.scheme}://{url.hostname}/…{target[-4:]}"
 
 
 class ChannelOut(BaseModel):
@@ -72,7 +125,7 @@ def _out(c: NotificationChannel) -> ChannelOut:
     return ChannelOut(
         id=c.id,
         type=c.type,
-        target=c.target,
+        target=mask_target(c.type, c.target),
         label=c.label,
         source=c.source,
         is_default=c.is_default,

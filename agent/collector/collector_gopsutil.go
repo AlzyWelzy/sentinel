@@ -8,6 +8,7 @@ package collector
 
 import (
 	"context"
+	stdnet "net"
 	"os"
 	"os/exec"
 	"runtime"
@@ -62,55 +63,99 @@ func virtualInterface(name string) bool {
 }
 
 type gopsutilCollector struct {
-	lastCPU   cpu.TimesStat
-	lastCPUAt time.Time
+	last   cpuSnapshot
+	lastAt time.Time
+	procs  processTracker
+	// Process and service names to report on, from the agent's config.
+	watchProcesses []string
+	watchServices  []string
+}
+
+// cpuSnapshot is one read of the CPU counters: the machine total and, where
+// the OS provides them, each core.
+type cpuSnapshot struct {
+	total cpu.TimesStat
+	cores []cpu.TimesStat
 }
 
 // minCPUWindow: CPU counters advance in clock ticks, so a window much shorter
 // than this measures a tick or two (a 2-CPU host reads 0% or 50%).
 const minCPUWindow = time.Second
 
+// maxCores caps per-core series; past this the chart is unreadable anyway.
+const maxCores = 256
+
 func New() (Collector, error) { return &gopsutilCollector{}, nil }
 
-// cpuPercent is busy time over total time since the previous sample, from
-// the raw counters rather than gopsutil's Percent: on Windows that counts
-// interrupt time twice and reads ~10 points high. The first sample after
-// start measures a short real window instead of everything since boot.
-func (c *gopsutilCollector) cpuPercent(ctx context.Context) (float64, bool) {
-	if c.lastCPUAt.IsZero() {
-		t, ok := readCPUTimes(ctx)
+func (c *gopsutilCollector) Watch(processes, services []string) {
+	c.watchProcesses, c.watchServices = processes, services
+}
+
+// cpuSamples measures busy time over total time since the previous sample,
+// from the raw counters rather than gopsutil's Percent: on Windows that
+// counts interrupt time twice and reads ~10 points high. The first sample
+// after start measures a short real window instead of everything since boot.
+func (c *gopsutilCollector) cpuSamples(ctx context.Context) []proto.Sample {
+	if c.lastAt.IsZero() {
+		snap, ok := readCPU(ctx)
 		if !ok {
-			return 0, false // no baseline yet: skip CPU this tick
+			return nil // no baseline yet: skip CPU this tick
 		}
-		c.lastCPU, c.lastCPUAt = t, time.Now()
+		c.last, c.lastAt = snap, time.Now()
 	}
-	if wait := minCPUWindow - time.Since(c.lastCPUAt); wait > 0 {
+	if wait := minCPUWindow - time.Since(c.lastAt); wait > 0 {
 		select {
 		case <-ctx.Done():
-			return 0, false
+			return nil
 		case <-time.After(wait):
 		}
 	}
-	t, ok := readCPUTimes(ctx)
+	snap, ok := readCPU(ctx)
 	if !ok {
 		// Keep the old baseline; the next successful read covers both ticks.
-		return 0, false
+		return nil
 	}
-	pct, ok := busyPercent(c.lastCPU, t, runtime.GOOS)
-	c.lastCPU, c.lastCPUAt = t, time.Now()
-	return pct, ok
-}
+	prev := c.last
+	c.last, c.lastAt = snap, time.Now()
 
-// readCPUTimes retries a failed read: on OpenBSD gopsutil intermittently
-// returns "errno 0" (no real error), and a missed baseline must never turn
-// into a since-boot average.
-func readCPUTimes(ctx context.Context) (cpu.TimesStat, bool) {
-	for range 3 {
-		if t, err := cpu.TimesWithContext(ctx, false); err == nil && len(t) == 1 {
-			return t[0], true
+	pct, ok := busyPercent(prev.total, snap.total, runtime.GOOS)
+	if !ok {
+		return nil
+	}
+	out := []proto.Sample{sample("pulsegrid_cpu_usage_percent", pct)}
+	for mode, v := range modePercents(prev.total, snap.total, runtime.GOOS) {
+		out = append(out, sample("pulsegrid_cpu_mode_percent", v, "mode", mode))
+	}
+	// Cores only when both reads have the same set (CPU hotplug changes it).
+	if len(prev.cores) == len(snap.cores) {
+		for i := range snap.cores {
+			if p, ok := busyPercent(prev.cores[i], snap.cores[i], runtime.GOOS); ok {
+				out = append(out, sample("pulsegrid_cpu_core_usage_percent", p, "core", strconv.Itoa(i)))
+			}
 		}
 	}
-	return cpu.TimesStat{}, false
+	return out
+}
+
+// readCPU retries a failed read: on OpenBSD gopsutil intermittently returns
+// "errno 0" (no real error), and a missed baseline must never turn into a
+// since-boot average. Cores are best effort.
+func readCPU(ctx context.Context) (cpuSnapshot, bool) {
+	var snap cpuSnapshot
+	ok := false
+	for range 3 {
+		if t, err := cpu.TimesWithContext(ctx, false); err == nil && len(t) == 1 {
+			snap.total, ok = t[0], true
+			break
+		}
+	}
+	if !ok {
+		return snap, false
+	}
+	if cores, err := cpu.TimesWithContext(ctx, true); err == nil && len(cores) > 1 {
+		snap.cores = cores[:min(len(cores), maxCores)]
+	}
+	return snap, true
 }
 
 // busyPercent compares two counter snapshots. Guest time is already inside
@@ -133,12 +178,43 @@ func busyPercent(prev, cur cpu.TimesStat, goos string) (float64, bool) {
 	return min(100, 100*busy/total), true
 }
 
+// modePercents splits the window into where the time went. Only the modes an
+// OS actually accounts are reported: iowait, steal and softirq exist on
+// Linux; Windows folds interrupts into system time. Steal is the share a
+// hypervisor gave to other guests, the clearest sign of a noisy neighbour.
+func modePercents(prev, cur cpu.TimesStat, goos string) map[string]float64 {
+	d := func(a, b float64) float64 { return max(0, b-a) }
+	modes := map[string]float64{
+		"user":   d(prev.User, cur.User),
+		"system": d(prev.System, cur.System),
+		"idle":   d(prev.Idle, cur.Idle),
+	}
+	if goos != "windows" {
+		modes["nice"] = d(prev.Nice, cur.Nice)
+		modes["irq"] = d(prev.Irq, cur.Irq)
+	}
+	if goos == "linux" {
+		modes["iowait"] = d(prev.Iowait, cur.Iowait)
+		modes["steal"] = d(prev.Steal, cur.Steal)
+		modes["softirq"] = d(prev.Softirq, cur.Softirq)
+	}
+	total := 0.0
+	for _, v := range modes {
+		total += v
+	}
+	if total <= 0 {
+		return nil
+	}
+	for k, v := range modes {
+		modes[k] = 100 * v / total
+	}
+	return modes
+}
+
 func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error) {
 	var out []proto.Sample
 
-	if pct, ok := c.cpuPercent(ctx); ok {
-		out = append(out, sample("pulsegrid_cpu_usage_percent", pct))
-	}
+	out = append(out, c.cpuSamples(ctx)...)
 
 	if vm, err := mem.VirtualMemoryWithContext(ctx); err == nil {
 		out = append(out,
@@ -181,6 +257,8 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 		}
 	}
 
+	out = append(out, diskIOSamples(ctx)...)
+
 	if nics, err := net.IOCountersWithContext(ctx, true); err == nil {
 		for _, n := range nics {
 			if virtualInterface(n.Name) {
@@ -196,14 +274,117 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 	if up, err := host.UptimeWithContext(ctx); err == nil {
 		out = append(out, sample("pulsegrid_uptime_seconds", float64(up)))
 	}
+
+	out = append(out, c.processSamples(ctx)...)
+	out = append(out, serviceSamples(ctx, c.watchServices)...)
 	return out, nil
 }
 
 func diskSamples(mountpoint, device string, u *disk.UsageStat) []proto.Sample {
-	return []proto.Sample{
+	out := []proto.Sample{
 		sample("pulsegrid_disk_used_percent", u.UsedPercent, "mountpoint", mountpoint, "device", device),
 		sample("pulsegrid_disk_free_bytes", float64(u.Free), "mountpoint", mountpoint, "device", device),
 	}
+	// Filesystems without a fixed inode table (NTFS, ZFS, btrfs) report 0.
+	if u.InodesTotal > 0 {
+		out = append(out, sample("pulsegrid_disk_inodes_used_percent", u.InodesUsedPercent,
+			"mountpoint", mountpoint, "device", device))
+	}
+	return out
+}
+
+// Block devices that aren't real disks, or are layered on disks already
+// counted (device-mapper, md RAID, partitions), so counting them would
+// double the host's I/O.
+var ignoredBlockDevicePrefixes = []string{
+	"loop", "ram", "zram", "sr", "fd", "nbd", "dm-", "md", // Linux
+	"cd", "pass", // BSD
+}
+
+// diskIOSamples reports cumulative I/O counters per physical disk; the
+// dashboard turns them into rates. Busy time (the share of time the disk had
+// requests in flight) is only accounted on Linux and FreeBSD.
+func diskIOSamples(ctx context.Context) []proto.Sample {
+	counters, err := disk.IOCountersWithContext(ctx)
+	if err != nil {
+		return nil
+	}
+	busyTime := runtime.GOOS == "linux" || runtime.GOOS == "freebsd"
+	var out []proto.Sample
+	for name, c := range counters {
+		if !physicalDisk(name, runtime.GOOS) {
+			continue
+		}
+		out = append(out,
+			sample("pulsegrid_disk_read_bytes_total", float64(c.ReadBytes), "device", name),
+			sample("pulsegrid_disk_written_bytes_total", float64(c.WriteBytes), "device", name),
+			sample("pulsegrid_disk_reads_total", float64(c.ReadCount), "device", name),
+			sample("pulsegrid_disk_writes_total", float64(c.WriteCount), "device", name),
+		)
+		if busyTime {
+			out = append(out, sample("pulsegrid_disk_io_time_seconds_total", float64(c.IoTime)/1000, "device", name))
+		}
+	}
+	return out
+}
+
+func physicalDisk(name, goos string) bool {
+	for _, p := range ignoredBlockDevicePrefixes {
+		if strings.HasPrefix(name, p) {
+			return false
+		}
+	}
+	if goos == "linux" {
+		// Whole disks have a /sys/block entry; partitions (sda1, nvme0n1p2) don't.
+		_, err := os.Stat("/sys/block/" + name)
+		return err == nil
+	}
+	return true
+}
+
+// maxIPs caps the addresses reported; a host with dozens is a router or a
+// container host, and the first few identify it.
+const maxIPs = 16
+
+// Meta describes the machine as it is now: hostname, OS version, addresses
+// on its real interfaces, CPU count and memory.
+func Meta(ctx context.Context) proto.HostMeta {
+	var m proto.HostMeta
+	if h, err := host.InfoWithContext(ctx); err == nil {
+		m.Hostname, m.PlatformVersion = h.Hostname, h.PlatformVersion
+	}
+	m.CPUCores = runtime.NumCPU()
+	if vm, err := mem.VirtualMemoryWithContext(ctx); err == nil {
+		m.MemoryBytes = vm.Total
+	}
+	if ifaces, err := net.InterfacesWithContext(ctx); err == nil {
+		m.IPAddresses = interfaceIPs(ifaces)
+	}
+	return m
+}
+
+// interfaceIPs returns global unicast addresses (IPv4 first) on interfaces
+// that aren't loopback or container plumbing.
+func interfaceIPs(ifaces net.InterfaceStatList) []string {
+	var v4, v6 []string
+	for _, iface := range ifaces {
+		if virtualInterface(iface.Name) {
+			continue
+		}
+		for _, a := range iface.Addrs {
+			ip, _, err := stdnet.ParseCIDR(a.Addr)
+			if err != nil || !ip.IsGlobalUnicast() {
+				continue
+			}
+			if ip.To4() != nil {
+				v4 = append(v4, ip.String())
+			} else {
+				v6 = append(v6, ip.String())
+			}
+		}
+	}
+	all := append(v4, v6...)
+	return all[:min(len(all), maxIPs)]
 }
 
 func Info(ctx context.Context) (HostInfo, error) {

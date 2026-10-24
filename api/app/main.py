@@ -5,9 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routes import admin, alerts, channels, install, internal, v1
+from app.routes import ack, admin, alerts, channels, install, internal, maintenance, v1
 
-app = FastAPI(title="Pulsegrid API", version="0.1.0", root_path=settings.API_ROOT_PATH)
+app = FastAPI(title="Pulsegrid API", version="0.2.0", root_path=settings.API_ROOT_PATH)
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,6 +19,8 @@ app.add_middleware(
 app.include_router(v1.router)
 app.include_router(channels.router)
 app.include_router(alerts.router)
+app.include_router(maintenance.router)
+app.include_router(ack.router)
 app.include_router(install.router)
 app.include_router(internal.router)
 app.include_router(admin.router)

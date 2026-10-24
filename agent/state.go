@@ -19,6 +19,10 @@ type state struct {
 	IntervalSeconds int    `json:"interval_seconds"`
 	HostID          string `json:"host_id"`
 	HostToken       string `json:"host_token"`
+	// From the last config fetch, so watches apply even if ingest is
+	// unreachable when the agent starts.
+	WatchProcesses []string `json:"watch_processes,omitempty"`
+	WatchServices  []string `json:"watch_services,omitempty"`
 }
 
 func statePath(dir string) string { return filepath.Join(dir, "state.json") }

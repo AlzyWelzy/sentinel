@@ -59,6 +59,7 @@ services:
       JWT_TOKEN_ISSUER: ${JWT_TOKEN_ISSUER:?}
       JWT_TOKEN_AUDIENCE: ${JWT_TOKEN_AUDIENCE:?}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
+      ACK_SIGNING_SECRET: ${ACK_SIGNING_SECRET:-}
     networks:
       backend: {}
       console:
@@ -97,6 +98,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
       PUBLIC_DASHBOARD_URL: https://${CONSOLE_HOST}/monitoring?tab=servers
+      # One-click acknowledge links in alerts point at the API.
+      PUBLIC_API_URL: https://${CONSOLE_HOST}/api/pulsegrid
+      ACK_SIGNING_SECRET: ${ACK_SIGNING_SECRET:-}
       # Email goes through the console backend and its mail settings.
       EMAIL_TRANSPORT: console
       CONSOLE_EMAIL_URL: ${CONSOLE_EMAIL_URL:-http://console-backend:8000/api/internal/pulsegrid/email/}

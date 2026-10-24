@@ -25,12 +25,16 @@ type rule struct {
 	Threshold       float64
 	DurationSeconds int
 	HostID          *string
+	Tag             *string
+	Target          string // process or service name, for process_down / service_down
 }
 
 type host struct {
 	ID        string
 	Hostname  string
 	CreatedAt time.Time
+	Tags      []string
+	DependsOn *string
 }
 
 type channel struct {
@@ -53,7 +57,7 @@ type store struct {
 func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id, r.tenant_id, r.name, r.kind, coalesce(r.metric, ''), coalesce(r.operator, ''),
-		       coalesce(r.threshold, 0), r.duration_seconds, r.host_id
+		       coalesce(r.threshold, 0), r.duration_seconds, r.host_id, r.tag, coalesce(r.target, '')
 		  FROM alert_rules r JOIN tenants t ON t.id = r.tenant_id
 		 WHERE r.enabled AND t.status = 'active'
 		   AND abs(hashtext(r.tenant_id::text)) % $2 = $1`, partition, partitions)
@@ -63,23 +67,55 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (rule, error) {
 		var r rule
 		err := row.Scan(&r.ID, &r.TenantID, &r.Name, &r.Kind, &r.Metric, &r.Operator,
-			&r.Threshold, &r.DurationSeconds, &r.HostID)
+			&r.Threshold, &r.DurationSeconds, &r.HostID, &r.Tag, &r.Target)
 		return r, err
 	})
 }
 
+// hosts returns the hosts a rule covers: all of the tenant's, one, or those
+// with the rule's tag.
 func (s *store) hosts(ctx context.Context, r rule) ([]host, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, hostname, created_at FROM hosts
-		 WHERE tenant_id = $1 AND revoked_at IS NULL AND ($2::uuid IS NULL OR id = $2)`,
-		r.TenantID, r.HostID)
+		SELECT id, hostname, created_at, tags, depends_on_host_id FROM hosts
+		 WHERE tenant_id = $1 AND revoked_at IS NULL AND ($2::uuid IS NULL OR id = $2)
+		   AND ($3::text IS NULL OR $3 = ANY (tags))`,
+		r.TenantID, r.HostID, r.Tag)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (host, error) {
-		var h host
-		err := row.Scan(&h.ID, &h.Hostname, &h.CreatedAt)
-		return h, err
+	return pgx.CollectRows(rows, scanHost)
+}
+
+func scanHost(row pgx.CollectableRow) (host, error) {
+	var h host
+	err := row.Scan(&h.ID, &h.Hostname, &h.CreatedAt, &h.Tags, &h.DependsOn)
+	return h, err
+}
+
+func (s *store) host(ctx context.Context, tenantID, hostID string) (host, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, hostname, created_at, tags, depends_on_host_id FROM hosts
+		 WHERE tenant_id = $1 AND id = $2`, tenantID, hostID)
+	if err != nil {
+		return host{}, err
+	}
+	return pgx.CollectExactlyOneRow(rows, scanHost)
+}
+
+// maintenance returns the tenant's enabled maintenance windows.
+func (s *store) maintenance(ctx context.Context, tenantID string) ([]window, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT host_id, tag, schedule, starts_at, ends_at, coalesce(weekdays, '{}'),
+		       coalesce(to_char(start_time, 'HH24:MI'), ''), coalesce(duration_minutes, 0), timezone
+		  FROM maintenance_windows WHERE tenant_id = $1 AND enabled`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (window, error) {
+		var w window
+		err := row.Scan(&w.HostID, &w.Tag, &w.Schedule, &w.StartsAt, &w.EndsAt, &w.Weekdays,
+			&w.StartTime, &w.DurationMinutes, &w.Timezone)
+		return w, err
 	})
 }
 
@@ -142,9 +178,12 @@ func scanChannel(row pgx.CollectableRow) (channel, error) {
 // apply persists one transition, and opens or resolves the incident (plus
 // its notifications) in the same transaction, so state and incidents can't
 // disagree after a crash.
+//
+// quiet resolves without notifying: the host is in maintenance or behind a
+// host that's down, and nobody wants a "recovered" for an alert they never got.
 func (s *store) apply(
 	ctx context.Context, r rule, h host, prev storedState, next alertState, act action, value float64,
-	msg func(kind string, incidentID string) message,
+	quiet bool, msg func(kind string, incidentID string) message,
 ) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -178,7 +217,7 @@ func (s *store) apply(
 		kind = "alert_resolved"
 	}
 
-	if kind != "" && incidentID != nil {
+	if kind != "" && incidentID != nil && !quiet {
 		chans, err := s.channels(ctx, tx, r)
 		if err != nil {
 			return err
@@ -188,13 +227,8 @@ func (s *store) apply(
 		if err != nil {
 			return err
 		}
-		for _, c := range chans {
-			_, err = tx.Exec(ctx, `
-				INSERT INTO outbound_messages (tenant_id, channel_id, incident_id, kind, payload)
-				VALUES ($1, $2, $3, $4, $5)`, r.TenantID, c.ID, *incidentID, kind, payload)
-			if err != nil {
-				return err
-			}
+		if err := enqueue(ctx, tx, r.TenantID, chans, *incidentID, kind, payload); err != nil {
+			return err
 		}
 	}
 	if act == actionResolve {
@@ -212,6 +246,95 @@ func (s *store) apply(
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func enqueue(ctx context.Context, tx pgx.Tx, tenantID string, chans []channel, incidentID, kind string, payload []byte) error {
+	for _, c := range chans {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO outbound_messages (tenant_id, channel_id, incident_id, kind, payload)
+			VALUES ($1, $2, $3, $4, $5)`, tenantID, c.ID, incidentID, kind, payload)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ── Escalation ───────────────────────────────────────────────────────────────
+
+// escalation is an open, unacknowledged incident whose next escalation step
+// is due.
+type escalation struct {
+	IncidentID string
+	TenantID   string
+	HostID     *string
+	Summary    string
+	RuleName   string
+	Hostname   string
+	Value      *float64
+	OpenedAt   time.Time
+	Level      int // the step about to run (0-based position)
+	Steps      int // how many steps the rule has
+	ChannelIDs []string
+}
+
+// dueEscalations finds incidents in this partition whose next step's delay
+// (counted from when the incident opened) has passed.
+func (s *store) dueEscalations(ctx context.Context, partition, partitions int) ([]escalation, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT i.id, i.tenant_id, i.host_id, i.summary, i.rule_name, i.hostname, i.value,
+		       i.opened_at, i.escalation_level,
+		       (SELECT count(*) FROM alert_escalation_steps a WHERE a.rule_id = i.rule_id),
+		       st.channel_ids::text[]
+		  FROM incidents i
+		  JOIN tenants t ON t.id = i.tenant_id AND t.status = 'active'
+		  JOIN alert_rules r ON r.id = i.rule_id AND r.tenant_id = i.tenant_id AND r.enabled
+		  JOIN alert_escalation_steps st
+		       ON st.rule_id = r.id AND st.tenant_id = i.tenant_id AND st.position = i.escalation_level
+		 WHERE i.status = 'open' AND i.acknowledged_at IS NULL
+		   AND i.opened_at + make_interval(secs => st.delay_seconds) <= now()
+		   AND abs(hashtext(i.tenant_id::text)) % $2 = $1`, partition, partitions)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (escalation, error) {
+		var e escalation
+		err := row.Scan(&e.IncidentID, &e.TenantID, &e.HostID, &e.Summary, &e.RuleName, &e.Hostname,
+			&e.Value, &e.OpenedAt, &e.Level, &e.Steps, &e.ChannelIDs)
+		return e, err
+	})
+}
+
+// escalate notifies a step's verified channels and moves the incident to the
+// next step, in one transaction. The level check makes a second evaluator
+// (or a retry) a no-op instead of a duplicate page.
+func (s *store) escalate(ctx context.Context, e escalation, payload []byte) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `
+		UPDATE incidents SET escalation_level = escalation_level + 1
+		 WHERE id = $1 AND tenant_id = $2 AND escalation_level = $3
+		   AND status = 'open' AND acknowledged_at IS NULL`, e.IncidentID, e.TenantID, e.Level)
+	if err != nil || tag.RowsAffected() == 0 {
+		return false, err
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT id, type, target FROM notification_channels
+		 WHERE tenant_id = $1 AND id = ANY ($2::uuid[]) AND verified_at IS NOT NULL`, e.TenantID, e.ChannelIDs)
+	if err != nil {
+		return false, err
+	}
+	chans, err := pgx.CollectRows(rows, scanChannel)
+	if err != nil {
+		return false, err
+	}
+	if err := enqueue(ctx, tx, e.TenantID, chans, e.IncidentID, "alert_escalation", payload); err != nil {
+		return false, err
+	}
+	return true, tx.Commit(ctx)
 }
 
 // ── Outbox ───────────────────────────────────────────────────────────────────

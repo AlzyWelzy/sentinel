@@ -69,10 +69,11 @@ func (s *store) register(
 		return id, "", err
 	}
 
+	// Tags from the installer are added to any the host already has.
 	err = tx.QueryRow(ctx, `
 		INSERT INTO hosts (tenant_id, agent_key_id, machine_id, hostname, os, platform,
-		                   platform_version, arch, agent_version, token_hash)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		                   platform_version, arch, agent_version, token_hash, tags)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (tenant_id, machine_id, hostname) DO UPDATE SET
 		    agent_key_id = EXCLUDED.agent_key_id,
 		    os = EXCLUDED.os,
@@ -81,10 +82,11 @@ func (s *store) register(
 		    arch = EXCLUDED.arch,
 		    agent_version = EXCLUDED.agent_version,
 		    token_hash = EXCLUDED.token_hash,
-		    revoked_at = NULL
+		    revoked_at = NULL,
+		    tags = ARRAY(SELECT DISTINCT unnest(hosts.tags || EXCLUDED.tags) ORDER BY 1)
 		RETURNING id`,
 		id.TenantID, keyID, req.MachineID, req.Hostname, req.OS, req.Platform,
-		req.PlatformVersion, req.Arch, req.AgentVersion, tokenHash,
+		req.PlatformVersion, req.Arch, req.AgentVersion, tokenHash, normalizeTags(req.Tags),
 	).Scan(&id.HostID)
 	if err != nil {
 		return id, "", err
@@ -108,14 +110,66 @@ func (s *store) lookupHost(ctx context.Context, tokenHash string) (hostIdentity,
 	return id, err
 }
 
-// touchHost records last_seen_at for usage and billing. Redis holds the live
-// heartbeat; Postgres is updated at most once a minute per host.
-func (s *store) touchHost(ctx context.Context, hostID, agentVersion string) error {
+// touchHost records last_seen_at for usage and billing, and what the agent
+// reports about the machine. Redis holds the live heartbeat; Postgres is
+// updated at most once a minute per host. A new hostname is taken unless
+// another host of the tenant already has it with the same machine id (the
+// pair identifies a host at registration).
+func (s *store) touchHost(ctx context.Context, hostID, agentVersion string, meta *proto.HostMeta) error {
+	var m proto.HostMeta
+	if meta != nil {
+		m = *meta
+	}
+	var ips []string
+	if meta != nil {
+		ips = cleanIPs(m.IPAddresses)
+	}
 	_, err := s.pool.Exec(ctx, `
-		UPDATE hosts SET last_seen_at = now(), agent_version = $2
-		 WHERE id = $1
-		   AND (last_seen_at IS NULL
-		        OR last_seen_at < now() - interval '1 minute'
-		        OR agent_version IS DISTINCT FROM $2)`, hostID, agentVersion)
+		UPDATE hosts h SET
+		       last_seen_at = now(),
+		       agent_version = $2,
+		       ip_addresses = coalesce($3::text[], h.ip_addresses),
+		       cpu_cores = coalesce(nullif($4::integer, 0), h.cpu_cores),
+		       memory_bytes = coalesce(nullif($5::bigint, 0), h.memory_bytes),
+		       platform_version = coalesce(nullif($6::text, ''), h.platform_version),
+		       hostname = CASE
+		           WHEN $7::text = '' OR $7::text = h.hostname THEN h.hostname
+		           WHEN EXISTS (SELECT 1 FROM hosts o
+		                         WHERE o.tenant_id = h.tenant_id AND o.machine_id = h.machine_id
+		                           AND o.hostname = $7::text) THEN h.hostname
+		           ELSE $7::text END
+		 WHERE h.id = $1
+		   AND (h.last_seen_at IS NULL
+		        OR h.last_seen_at < now() - interval '1 minute'
+		        OR h.agent_version IS DISTINCT FROM $2)`,
+		hostID, agentVersion, ips, m.CPUCores, int64(m.MemoryBytes), m.PlatformVersion, cleanHostname(m.Hostname))
 	return err
+}
+
+// watches returns the processes and services the host's enabled alert rules
+// check: rules for every host, for this host, or for one of its tags.
+func (s *store) watches(ctx context.Context, id hostIdentity) (processes, services []string, err error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT r.kind, r.target
+		  FROM alert_rules r JOIN hosts h ON h.id = $1 AND h.tenant_id = r.tenant_id
+		 WHERE r.tenant_id = $2 AND r.enabled AND r.kind IN ('process_down', 'service_down')
+		   AND (r.host_id IS NULL OR r.host_id = h.id)
+		   AND (r.tag IS NULL OR r.tag = ANY (h.tags))
+		 ORDER BY r.kind, r.target`, id.HostID, id.TenantID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var kind, target string
+		if err := rows.Scan(&kind, &target); err != nil {
+			return nil, nil, err
+		}
+		if kind == "process_down" {
+			processes = append(processes, target)
+		} else {
+			services = append(services, target)
+		}
+	}
+	return processes, services, rows.Err()
 }
