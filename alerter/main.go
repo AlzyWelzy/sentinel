@@ -16,6 +16,9 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+	// Maintenance windows name timezones; the distroless image's database
+	// may lack legacy names browsers still report (Asia/Calcutta).
+	_ "time/tzdata"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"

@@ -455,3 +455,17 @@ async def test_console_provisions_install_keys(client, alice: User):
     assert keys == [("VM web-1", 1)]
     r = await client.post(f"/internal/v1/tenants/{uid}/agent-keys", json=body)
     assert r.status_code == 401
+
+
+async def test_legacy_timezone_names_are_accepted(alice: User):
+    # Chrome reports Asia/Calcutta; Debian's tzdata no longer ships the alias.
+    body = {
+        "name": "nightly",
+        "schedule": "weekly",
+        "weekdays": [1],
+        "start_time": "01:00",
+        "duration_minutes": 30,
+        "timezone": "Asia/Calcutta",
+    }
+    r = await alice.request("POST", "/v1/maintenance", json=body)
+    assert r.status_code == 201, r.text
