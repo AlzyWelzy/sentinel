@@ -36,6 +36,13 @@ func runAsService(run func(context.Context)) (bool, error) {
 
 const serviceName = "pulsegrid-agent"
 
+func defaultConfigDir() string { return filepath.Join(defaultStateDir(), "conf") }
+
+func defaultServiceUser() string { return "LocalService" }
+
+// findTool is only used for sudo/visudo, which Windows doesn't have.
+func findTool(string) (string, bool) { return "", false }
+
 type service struct {
 	run func(context.Context)
 }

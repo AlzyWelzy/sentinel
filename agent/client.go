@@ -84,8 +84,10 @@ func (c *client) register(ctx context.Context, baseURL string, req proto.Registe
 	return resp, err
 }
 
-func (c *client) push(ctx context.Context, baseURL, token string, req proto.MetricsRequest) error {
-	return c.do(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/v1/metrics", token, req, nil)
+func (c *client) push(ctx context.Context, baseURL, token string, req proto.MetricsRequest) (proto.MetricsResponse, error) {
+	var resp proto.MetricsResponse
+	err := c.do(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/v1/metrics", token, req, &resp)
+	return resp, err
 }
 
 func (c *client) config(ctx context.Context, baseURL, token string) (proto.AgentConfig, error) {

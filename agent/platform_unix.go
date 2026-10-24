@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 )
 
 const exeSuffix = ""
@@ -63,4 +64,13 @@ func underscore(name string) string {
 		}
 	}
 	return string(b)
+}
+
+func defaultConfigDir() string { return "/etc/pulsegrid" }
+
+func defaultServiceUser() string {
+	if runtime.GOOS == "openbsd" {
+		return "_pulsegrid"
+	}
+	return "pulsegrid"
 }
