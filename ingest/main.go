@@ -64,11 +64,12 @@ func main() {
 	defer rdb.Close()
 
 	srv := &server{
-		cfg:   cfg,
-		store: &store{pool: pool},
-		cache: &cache{rdb: rdb},
-		vm:    &victoriaMetrics{baseURL: cfg.VictoriaMetrics, client: &http.Client{Timeout: 15 * time.Second}},
-		log:   log,
+		cfg:     cfg,
+		store:   &store{pool: pool},
+		cache:   &cache{rdb: rdb},
+		vm:      &victoriaMetrics{baseURL: cfg.VictoriaMetrics, client: &http.Client{Timeout: 15 * time.Second}},
+		log:     log,
+		configs: newConfigCache(),
 	}
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,

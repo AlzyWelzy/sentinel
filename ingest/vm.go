@@ -34,10 +34,25 @@ type victoriaMetrics struct {
 }
 
 // toPrometheusText converts a request to the Prometheus text format with
-// millisecond timestamps, stamping host_id on every sample. Invalid samples
-// are dropped and counted, so one bad metric can't block a whole batch.
-func toPrometheusText(req proto.MetricsRequest, hostID string) (body []byte, kept, dropped int) {
-	var buf bytes.Buffer
+// millisecond timestamps, grouped by the tenant each sample belongs to.
+// Invalid samples are dropped and counted, so one bad metric can't block a
+// whole batch.
+//
+// Ordinary samples go to the host's tenant with host_id stamped on. Check
+// samples (labelled check_id) must name a check in the host's config: its
+// own checks go to its tenant as usual; a probe's results for another
+// tenant's uptime check go to that tenant, labelled with the probe's region
+// instead of a host it doesn't own.
+func toPrometheusText(req proto.MetricsRequest, id hostIdentity, hc *hostConfig) (bodies map[string][]byte, kept, dropped int) {
+	bufs := map[string]*bytes.Buffer{}
+	buf := func(tenantID string) *bytes.Buffer {
+		b, ok := bufs[tenantID]
+		if !ok {
+			b = &bytes.Buffer{}
+			bufs[tenantID] = b
+		}
+		return b
+	}
 	for _, batch := range req.Batches {
 		ts := strconv.FormatInt(batch.TimestampMs, 10)
 		for _, s := range batch.Samples {
@@ -45,26 +60,47 @@ func toPrometheusText(req proto.MetricsRequest, hostID string) (body []byte, kep
 				dropped++
 				continue
 			}
-			buf.WriteString(s.Name)
-			buf.WriteString(`{host_id="`)
-			buf.WriteString(hostID)
-			buf.WriteByte('"')
-			for k, v := range s.Labels {
-				buf.WriteByte(',')
-				buf.WriteString(k)
-				buf.WriteString(`="`)
-				buf.WriteString(escapeLabelValue(v))
-				buf.WriteByte('"')
+			tenantID, fixed := id.TenantID, `host_id="`+id.HostID+`"`
+			if checkID, ok := s.Labels["check_id"]; ok {
+				var c checkDef
+				if hc != nil {
+					c, ok = hc.checks[checkID]
+				}
+				if !ok {
+					dropped++
+					continue
+				}
+				if c.OnProbes {
+					tenantID, fixed = c.TenantID, `probe="`+escapeLabelValue(hc.region)+`"`
+				}
 			}
-			buf.WriteString("} ")
-			buf.WriteString(strconv.FormatFloat(s.Value, 'g', -1, 64))
-			buf.WriteByte(' ')
-			buf.WriteString(ts)
-			buf.WriteByte('\n')
+			b := buf(tenantID)
+			b.WriteString(s.Name)
+			b.WriteByte('{')
+			b.WriteString(fixed)
+			for k, v := range s.Labels {
+				if k == "probe" {
+					continue
+				}
+				b.WriteByte(',')
+				b.WriteString(k)
+				b.WriteString(`="`)
+				b.WriteString(escapeLabelValue(v))
+				b.WriteByte('"')
+			}
+			b.WriteString("} ")
+			b.WriteString(strconv.FormatFloat(s.Value, 'g', -1, 64))
+			b.WriteByte(' ')
+			b.WriteString(ts)
+			b.WriteByte('\n')
 			kept++
 		}
 	}
-	return buf.Bytes(), kept, dropped
+	bodies = make(map[string][]byte, len(bufs))
+	for t, b := range bufs {
+		bodies[t] = b.Bytes()
+	}
+	return bodies, kept, dropped
 }
 
 func validSample(s proto.Sample) bool {

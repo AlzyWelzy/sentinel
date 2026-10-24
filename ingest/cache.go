@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/example-org/pulsegrid/proto"
 )
 
 // Key layout shared with the API (api/app/services/heartbeats.py). Change both together.
@@ -51,4 +54,49 @@ func (c *cache) forgetHost(ctx context.Context, tokenHash string) {
 
 func (c *cache) markSeen(ctx context.Context, hostID string, at time.Time) error {
 	return c.rdb.Set(ctx, lastSeenKey+hostID, strconv.FormatInt(at.Unix(), 10), lastSeenTTL).Err()
+}
+
+// checkResultKey holds the latest result of a check per place it runs: a
+// host id, or "probe:<region>". The API and alerter read the detail from it.
+const (
+	checkResultKey = "pg:check:"
+	checkResultTTL = 2 * 24 * time.Hour
+)
+
+type storedCheckResult struct {
+	OK        bool    `json:"ok"`
+	Detail    string  `json:"detail,omitempty"`
+	LatencyMs float64 `json:"latency_ms"`
+	Ts        int64   `json:"ts"`
+	HostID    string  `json:"host_id,omitempty"`
+	Region    string  `json:"region,omitempty"`
+}
+
+func (c *cache) storeCheckResults(ctx context.Context, id hostIdentity, hc *hostConfig, results []proto.CheckResult) error {
+	if hc == nil {
+		return nil
+	}
+	pipe := c.rdb.Pipeline()
+	for _, r := range results {
+		def, ok := hc.checks[r.ID]
+		if !ok {
+			continue
+		}
+		v := storedCheckResult{OK: r.OK, Detail: r.Detail, LatencyMs: r.LatencyMs, Ts: r.TimestampMs}
+		field := id.HostID
+		if def.OnProbes {
+			field = "probe:" + hc.region
+			v.Region = hc.region
+		} else {
+			v.HostID = id.HostID
+		}
+		b, err := json.Marshal(v)
+		if err != nil {
+			continue
+		}
+		pipe.HSet(ctx, checkResultKey+r.ID, field, b)
+		pipe.Expire(ctx, checkResultKey+r.ID, checkResultTTL)
+	}
+	_, err := pipe.Exec(ctx)
+	return err
 }
