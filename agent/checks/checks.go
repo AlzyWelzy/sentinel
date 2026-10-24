@@ -185,6 +185,9 @@ func (r *Runner) run(ctx context.Context, s *scheduled) (proto.CheckResult, []pr
 	timeout := durationParam(c.Params, "timeout_seconds", defaultTimeout)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	if c.Params["public_only"] == "true" {
+		ctx = context.WithValue(ctx, publicOnlyKey{}, true)
+	}
 
 	start := time.Now()
 	var out outcome
@@ -251,7 +254,7 @@ func checkTCP(ctx context.Context, target string) outcome {
 	if _, _, err := net.SplitHostPort(target); err != nil {
 		return outcome{detail: "target must be host:port"}
 	}
-	var d net.Dialer
+	d := dialer(ctx)
 	start := time.Now()
 	conn, err := d.DialContext(ctx, "tcp", target)
 	if err != nil {
@@ -265,7 +268,7 @@ func checkTCP(ctx context.Context, target string) outcome {
 // doesn't have, so try the usual service ports and count a refusal as up
 // (the host answered).
 func checkReachable(ctx context.Context, host string) outcome {
-	var d net.Dialer
+	d := dialer(ctx)
 	var lastErr error
 	for _, port := range []string{"443", "80", "22"} {
 		start := time.Now()
@@ -303,9 +306,16 @@ func (r *Runner) checkHTTP(ctx context.Context, c proto.Check) outcome {
 	}
 	req.Header.Set("User-Agent", "Pulsegrid-Monitor/"+r.version)
 	client := r.client
-	if c.Params["tls_skip_verify"] == "true" {
+	if c.Params["tls_skip_verify"] == "true" || c.Params["public_only"] == "true" {
 		t := http.DefaultTransport.(*http.Transport).Clone()
-		t.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // the user asked for it
+		if c.Params["tls_skip_verify"] == "true" {
+			t.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // the user asked for it
+		}
+		if c.Params["public_only"] == "true" {
+			// Every connection, including redirects, goes through the guard.
+			t.DialContext = dialer(ctx).DialContext
+			t.Proxy = nil
+		}
 		client = &http.Client{Timeout: r.client.Timeout, Transport: t, CheckRedirect: r.client.CheckRedirect}
 	}
 	if c.Params["follow_redirects"] == "false" {
@@ -369,7 +379,7 @@ func checkTLS(ctx context.Context, c proto.Check) outcome {
 	if err != nil {
 		return outcome{detail: "target must be host:port"}
 	}
-	d := tls.Dialer{Config: &tls.Config{ServerName: host}}
+	d := tls.Dialer{NetDialer: dialer(ctx), Config: &tls.Config{ServerName: host}}
 	start := time.Now()
 	conn, err := d.DialContext(ctx, "tcp", c.Target)
 	if err != nil {
@@ -397,9 +407,9 @@ func checkDNS(ctx context.Context, c proto.Check) outcome {
 		if _, _, err := net.SplitHostPort(srv); err != nil {
 			srv = net.JoinHostPort(srv, "53")
 		}
+		guarded := dialer(ctx)
 		res = net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, network, srv)
+			return guarded.DialContext(ctx, network, srv)
 		}}
 	}
 	var values []string

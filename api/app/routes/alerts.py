@@ -1,9 +1,11 @@
 """Alert rules and incidents.
 
 Rules are evaluated by the alerter service every 30 seconds. Incidents are
-opened and resolved by the alerter; customers can list and acknowledge them.
+opened and resolved by the alerter; customers can list them, read their
+timeline, add notes, acknowledge, resolve by hand, and reopen them.
 """
 
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Literal
@@ -17,8 +19,10 @@ from app.models import (
     AlertRule,
     AlertRuleChannel,
     AlertState,
+    Check,
     Host,
     Incident,
+    IncidentEvent,
     NotificationChannel,
 )
 from app.tenancy import Tenant, TenantContext
@@ -31,9 +35,48 @@ MIN_HOST_DOWN_SECONDS = 60
 MAX_ESCALATION_STEPS = 5
 
 Metric = Literal[
-    "cpu", "memory", "swap", "disk", "load1", "load5", "iowait", "steal", "inodes", "disk_busy"
+    "cpu",
+    "memory",
+    "swap",
+    "disk",
+    "load1",
+    "load5",
+    "iowait",
+    "steal",
+    "inodes",
+    "disk_busy",
+    "network_in",
+    "network_out",
 ]
-Kind = Literal["metric", "host_down", "process_down", "service_down"]
+Kind = Literal[
+    "metric",
+    "host_down",
+    "process_down",
+    "service_down",
+    "check",
+    "anomaly",
+    "forecast",
+    "plugin_down",
+    "container_down",
+    "custom",
+]
+FORECAST_METRICS = ("disk", "inodes", "memory", "swap")
+# Metrics an anomaly rule can watch: ones with a meaningful "usual level".
+ANOMALY_METRICS = (
+    "cpu",
+    "memory",
+    "load1",
+    "load5",
+    "iowait",
+    "disk_busy",
+    "network_in",
+    "network_out",
+)
+CUSTOM_METRIC_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,150}$")
+LABEL_KEY_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,49}$")
+CONTAINER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+PLUGIN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+ACTION_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,62}$")
 
 
 class EscalationStepIn(BaseModel):
@@ -66,29 +109,109 @@ class RuleIn(BaseModel):
         description="who else to notify while nobody acknowledges",
     )
     enabled: bool = True
+    aggregation: Literal["last", "avg", "max", "min"] = Field(
+        default="last", description="metric and custom rules: how the window is summarised"
+    )
+    window_seconds: int = Field(default=300, ge=60, le=86400)
+    recovery_threshold: float | None = Field(
+        default=None, description="once firing, resolve only past this value"
+    )
+    severity: Literal["critical", "warning", "info"] = "critical"
+    action_name: str | None = Field(
+        default=None, description="an action the host allows, run when the alert fires"
+    )
+    labels: dict[str, str] = Field(default_factory=dict, description="custom: label filters")
+    description: str | None = Field(
+        default=None, max_length=2000, description="runbook text included in alerts"
+    )
 
     @field_validator("tag")
     @classmethod
     def _tag(cls, v: str | None) -> str | None:
         return None if v is None or v.strip() == "" else normalize_tag(v)
 
+    @field_validator("action_name")
+    @classmethod
+    def _action(cls, v: str | None) -> str | None:
+        if v is None or v.strip() == "":
+            return None
+        if not ACTION_RE.match(v):
+            raise ValueError("action names are lowercase letters, digits, '.', '_' and '-'")
+        return v
+
     @model_validator(mode="after")
     def _check_kind(self) -> "RuleIn":
         if self.host_id is not None and self.tag is not None:
             raise ValueError("choose one host or one tag, not both")
-        if self.kind == "metric":
+        k = self.kind
+        if k not in ("metric", "custom"):
+            self.recovery_threshold = None
+            self.aggregation = "last"
+        if k != "custom":
+            self.labels = {}
+        if k == "metric":
             if self.metric is None or self.operator is None or self.threshold is None:
                 raise ValueError("metric rules need metric, operator and threshold")
             self.target = None
-        elif self.kind in ("process_down", "service_down"):
+        elif k == "custom":
+            if not self.target or not CUSTOM_METRIC_RE.match(self.target):
+                raise ValueError("custom rules need target: the metric name a plugin reports")
+            if self.operator is None or self.threshold is None:
+                raise ValueError("custom rules need operator and threshold")
+            if len(self.labels) > 5 or any(not LABEL_KEY_RE.match(k2) for k2 in self.labels):
+                raise ValueError("at most 5 label filters, with names like queue or status_code")
+            self.target = self.target.removeprefix("pulsegrid_custom_")
+            self.metric = None
+        elif k in ("process_down", "service_down"):
             if not self.target:
-                raise ValueError(f"{self.kind} rules need a target (the name to watch)")
-            self.target = validate_target(self.kind, self.target)
+                raise ValueError(f"{k} rules need a target (the name to watch)")
+            self.target = validate_target(k, self.target)
             self.metric = self.operator = self.threshold = None
-        else:
+        elif k == "container_down":
+            if not self.target or not CONTAINER_RE.match(self.target.strip()):
+                raise ValueError("container_down rules need the container's name")
+            self.target = self.target.strip()
+            self.metric = self.operator = self.threshold = None
+        elif k == "plugin_down":
+            if self.target is not None and self.target.strip() == "":
+                self.target = None
+            if self.target is not None and not PLUGIN_RE.match(self.target):
+                raise ValueError("plugin names are the plugin file's name, e.g. mysql")
+            self.metric = self.operator = self.threshold = None
+        elif k == "check":
+            try:
+                self.target = str(uuid.UUID(str(self.target)))
+            except ValueError:
+                raise ValueError("check rules need target: the check's id") from None
+            self.metric = self.operator = self.threshold = None
+            self.host_id = self.tag = None  # the check decides where it runs
+        elif k == "anomaly":
+            if self.metric not in ANOMALY_METRICS:
+                raise ValueError(f"anomaly rules watch one of: {', '.join(ANOMALY_METRICS)}")
+            if self.threshold is None:
+                self.threshold = 3
+            if not 2 <= self.threshold <= 10:
+                raise ValueError("anomaly sensitivity (threshold) is 2-10 standard deviations")
+            self.operator, self.target = ">", None
+        elif k == "forecast":
+            if self.metric not in FORECAST_METRICS:
+                raise ValueError(f"forecast rules watch one of: {', '.join(FORECAST_METRICS)}")
+            if self.threshold is None or not 1 <= self.threshold <= 720:
+                raise ValueError("forecast rules need threshold: the horizon in hours (1-720)")
+            self.operator, self.target = ">", None
+        else:  # host_down
             self.metric = self.operator = self.threshold = self.target = None
             if self.duration_seconds < MIN_HOST_DOWN_SECONDS:
                 raise ValueError(f"host_down needs duration_seconds >= {MIN_HOST_DOWN_SECONDS}")
+        if self.recovery_threshold is not None and self.threshold is not None:
+            wrong_side = (self.operator == ">" and self.recovery_threshold > self.threshold) or (
+                self.operator == "<" and self.recovery_threshold < self.threshold
+            )
+            if wrong_side:
+                raise ValueError(
+                    "recovery_threshold must be on the healthy side of threshold "
+                    "(e.g. alert above 90, recover below 80)"
+                )
         delays = [e.delay_minutes for e in self.escalations]
         if delays != sorted(set(delays)):
             raise ValueError("escalation steps must come later and later (increasing delay)")
@@ -109,6 +232,13 @@ class RuleOut(BaseModel):
     channel_ids: list[uuid.UUID]
     escalations: list[EscalationStepOut]
     enabled: bool
+    aggregation: str
+    window_seconds: int
+    recovery_threshold: float | None
+    severity: str
+    action_name: str | None
+    labels: dict[str, str]
+    description: str | None
     firing_hosts: int
     created_at: datetime
     updated_at: datetime
@@ -128,6 +258,29 @@ class IncidentOut(BaseModel):
     acknowledged_by: str | None
     resolved_at: datetime | None
     escalation_level: int
+    severity: str
+    detail: str | None
+    flapping: bool
+    reopened_count: int
+    resolved_by: str | None
+    check_id: uuid.UUID | None
+    duration_seconds: int
+
+
+class IncidentEventOut(BaseModel):
+    id: uuid.UUID
+    kind: str
+    message: str
+    actor: str | None
+    created_at: datetime
+
+
+class IncidentDetail(IncidentOut):
+    events: list[IncidentEventOut]
+
+
+class NoteIn(BaseModel):
+    message: str = Field(min_length=1, max_length=5000)
 
 
 def _incident_out(i: Incident) -> IncidentOut:
@@ -145,6 +298,13 @@ def _incident_out(i: Incident) -> IncidentOut:
         acknowledged_by=i.acknowledged_by,
         resolved_at=i.resolved_at,
         escalation_level=i.escalation_level,
+        severity=i.severity,
+        detail=i.detail,
+        flapping=i.flapping,
+        reopened_count=i.reopened_count,
+        resolved_by=i.resolved_by,
+        check_id=i.check_id,
+        duration_seconds=int(((i.resolved_at or datetime.now(UTC)) - i.opened_at).total_seconds()),
     )
 
 
@@ -187,6 +347,13 @@ async def _rule_out(t: TenantContext, r: AlertRule) -> RuleOut:
             for s in steps
         ],
         enabled=r.enabled,
+        aggregation=r.aggregation,
+        window_seconds=r.window_seconds,
+        recovery_threshold=r.recovery_threshold,
+        severity=r.severity,
+        action_name=r.action_name,
+        labels=r.labels or {},
+        description=r.description,
         firing_hosts=firing or 0,
         created_at=r.created_at,
         updated_at=r.updated_at,
@@ -211,6 +378,14 @@ async def _check_refs(t: TenantContext, body: RuleIn) -> None:
         )
         if found is None:
             raise HTTPException(status_code=422, detail="host_id not found")
+    if body.kind == "check":
+        found = await t.db.scalar(
+            select(Check.id).where(
+                Check.id == uuid.UUID(body.target or ""), Check.tenant_id == t.tenant_id
+            )
+        )
+        if found is None:
+            raise HTTPException(status_code=422, detail="check not found")
     wanted = set(body.channel_ids) | {c for e in body.escalations for c in e.channel_ids}
     if wanted:
         found = set(
@@ -259,15 +434,26 @@ async def _reset_rule(t: TenantContext, rule_id: uuid.UUID) -> None:
     """Forget the alerter's progress on a rule and close its open incidents.
     Used when a rule is disabled, deleted, or its condition changes, so no
     incident is left open forever by a rule that can no longer resolve it."""
-    await t.db.execute(
+    closed = await t.db.scalars(
         update(Incident)
         .where(
             Incident.rule_id == rule_id,
             Incident.tenant_id == t.tenant_id,
             Incident.status == "open",
         )
-        .values(status="resolved", resolved_at=datetime.now(UTC))
+        .values(status="resolved", resolved_at=datetime.now(UTC), resolved_by=_actor(t))
+        .returning(Incident.id)
     )
+    for incident_id in closed:
+        t.db.add(
+            IncidentEvent(
+                tenant_id=t.tenant_id,
+                incident_id=incident_id,
+                kind="resolved",
+                message="Closed because its alert rule was changed, disabled or deleted",
+                actor=_actor(t),
+            )
+        )
     await t.db.execute(
         delete(AlertState).where(AlertState.rule_id == rule_id, AlertState.tenant_id == t.tenant_id)
     )
@@ -306,7 +492,10 @@ RECOMMENDED: list[dict] = [
         "metric": "cpu",
         "operator": ">",
         "threshold": 90,
-        "duration_seconds": 600,
+        "recovery_threshold": 80,
+        "aggregation": "avg",
+        "window_seconds": 300,
+        "duration_seconds": 300,
     },
     {
         "name": "Memory above 90%",
@@ -331,6 +520,20 @@ RECOMMENDED: list[dict] = [
         "operator": ">",
         "threshold": 90,
         "duration_seconds": 300,
+    },
+    {
+        "name": "Disk will be full within 2 days",
+        "kind": "forecast",
+        "metric": "disk",
+        "threshold": 48,
+        "duration_seconds": 1800,
+        "severity": "warning",
+    },
+    {
+        "name": "A plugin stopped collecting",
+        "kind": "plugin_down",
+        "duration_seconds": 300,
+        "severity": "warning",
     },
     {
         "name": "CPU steal above 20%",
@@ -377,7 +580,18 @@ async def get_rule(rule_id: uuid.UUID, t: Tenant) -> RuleOut:
 async def update_rule(rule_id: uuid.UUID, body: RuleIn, t: Tenant) -> RuleOut:
     rule = await _get_rule(t, rule_id)
     await _check_refs(t, body)
-    condition = ("kind", "metric", "operator", "threshold", "target", "host_id", "tag")
+    condition = (
+        "kind",
+        "metric",
+        "operator",
+        "threshold",
+        "target",
+        "host_id",
+        "tag",
+        "aggregation",
+        "window_seconds",
+        "labels",
+    )
     changed = any(getattr(rule, f) != getattr(body, f) for f in condition)
     if changed or (rule.enabled and not body.enabled):
         await _reset_rule(t, rule.id)
@@ -397,11 +611,18 @@ async def delete_rule(rule_id: uuid.UUID, t: Tenant) -> None:
     await t.db.delete(rule)
 
 
+def _actor(t: TenantContext) -> str:
+    return t.principal.email or t.principal.name or "dashboard"
+
+
 @router.get("/incidents")
 async def list_incidents(
     t: Tenant,
     status_: Annotated[Literal["open", "resolved"] | None, Query(alias="status")] = None,
     host_id: uuid.UUID | None = None,
+    check_id: uuid.UUID | None = None,
+    severity: Literal["critical", "warning", "info"] | None = None,
+    before: Annotated[datetime | None, Query(description="opened before this (paging)")] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[IncidentOut]:
     q = select(Incident).where(Incident.tenant_id == t.tenant_id)
@@ -409,6 +630,12 @@ async def list_incidents(
         q = q.where(Incident.status == status_)
     if host_id:
         q = q.where(Incident.host_id == host_id)
+    if check_id:
+        q = q.where(Incident.check_id == check_id)
+    if severity:
+        q = q.where(Incident.severity == severity)
+    if before:
+        q = q.where(Incident.opened_at < before)
     rows = await t.db.scalars(q.order_by(Incident.opened_at.desc()).limit(limit))
     return [_incident_out(i) for i in rows]
 
@@ -422,15 +649,96 @@ async def _get_incident(t: TenantContext, incident_id: uuid.UUID) -> Incident:
     return incident
 
 
+async def _detail(t: TenantContext, incident: Incident) -> IncidentDetail:
+    events = await t.db.scalars(
+        select(IncidentEvent)
+        .where(IncidentEvent.incident_id == incident.id, IncidentEvent.tenant_id == t.tenant_id)
+        .order_by(IncidentEvent.created_at, IncidentEvent.id)
+    )
+    return IncidentDetail(
+        **_incident_out(incident).model_dump(),
+        events=[
+            IncidentEventOut(
+                id=e.id, kind=e.kind, message=e.message, actor=e.actor, created_at=e.created_at
+            )
+            for e in events
+        ],
+    )
+
+
+def _event(t: TenantContext, incident: Incident, kind: str, message: str) -> None:
+    t.db.add(
+        IncidentEvent(
+            tenant_id=t.tenant_id,
+            incident_id=incident.id,
+            kind=kind,
+            message=message,
+            actor=_actor(t),
+        )
+    )
+
+
 @router.get("/incidents/{incident_id}")
-async def get_incident(incident_id: uuid.UUID, t: Tenant) -> IncidentOut:
-    return _incident_out(await _get_incident(t, incident_id))
+async def get_incident(incident_id: uuid.UUID, t: Tenant) -> IncidentDetail:
+    return await _detail(t, await _get_incident(t, incident_id))
 
 
 @router.post("/incidents/{incident_id}/acknowledge")
-async def acknowledge(incident_id: uuid.UUID, t: Tenant) -> IncidentOut:
+async def acknowledge(incident_id: uuid.UUID, t: Tenant) -> IncidentDetail:
     incident = await _get_incident(t, incident_id)
-    if incident.acknowledged_at is None:
+    if incident.acknowledged_at is None and incident.status == "open":
         incident.acknowledged_at = datetime.now(UTC)
-        incident.acknowledged_by = t.principal.email or t.principal.name or "dashboard"
-    return _incident_out(incident)
+        incident.acknowledged_by = _actor(t)
+        _event(t, incident, "acknowledged", "Acknowledged: escalation stopped")
+    await t.db.flush()
+    return await _detail(t, incident)
+
+
+@router.post("/incidents/{incident_id}/notes", status_code=status.HTTP_201_CREATED)
+async def add_note(incident_id: uuid.UUID, body: NoteIn, t: Tenant) -> IncidentDetail:
+    incident = await _get_incident(t, incident_id)
+    _event(t, incident, "note", body.message.strip())
+    await t.db.flush()
+    return await _detail(t, incident)
+
+
+@router.post("/incidents/{incident_id}/resolve")
+async def resolve(incident_id: uuid.UUID, t: Tenant, body: NoteIn | None = None) -> IncidentDetail:
+    """Close an incident by hand. If the problem is still there, the alerter
+    opens a new incident once the rule's duration has passed again."""
+    incident = await _get_incident(t, incident_id)
+    if incident.status == "open":
+        incident.status = "resolved"
+        incident.resolved_at = datetime.now(UTC)
+        incident.resolved_by = _actor(t)
+        message = "Resolved by hand"
+        if body is not None:
+            message += ": " + body.message.strip()
+        _event(t, incident, "resolved", message)
+        await t.db.execute(
+            delete(AlertState).where(
+                AlertState.incident_id == incident.id, AlertState.tenant_id == t.tenant_id
+            )
+        )
+    await t.db.flush()
+    return await _detail(t, incident)
+
+
+@router.post("/incidents/{incident_id}/reopen")
+async def reopen(incident_id: uuid.UUID, t: Tenant, body: NoteIn | None = None) -> IncidentDetail:
+    """Reopen a resolved incident ("it's not actually fixed"). A reopened
+    incident is closed by hand: the alert rule already moved on."""
+    incident = await _get_incident(t, incident_id)
+    if incident.status == "resolved":
+        incident.status = "open"
+        incident.resolved_at = None
+        incident.resolved_by = None
+        incident.acknowledged_at = datetime.now(UTC)
+        incident.acknowledged_by = _actor(t)
+        incident.reopened_count += 1
+        message = "Reopened"
+        if body is not None:
+            message += ": " + body.message.strip()
+        _event(t, incident, "reopened", message)
+    await t.db.flush()
+    return await _detail(t, incident)

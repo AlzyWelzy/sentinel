@@ -221,6 +221,12 @@ func (s *store) hostChecks(ctx context.Context, id hostIdentity) ([]checkDef, st
 		for k, v := range params {
 			c.Params[k] = fmt.Sprint(v)
 		}
+		if c.OnProbes {
+			// Probes run on our network: they must never reach private
+			// addresses on a customer's behalf. The agent enforces this
+			// when it connects, so DNS can't be used to slip past it.
+			c.Params["public_only"] = "true"
+		}
 		out = append(out, c)
 	}
 	r := ""

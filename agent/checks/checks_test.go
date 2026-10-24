@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -147,5 +148,30 @@ func TestSetKeepsState(t *testing.T) {
 	r.Set(nil)
 	if len(r.checks) != 0 {
 		t.Fatal("removed check still scheduled")
+	}
+}
+
+func TestPublicOnlyGuard(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	r := NewRunner("test")
+	res := runOne(t, r, proto.Check{ID: "p", Type: "tcp", Target: ln.Addr().String(), Params: map[string]string{"public_only": "true"}})
+	if res.OK {
+		t.Fatal("probe check reached loopback")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer srv.Close()
+	res = runOne(t, r, proto.Check{ID: "h", Type: "http", Target: srv.URL, Params: map[string]string{"public_only": "true"}})
+	if res.OK {
+		t.Fatal("probe http check reached loopback")
+	}
+	for addr, want := range map[string]bool{"8.8.8.8": true, "10.1.2.3": false, "169.254.169.254": false,
+		"100.64.1.1": false, "::1": false, "2606:4700::1111": true, "::ffff:192.168.1.1": false, "fd00::1": false} {
+		if got := publicAddress(netip.MustParseAddr(addr)); got != want {
+			t.Errorf("%s: %v", addr, got)
+		}
 	}
 }
