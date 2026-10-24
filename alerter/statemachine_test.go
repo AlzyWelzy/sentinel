@@ -62,3 +62,14 @@ func TestOperators(t *testing.T) {
 		t.Fatal("operator semantics wrong")
 	}
 }
+
+func TestRecentFlipsNeverNil(t *testing.T) {
+	now := time.Now()
+	if got := recentFlips(nil, now); got == nil || len(got) != 0 {
+		t.Fatalf("got %#v", got)
+	}
+	got := recentFlips([]time.Time{now.Add(-2 * time.Hour), now.Add(-time.Minute)}, now)
+	if len(got) != 1 {
+		t.Fatalf("got %v", got)
+	}
+}

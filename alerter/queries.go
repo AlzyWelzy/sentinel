@@ -128,6 +128,11 @@ func ruleQuery(r rule) (string, error) {
 		if r.Target != "" {
 			target = t.label + "=" + strconv.Quote(r.Target)
 		}
+		if r.Check != nil && r.Check.eventLike() {
+			// A log match or a file change is one failing sample between
+			// passing ones: look at the whole last minute, not the newest.
+			return fmt.Sprintf("min by (host_id) (min_over_time(%s%s[1m]))", t.name, matchers(target, hostMatcher(r))), nil
+		}
 		return fmt.Sprintf("min by (host_id) (last_over_time(%s%s[3m]))", t.name, matchers(target, hostMatcher(r))), nil
 	}
 	return "", fmt.Errorf("no query for rule kind %q", r.Kind)
@@ -196,4 +201,10 @@ func anomalyExpr(def metricDef, r rule) string {
 		"((avg_over_time((%[1]s)[10m:1m]) - avg_over_time((%[1]s)[7d:5m])) / clamp_min(stddev_over_time((%[1]s)[7d:5m]), %[2]g))"+
 			" and on (host_id) (count_over_time((%[1]s)[7d:1h]) > 24)",
 		series, floor)
+}
+
+// eventLike checks report events (a log line, a file change) rather than a
+// lasting state.
+func (c *checkInfo) eventLike() bool {
+	return c.Type == "log" || (c.Type == "file" && c.Mode == "changed")
 }

@@ -59,8 +59,9 @@ func (c *cache) markSeen(ctx context.Context, hostID string, at time.Time) error
 // checkResultKey holds the latest result of a check per place it runs: a
 // host id, or "probe:<region>". The API and alerter read the detail from it.
 const (
-	checkResultKey = "pg:check:"
-	checkResultTTL = 2 * 24 * time.Hour
+	checkResultKey    = "pg:check:"
+	checkResultTTL    = 2 * 24 * time.Hour
+	lastFailurePrefix = "fail:"
 )
 
 type storedCheckResult struct {
@@ -95,6 +96,11 @@ func (c *cache) storeCheckResults(ctx context.Context, id hostIdentity, hc *host
 			continue
 		}
 		pipe.HSet(ctx, checkResultKey+r.ID, field, b)
+		if !r.OK {
+			// The last failure is kept too: the next passing run replaces
+			// the current result before the alerter may have read it.
+			pipe.HSet(ctx, checkResultKey+r.ID, lastFailurePrefix+field, b)
+		}
 		pipe.Expire(ctx, checkResultKey+r.ID, checkResultTTL)
 	}
 	_, err := pipe.Exec(ctx)

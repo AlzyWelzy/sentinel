@@ -20,10 +20,10 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from app.db import ServiceSession
-from app.models import Check, Host, Incident, StatusPage, StatusPageItem
+from app.models import AlertRule, Check, Host, Incident, StatusPage, StatusPageItem
 from app.services import checkresults
 from app.services.heartbeats import is_online, last_seen
-from app.services.metrics import MetricsUnavailable, query_series
+from app.services.metrics import MetricsUnavailable, query_instant, query_series
 from app.tenancy import Tenant, TenantContext
 
 router = APIRouter(prefix="/v1/status-pages")
@@ -32,8 +32,8 @@ public = APIRouter()
 MAX_PAGES = 10
 MAX_ITEMS = 50
 DAYS = 90
-# Hosts push every 30 s; a day has this many pushes when nothing is missed.
-PUSHES_PER_DAY = 86400 / 30
+# Hosts push every 30 s.
+PUSH_SECONDS = 30
 
 
 class ItemIn(BaseModel):
@@ -234,22 +234,42 @@ CACHE_SECONDS = 30
 _cache: dict[str, tuple[float, PublicPage]] = {}
 
 
-async def _daily(tenant_id: uuid.UUID, query: str, scale: float) -> list[PublicDay]:
-    end = int(time.time()) // 86400 * 86400 + 86400
-    start = end - DAYS * 86400
+async def _daily(
+    tenant_id: uuid.UUID, expr: str, per_second: float | None, since: int | None = None
+) -> list[PublicDay]:
+    """Uptime per UTC day for the last DAYS days. expr has WINDOW where the
+    range goes. per_second set: expr counts pushes, turned into a percentage
+    of the pushes expected (per_second of them per second) over the part of
+    each day after `since` (when the server was added); otherwise expr is
+    already a 0-1 ratio."""
+    now = int(time.time())
+    today = now // 86400 * 86400
+    start = today - (DAYS - 1) * 86400
+    points: dict[int, float] = {}
     try:
-        series = await query_series(tenant_id, query, start, end, 86400, [])
+        # Whole days, each evaluated at its end (the next midnight).
+        if DAYS > 1:
+            for s_ in await query_series(
+                tenant_id, expr.replace("WINDOW", "1d"), start + 86400, today, 86400, []
+            ):
+                points.update({int(ts) - 86400: v for ts, v in s_["points"]})
+        # Today so far.
+        elapsed = max(now - today, 60)
+        for _, v in await query_instant(tenant_id, expr.replace("WINDOW", f"{elapsed}s")):
+            points[today] = v
     except MetricsUnavailable:
-        series = []
-    points = {int(ts): v for ts, v in (series[0]["points"] if series else [])}
+        pass
     days = []
     for d in range(DAYS):
-        ts = start + (d + 1) * 86400
+        ts = start + d * 86400
         v = points.get(ts)
+        if v is not None and per_second:
+            observed = min(ts + 86400, now) - max(ts, since or ts)
+            v = v / (observed * per_second) if observed >= 60 else None
         days.append(
             PublicDay(
-                date=datetime.fromtimestamp(ts - 86400, UTC).date().isoformat(),
-                uptime=None if v is None else round(min(v * scale, 100.0), 3),
+                date=datetime.fromtimestamp(ts, UTC).date().isoformat(),
+                uptime=None if v is None else round(min(v * 100, 100.0), 3),
             )
         )
     return days
@@ -276,6 +296,12 @@ async def build_public(slug: str) -> PublicPage | None:
         )
         host_ids = [i.host_id for i in items if i.host_id]
         check_ids = [i.check_id for i in items if i.check_id]
+        hosts_created = {
+            h.id: h.created_at
+            for h in await db.scalars(
+                select(Host).where(Host.id.in_(host_ids), Host.tenant_id == page.tenant_id)
+            )
+        }
         checks = {
             c.id: c
             for c in await db.scalars(
@@ -283,14 +309,23 @@ async def build_public(slug: str) -> PublicPage | None:
             )
         }
         since = datetime.fromtimestamp(time.time() - 7 * 86400, UTC)
+        # Only outages belong on a public page: a server that stopped
+        # reporting, or an uptime check that's down. Not every alert rule.
+        host_down_rules = select(AlertRule.id).where(
+            AlertRule.tenant_id == page.tenant_id, AlertRule.kind == "host_down"
+        )
         incidents = list(
             await db.scalars(
                 select(Incident)
                 .where(
                     Incident.tenant_id == page.tenant_id,
-                    (Incident.host_id.in_(host_ids)) | (Incident.check_id.in_(check_ids)),
+                    (
+                        Incident.host_id.in_(host_ids)
+                        & Incident.check_id.is_(None)
+                        & Incident.rule_id.in_(host_down_rules)
+                    )
+                    | (Incident.check_id.in_(check_ids) & Incident.host_id.is_(None)),
                     (Incident.status == "open") | (Incident.opened_at >= since),
-                    Incident.severity == "critical",
                 )
                 .order_by(Incident.opened_at.desc())
                 .limit(20)
@@ -309,8 +344,11 @@ async def build_public(slug: str) -> PublicPage | None:
             )
             days = await _daily(
                 page.tenant_id,
-                f'count_over_time(pulsegrid_uptime_seconds{{host_id="{i.host_id}"}}[1d])',
-                100 / PUSHES_PER_DAY,
+                f'count_over_time(pulsegrid_uptime_seconds{{host_id="{i.host_id}"}}[WINDOW])',
+                1 / PUSH_SECONDS,
+                since=int(hosts_created[i.host_id].timestamp())
+                if i.host_id in hosts_created
+                else None,
             )
             response = None
         else:
@@ -323,8 +361,8 @@ async def build_public(slug: str) -> PublicPage | None:
             st = "unknown" if not res else ("down" if failing >= max(need, 1) else "up")
             days = await _daily(
                 page.tenant_id,
-                f'avg(avg_over_time(pulsegrid_check_up{{check_id="{c.id}"}}[1d]))',
-                100,
+                f'avg(avg_over_time(pulsegrid_check_up{{check_id="{c.id}"}}[WINDOW]))',
+                None,
             )
             lat = [r["latency_ms"] for r in res if r.get("latency_ms")]
             response = round(sum(lat) / len(lat), 1) if lat and page.show_values else None

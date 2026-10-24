@@ -48,11 +48,15 @@ type Runner struct {
 }
 
 type scheduled struct {
-	check  proto.Check
-	key    string // identifies the definition, to keep state across identical updates
-	next   time.Time
-	state  checkState
-	cancel context.CancelFunc
+	check proto.Check
+	key   string // identifies the definition, to keep state across identical updates
+	next  time.Time
+	state checkState
+	// A failure not yet delivered: kept, even if later runs pass, until a
+	// push has carried it (Ack), so a short failure between pushes (one
+	// log line, one refused connection) is never lost.
+	held        *proto.CheckResult
+	heldSamples []proto.Sample
 }
 
 // checkState is what a check remembers between runs.
@@ -160,6 +164,9 @@ func (r *Runner) RunDue(ctx context.Context) {
 			if cur, ok := r.checks[s.check.ID]; ok && cur == s {
 				r.results[s.check.ID] = res
 				r.samples[s.check.ID] = samples
+				if !res.OK {
+					s.held, s.heldSamples = &res, samples
+				}
 			}
 			r.mu.Unlock()
 		}(s)
@@ -167,17 +174,35 @@ func (r *Runner) RunDue(ctx context.Context) {
 	wg.Wait()
 }
 
-// Results returns the latest result of every check, and its samples.
+// Results returns the result of every check to report: a held failure if
+// there is one, otherwise the latest result; and their samples.
 func (r *Runner) Results() ([]proto.CheckResult, []proto.Sample) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var res []proto.CheckResult
 	var samples []proto.Sample
 	for id, v := range r.results {
+		if s := r.checks[id]; s != nil && s.held != nil {
+			res = append(res, *s.held)
+			samples = append(samples, s.heldSamples...)
+			continue
+		}
 		res = append(res, v)
 		samples = append(samples, r.samples[id]...)
 	}
 	return res, samples
+}
+
+// Ack drops held failures that a push has now delivered. Only those
+// reported: a failure that arrived after the push was built stays held.
+func (r *Runner) Ack(delivered []proto.CheckResult) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, d := range delivered {
+		if s := r.checks[d.ID]; s != nil && s.held != nil && s.held.TimestampMs == d.TimestampMs {
+			s.held, s.heldSamples = nil, nil
+		}
+	}
 }
 
 func (r *Runner) run(ctx context.Context, s *scheduled) (proto.CheckResult, []proto.Sample) {

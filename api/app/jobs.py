@@ -209,9 +209,13 @@ async def tick() -> None:
 
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    # The lock lives on its own autocommit connection: session-level advisory
+    # locks need no transaction, and an open one would hold back vacuum.
+    engine = ServiceSession.kw["bind"]
     while True:
-        async with ServiceSession() as db:
-            conn = await db.connection()
+        async with engine.connect() as raw:
+            conn = await raw.execution_options(isolation_level="AUTOCOMMIT")
             got = await conn.scalar(text("SELECT pg_try_advisory_lock(:id)"), {"id": LOCK_ID})
             if not got:
                 await asyncio.sleep(30)  # another replica is working; stand by

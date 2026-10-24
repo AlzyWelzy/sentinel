@@ -25,6 +25,8 @@ func TestRuleQuery(t *testing.T) {
 		{rule{Kind: "plugin_down"}, `min by (host_id) (last_over_time(pulsegrid_plugin_up{}[3m]))`},
 		{rule{Kind: "container_down", Target: "web"}, `min by (host_id) (last_over_time(pulsegrid_container_running{container="web"}[3m]))`},
 		{rule{Kind: "check", Target: "c1"}, `min by (host_id) (last_over_time(pulsegrid_check_up{check_id="c1"}[3m]))`},
+		{rule{Kind: "check", Target: "c2", Check: &checkInfo{Type: "log"}},
+			`min by (host_id) (min_over_time(pulsegrid_check_up{check_id="c2"}[1m]))`},
 		{rule{Kind: "custom", Target: "jobs_waiting", Labels: map[string]string{"queue": "mail", "tenant_id": "x"}},
 			`max by (host_id) (last_over_time(pulsegrid_custom_jobs_waiting{queue="mail"}[3m]))`},
 		{rule{Kind: "forecast", Metric: "disk", Threshold: 72},

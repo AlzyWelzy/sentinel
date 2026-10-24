@@ -222,8 +222,10 @@ func (e *evaluator) probeCheckObservations(ctx context.Context, r rule) (map[str
 	return map[string]observation{r.Check.ID: {HasData: true, Breached: f >= need, Value: f, Total: *total}}, nil
 }
 
-// checkDetail is the latest result text for a check rule's subject, from
-// what ingest stored: the host's own result, or every failing probe's.
+// checkDetail is the result text for a check rule's subject, from what
+// ingest stored: the host's latest failure (kept apart because a passing
+// run may already have replaced the current result), or for an uptime
+// check, every failing probe's.
 func (e *evaluator) checkDetail(ctx context.Context, r rule, h host) string {
 	if r.Kind != "check" || r.Check == nil {
 		return ""
@@ -236,16 +238,22 @@ func (e *evaluator) checkDetail(ctx context.Context, r rule, h host) string {
 		OK     bool   `json:"ok"`
 		Detail string `json:"detail"`
 		Region string `json:"region"`
+		Ts     int64  `json:"ts"`
 	}
+	recent := func(res result) bool { return time.Since(time.UnixMilli(res.Ts)) < 10*time.Minute }
 	if !r.Check.OnProbes {
-		var res result
-		if json.Unmarshal([]byte(vals[h.ID]), &res) == nil {
-			return res.Detail
+		var cur, fail result
+		json.Unmarshal([]byte(vals[h.ID]), &cur)
+		if json.Unmarshal([]byte(vals["fail:"+h.ID]), &fail) == nil && recent(fail) && (cur.OK || fail.Ts >= cur.Ts) {
+			return fail.Detail
 		}
-		return ""
+		return cur.Detail
 	}
 	var parts []string
-	for _, v := range vals {
+	for field, v := range vals {
+		if strings.HasPrefix(field, "fail:") {
+			continue
+		}
 		var res result
 		if json.Unmarshal([]byte(v), &res) == nil && !res.OK {
 			parts = append(parts, res.Region+": "+res.Detail)

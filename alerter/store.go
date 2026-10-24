@@ -43,6 +43,8 @@ type rule struct {
 type checkInfo struct {
 	ID         string
 	Name       string
+	Type       string
+	Mode       string // file checks: params.mode
 	OnProbes   bool
 	HostID     *string
 	Tag        *string
@@ -95,7 +97,8 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 		       coalesce(r.threshold, 0), r.duration_seconds, r.host_id, r.tag, coalesce(r.target, ''),
 		       r.aggregation, r.window_seconds, r.recovery_threshold, r.severity, r.action_name,
 		       r.labels, coalesce(r.description, ''),
-		       c.id, coalesce(c.name, ''), coalesce(c.on_probes, false), c.host_id, c.tag,
+		       c.id, coalesce(c.name, ''), coalesce(c.type, ''), coalesce(c.params->>'mode', ''),
+		       coalesce(c.on_probes, false), c.host_id, c.tag,
 		       coalesce(c.min_failing, 1), coalesce(c.created_at, now())
 		  FROM alert_rules r
 		  JOIN tenants t ON t.id = r.tenant_id
@@ -114,7 +117,7 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 			&r.Threshold, &r.DurationSeconds, &r.HostID, &r.Tag, &r.Target,
 			&r.Aggregation, &r.WindowSeconds, &r.RecoveryThreshold, &r.Severity, &r.ActionName,
 			&r.Labels, &r.Description,
-			&checkID, &c.Name, &c.OnProbes, &c.HostID, &c.Tag, &c.MinFailing, &c.CreatedAt)
+			&checkID, &c.Name, &c.Type, &c.Mode, &c.OnProbes, &c.HostID, &c.Tag, &c.MinFailing, &c.CreatedAt)
 		if checkID != nil {
 			c.ID = *checkID
 			r.Check = &c
@@ -376,8 +379,10 @@ func checkIDIfSubject(h host) *string {
 	return nil
 }
 
+// recentFlips keeps the openings inside flapWindow. Never nil: pgx sends a
+// nil slice as NULL, and the column is NOT NULL.
 func recentFlips(flips []time.Time, now time.Time) []time.Time {
-	var out []time.Time
+	out := []time.Time{}
 	for _, f := range flips {
 		if now.Sub(f) < flapWindow {
 			out = append(out, f)
@@ -410,8 +415,8 @@ func addEvent(ctx context.Context, tx pgx.Tx, tenantID, incidentID, kind, messag
 		message = message[:5000]
 	}
 	_, err := tx.Exec(ctx, `
-		INSERT INTO incident_events (tenant_id, incident_id, kind, message, actor)
-		VALUES ($1, $2, $3, $4, $5)`, tenantID, incidentID, kind, message, actor)
+		INSERT INTO incident_events (tenant_id, incident_id, kind, message, actor, created_at)
+		VALUES ($1, $2, $3, $4, $5, clock_timestamp())`, tenantID, incidentID, kind, message, actor)
 	return err
 }
 

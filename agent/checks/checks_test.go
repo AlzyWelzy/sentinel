@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/example-org/pulsegrid/proto"
 )
@@ -173,5 +174,43 @@ func TestPublicOnlyGuard(t *testing.T) {
 		if got := publicAddress(netip.MustParseAddr(addr)); got != want {
 			t.Errorf("%s: %v", addr, got)
 		}
+	}
+}
+
+func TestFailuresAreHeldUntilDelivered(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "app.log")
+	os.WriteFile(p, []byte(""), 0o600)
+	r := NewRunner("test")
+	r.Set([]proto.Check{{ID: "l", Type: "log", Target: p, Params: map[string]string{"pattern": "ERROR"}, IntervalSeconds: 10}})
+	due := func() {
+		r.mu.Lock()
+		for _, s := range r.checks {
+			s.next = time.Time{}
+		}
+		r.mu.Unlock()
+		r.RunDue(context.Background())
+	}
+	due() // primes the log position
+	f, _ := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0)
+	f.WriteString("ERROR boom\n")
+	f.Close()
+	due() // sees the error
+	due() // nothing new: passes, but the failure must still be reported
+	res, samples := r.Results()
+	if len(res) != 1 || res[0].OK {
+		t.Fatalf("failure lost before delivery: %+v", res)
+	}
+	var up float64 = -1
+	for _, s := range samples {
+		if s.Name == "pulsegrid_check_up" {
+			up = s.Value
+		}
+	}
+	if up != 0 {
+		t.Fatalf("held sample should be the failing one, got %v", up)
+	}
+	r.Ack(res)
+	if res, _ := r.Results(); !res[0].OK {
+		t.Fatal("after delivery the latest (passing) result is reported")
 	}
 }

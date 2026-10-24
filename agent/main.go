@@ -416,6 +416,7 @@ func (a *agent) flush(ctx context.Context) {
 		switch {
 		case err == nil:
 			a.spool.remove(files)
+			a.checks.Ack(results)
 			a.mu.Lock()
 			a.actionResults = a.actionResults[len(actionResults):]
 			if a.inventory == inventory {

@@ -202,6 +202,11 @@ class CheckIn(BaseModel):
 CheckStatus = Literal["up", "down", "pending", "paused"]
 
 
+def _event_like(body: CheckIn) -> bool:
+    """Log matches and file changes are events: alert on the first one."""
+    return body.type == "log" or (body.type == "file" and body.params.get("mode") == "changed")
+
+
 class CheckResultOut(BaseModel):
     ok: bool
     detail: str | None = None
@@ -228,6 +233,7 @@ class CheckOut(BaseModel):
     updated_at: datetime
     status: CheckStatus
     results: list[CheckResultOut]
+    last_failure: CheckResultOut | None
     rule_id: uuid.UUID | None
     open_incident_id: uuid.UUID | None
 
@@ -244,6 +250,7 @@ def _status(c: Check, results: list[dict]) -> CheckStatus:
 
 async def _out(t: TenantContext, checks: list[Check]) -> list[CheckOut]:
     latest = await checkresults.latest([c.id for c in checks])
+    failures = await checkresults.last_failures([c.id for c in checks])
     ids = [str(c.id) for c in checks]
     rules: dict[str, uuid.UUID] = {}
     if ids:
@@ -290,6 +297,7 @@ async def _out(t: TenantContext, checks: list[Check]) -> list[CheckOut]:
                 updated_at=c.updated_at,
                 status=_status(c, results),
                 results=[CheckResultOut(**r) for r in results],
+                last_failure=CheckResultOut(**failures[c.id]) if c.id in failures else None,
                 rule_id=rules.get(str(c.id)),
                 open_incident_id=open_incidents.get(c.id),
             )
@@ -351,9 +359,7 @@ async def create_check(body: CheckIn, t: Tenant) -> CheckOut:
                 target=str(check.id),
                 # A one-off failure (a dropped packet) shouldn't page: wait
                 # for it to persist across two runs.
-                duration_seconds=min(body.interval_seconds * 2, 600)
-                if not body.type == "file"
-                else 0,
+                duration_seconds=0 if _event_like(body) else min(body.interval_seconds * 2, 600),
                 severity=body.severity,
             )
         )
