@@ -1,8 +1,13 @@
 # Pulsegrid
 
-Multi-tenant server monitoring. A lightweight agent on each server pushes
-metrics every 30 seconds; Pulsegrid stores them, evaluates alert rules, opens
-incidents and notifies verified contacts by email, SMS or webhook.
+Multi-tenant server and uptime monitoring. A lightweight agent on each
+server pushes metrics every 30 seconds and runs checks (ports, URLs, files,
+log patterns) and plugins (MySQL, PostgreSQL, Redis, Nginx, Apache, Docker,
+Prometheus endpoints, scripts); agents marked as probes run customers'
+uptime checks from several regions. Pulsegrid stores everything, evaluates
+alert rules (thresholds, anomalies, forecasts), opens incidents with a
+timeline, notifies verified contacts by email and Web Push, can run an
+allowed fix on the server, and publishes status pages and monthly reports.
 
 The Example console is the dashboard and the identity provider: users
 sign up there, and Pulsegrid trusts the console's JWT (the same way
@@ -83,7 +88,29 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
   disk I/O counters and its process list comes from `ps`.
 - Reports the machine's IP addresses, CPU count and memory with each push,
   and takes tags at install (`install.sh --tags web,production`).
-- Self-updates daily from a separate privileged job: downloads the advertised
+- Checks from its config: TCP ports, HTTP(S) URLs (status, keyword, response
+  time, certificate expiry), TLS certificates, DNS records, files (missing,
+  changed, too old, too big) and log patterns (new lines matching an RE2
+  expression; rotation-aware). A failure is held until a push delivers it, so
+  one bad line between pushes is never lost. Probe checks may only reach
+  public addresses, enforced when connecting (DNS rebinding can't get round it).
+- Plugins from root-owned files in `/etc/pulsegrid/plugins.d/*.conf`
+  (`%ProgramData%\Pulsegrid\conf` on Windows): `mysql`, `postgres`, `redis`,
+  `nginx`, `apache`, `docker`, `prometheus` (any exporter or `/metrics`;
+  series become `pulsegrid_custom_*`) and `script` (prints `name value`
+  lines). Never configured from the dashboard: they hold passwords and a
+  script runs code. `pulsegrid-agent plugins` tests them.
+- Actions: the dashboard (or a rule, when it fires) can ask for a fix by
+  name; only names in the root-owned `actions.conf` run. `sudo pulsegrid-agent
+  allow-action restart-nginx -- /usr/bin/systemctl restart nginx` writes it,
+  a sudoers rule for exactly that command, and (systemd) a drop-in that
+  relaxes the unit's sandbox only while sudo actions exist.
+- Inventory every 6 hours: packages (dpkg, rpm, apk, pacman, pkg, pkg_info,
+  Windows registry), listening ports, kernel, CPU model, virtualization;
+  ingest keeps the package changes between inventories.
+- Picks up config changes within one push: ingest returns the config version
+  with every push and the agent refetches when it changes.
+- Self-updates hourly from a separate privileged job: downloads the advertised
   version, verifies its SHA-256, self-tests it and swaps it in atomically
   (on Windows the running `.exe` is moved aside first).
 - Host identity is the OS machine id plus the hostname. Placeholder hardware
@@ -96,10 +123,21 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 ## Alerting
 
 - Rules: metric thresholds (CPU, memory, swap, disk, inodes, load, iowait,
-  steal, disk busy) held for N minutes; a server going silent; a process not
-  running; a service down. For every server, one server, or every server
-  with a tag (servers added later included). "Add recommended rules" creates
+  steal, disk busy, network in/out) read as the latest value or the average,
+  peak or lowest over a window, with an optional recovery level (hysteresis);
+  anomalies (standard deviations above the past week); forecasts (disk,
+  inodes, memory or swap running out within N hours, from a short and a long
+  trend); a server going silent; a process, service, Docker container or
+  plugin down; a custom metric from a plugin; a check failing (uptime checks
+  need N of the probe locations to agree). For every server, one server, or
+  every server with a tag. Each rule has a severity, optional runbook text
+  and an optional action to run on the host. "Add recommended rules" creates
   a starter set.
+- Incidents keep a timeline (opened, notified, escalated, acknowledged,
+  resolved, reopened, notes, actions). Customers add notes, resolve by hand
+  and reopen. An alert that opens 4 times in an hour is marked flapping and
+  stops notifying until it settles; a silent server holds back its other
+  alerts (one problem, one alert).
 - Escalation: up to 5 steps per rule ("after 15 minutes, also notify …").
   Steps stop when the incident is acknowledged (dashboard or the signed
   one-click link in every alert, `ACK_SIGNING_SECRET`) or resolves.
@@ -111,14 +149,47 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 - The alerter evaluates every 30s: `ok → pending → firing → resolved`, with
   incidents opened and resolved in the same transaction as the state change.
 - Notifications go through an outbox (`outbound_messages`) with retries and
-  backoff. Email (SMTP, or through the console), webhooks (signed
+  backoff. Email (SMTP, or through the console; HTML with acknowledge and
+  view buttons), Web Push to browsers and phones (VAPID; a dropped
+  subscription is removed), webhooks (signed
   `X-Pulsegrid-Signature: sha256=…`, private addresses refused), Slack,
   Microsoft Teams, Discord, Telegram (the customer's bot), PagerDuty (Events
   v2: Pulsegrid incidents trigger and resolve PagerDuty incidents), SMS and
   voice calls (Twilio). Secret targets (webhook URLs, bot tokens, keys) are
   masked whenever the API returns them.
+  `ENABLED_CHANNEL_TYPES` (default `email,push`) limits what customers can
+  add; contacts saved earlier keep working.
 - Contacts: the console email is prefilled and verified; others get a 6-digit
-  code (5 attempts, 30-minute expiry) and receive nothing until verified.
+  code (5 attempts, 30-minute expiry) and receive nothing until verified. A
+  push subscription is verified by being one. Each contact picks the lowest
+  severity it receives.
+
+## Status pages, reports, API
+
+- Status pages (`/status/<slug>` HTML, `/public/status/<slug>` JSON): chosen
+  servers and checks under the owner's labels, 90-day daily uptime, outages
+  of the last week. Never hostnames, addresses or targets.
+- Reports (`/v1/reports/summary`, `.csv`): availability, incidents, time to
+  acknowledge and resolve, noisiest rules, resource use, days until disks
+  fill. Accounts get it by email on the 1st unless they turn it off.
+- API tokens (`pgt_…`, read-only by default) act as the account; managing
+  tokens needs a console login. OpenAPI at `/docs`.
+
+## Jobs
+
+`python -m app.jobs` (the `jobs` service; replicas stand by on an advisory
+lock): monthly report emails, hourly rollups of every series into the
+long-term VictoriaMetrics (`VICTORIAMETRICS_LONG_URL`; gauges keep the hourly
+average, counters the hour-end value), which charts read for ranges past raw
+retention or longer than a month, and daily cleanup.
+
+## Probes
+
+Uptime checks run on agents staff mark as probes (`PUT
+/admin/v1/hosts/{id}/probe {"region": "…"}`, or Fleet & probes in the
+console). Only agents in the accounts listed in `PROBE_ACCOUNT_IDS` qualify:
+a probe receives every account's uptime check targets. An agent in a
+container is enough (no root needed).
 - Run 2+ alerter replicas: a Postgres advisory lock keeps one active and the
   rest on standby.
 
@@ -150,7 +221,9 @@ Push a tag (`v0.2.0`). The `Release` workflow publishes
 `ghcr.io/example-org/pulsegrid-{api,ingest,alerter}:0.2.0` and attaches
 agent binaries with `.sha256` files to the GitHub release. Upload those files
 to the download host under `/agent/0.2.0/`, then bump `PULSEGRID_VERSION` and
-`AGENT_VERSION` and redeploy; installed agents update within a day.
+`AGENT_VERSION` and redeploy; installed agents update within the hour.
+Web Push needs `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` once per environment:
+`docker run --rm ghcr.io/example-org/pulsegrid-alerter:<v> vapid`.
 
 ## Deploy behind the console (dev, prod)
 
@@ -209,9 +282,10 @@ docker run --rm --network pulsegrid_backend \
 
 Console staff (token `role` in `STAFF_ROLES`, default `admin,super_admin`)
 get `/admin/v1`: totals, every account with servers, any account's servers
-and charts, and incidents firing across all accounts. It is read-only by
-design; staff act for a customer through the console's view-as-client, which
-Pulsegrid treats as read-only too. `ADMIN_JWT_TOKEN_ISSUER` /
+and charts, incidents (with timelines) across all accounts, and the agent
+fleet (versions, outdated agents, probes). The one change staff make is
+which of our agents are probes; staff act for a customer through the
+console's view-as-client, which Pulsegrid treats as read-only. `ADMIN_JWT_TOKEN_ISSUER` /
 `ADMIN_JWT_TOKEN_AUDIENCE` default to the customer token values.
 
 ## Console integration

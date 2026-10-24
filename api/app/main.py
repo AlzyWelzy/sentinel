@@ -22,7 +22,7 @@ from app.routes import (
     v1,
 )
 
-app = FastAPI(title="Pulsegrid API", version="0.2.0", root_path=settings.API_ROOT_PATH)
+app = FastAPI(title="Pulsegrid API", version="0.3.0", root_path=settings.API_ROOT_PATH)
 
 app.add_middleware(
     CORSMiddleware,
