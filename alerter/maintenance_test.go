@@ -49,3 +49,12 @@ func TestWindowScope(t *testing.T) {
 		t.Error("host scope")
 	}
 }
+
+func TestLegacyTimezoneNames(t *testing.T) {
+	// Browsers still report the old names; they must not fall back to UTC.
+	w := window{Schedule: "weekly", Weekdays: []int32{6}, StartTime: "23:00", DurationMinutes: 60, Timezone: "Asia/Calcutta"}
+	ist, _ := time.LoadLocation("Asia/Kolkata")
+	if !w.activeAt(time.Date(2026, 10, 24, 23, 30, 0, 0, ist)) {
+		t.Error("Asia/Calcutta must mean IST")
+	}
+}
