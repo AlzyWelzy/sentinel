@@ -1,0 +1,181 @@
+# Production stack (Docker Swarm). Every value comes from the environment;
+# copy deploy/production.env.example to production.env, fill it in, then:
+#
+#   set -a; . deploy/production.env; set +a
+#   docker stack deploy -c deploy/stack.yml --with-registry-auth pulsegrid
+#
+# Never deploy it under the same name as a compose project on the same host
+# (the dev compose is "pulsegrid-dev"): volumes are named <name>_<volume>,
+# so two deployments with one name share a Postgres data directory.
+#
+# Migrations run as a one-off job before the services start (see README).
+# Public traffic enters through Caddy, which gets TLS certificates for the
+# three hostnames automatically. Internal routes (/internal/*) are refused at
+# the edge; the console backend reaches them over the private network.
+
+x-pg-app-url: &app_db postgresql+asyncpg://pulsegrid_app:${PULSEGRID_APP_PASSWORD:?}@postgres:5432/pulsegrid
+x-pg-service-url: &service_db_py postgresql+asyncpg://pulsegrid_service:${PULSEGRID_SERVICE_PASSWORD:?}@postgres:5432/pulsegrid
+x-pg-service-url-go: &service_db_go postgres://pulsegrid_service:${PULSEGRID_SERVICE_PASSWORD:?}@postgres:5432/pulsegrid
+
+x-deploy: &rolling
+  update_config:
+    order: start-first
+    failure_action: rollback
+    monitor: 30s
+  rollback_config:
+    order: start-first
+  restart_policy:
+    condition: any
+    delay: 5s
+
+services:
+  caddy:
+    image: caddy:2.8.4-alpine
+    ports:
+      - target: 80
+        published: 80
+        mode: host
+      - target: 443
+        published: 443
+        mode: host
+    environment:
+      API_HOST: ${API_HOST:?}
+      INGEST_HOST: ${INGEST_HOST:?}
+      DOWNLOAD_HOST: ${DOWNLOAD_HOST:?}
+      ACME_EMAIL: ${ACME_EMAIL:?}
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    volumes:
+      - caddy-data:/data
+      - agent-dist:/srv/agent:ro
+    networks: [edge]
+    deploy: *rolling
+
+  api:
+    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-api:${PULSEGRID_VERSION:?}
+    environment:
+      ENVIRONMENT: production
+      DATABASE_APP_URL: *app_db
+      DATABASE_SERVICE_URL: *service_db_py
+      REDIS_URL: redis://redis:6379/0
+      VICTORIAMETRICS_URL: http://victoriametrics:8428
+      PUBLIC_API_URL: https://${API_HOST}
+      PUBLIC_INGEST_URL: https://${INGEST_HOST}
+      PUBLIC_DOWNLOAD_URL: https://${DOWNLOAD_HOST}
+      AGENT_VERSION: ${AGENT_VERSION:?}
+      CORS_ORIGINS: ${CORS_ORIGINS:?}
+      JWKS_URI: ${JWKS_URI:?}
+      JWT_TOKEN_ISSUER: ${JWT_TOKEN_ISSUER:?}
+      JWT_TOKEN_AUDIENCE: ${JWT_TOKEN_AUDIENCE:?}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
+    networks: [edge, backend]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      <<: *rolling
+      replicas: 2
+
+  ingest:
+    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-ingest:${PULSEGRID_VERSION:?}
+    environment:
+      DATABASE_URL: *service_db_go
+      REDIS_URL: redis://redis:6379/0
+      VICTORIAMETRICS_URL: http://victoriametrics:8428
+      PUBLIC_INGEST_URL: https://${INGEST_HOST}
+      PUBLIC_DOWNLOAD_URL: https://${DOWNLOAD_HOST}
+      AGENT_VERSION: ${AGENT_VERSION:?}
+    networks: [edge, backend]
+    deploy:
+      <<: *rolling
+      replicas: 2
+
+  alerter:
+    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-alerter:${PULSEGRID_VERSION:?}
+    environment:
+      DATABASE_URL: *service_db_go
+      REDIS_URL: redis://redis:6379/0
+      VICTORIAMETRICS_URL: http://victoriametrics:8428
+      PUBLIC_DASHBOARD_URL: ${PUBLIC_DASHBOARD_URL:?}
+      SMTP_HOST: ${SMTP_HOST:?}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:?}
+      SMTP_TLS: ${SMTP_TLS:-starttls}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
+    networks: [backend]
+    deploy:
+      <<: *rolling
+      # Two replicas: one evaluates, the other waits on the advisory lock.
+      replicas: 2
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: pulsegrid
+      POSTGRES_USER: pulsegrid
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      PULSEGRID_APP_PASSWORD: ${PULSEGRID_APP_PASSWORD:?}
+      PULSEGRID_SERVICE_PASSWORD: ${PULSEGRID_SERVICE_PASSWORD:?}
+    configs:
+      - source: init_roles
+        target: /docker-entrypoint-initdb.d/10-init-roles.sh
+        mode: 0555
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: [node.labels.pulsegrid.db == true]
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: [node.labels.pulsegrid.db == true]
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.106.1
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=${METRICS_RETENTION:-90d}
+      - -httpListenAddr=:8428
+    volumes:
+      - vm-data:/storage
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: [node.labels.pulsegrid.db == true]
+
+configs:
+  caddyfile:
+    file: ./caddy/Caddyfile
+  init_roles:
+    file: ./postgres/init-roles.sh
+
+volumes:
+  caddy-data:
+  agent-dist:
+  postgres-data:
+  redis-data:
+  vm-data:
+
+networks:
+  edge:
+    driver: overlay
+  backend:
+    driver: overlay
+    # The console backend attaches here to call /internal/* (or reach it via
+    # a private address); nothing on this network is published.
+    attachable: true

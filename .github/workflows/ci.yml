@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - run: go vet ./...
+      - run: go test -race ./...
+      - name: Cross-compile and vet the agent for every released platform
+        run: |
+          for target in linux/amd64 linux/arm64 freebsd/amd64 freebsd/arm64 openbsd/amd64 \
+                        netbsd/amd64 windows/amd64 windows/arm64 darwin/arm64; do
+            GOOS=${target%/*} GOARCH=${target#*/} go vet ./agent/...
+            GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./agent
+          done
+
+  # The collector reads real OS counters, so run its tests on real Windows and
+  # macOS too (Linux runs in the job above).
+  agent-native:
+    strategy:
+      matrix:
+        os: [windows-2025, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./agent/...
+
+  api:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: pulsegrid
+          POSTGRES_USER: pulsegrid
+          POSTGRES_PASSWORD: pulsegrid
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pulsegrid" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+    env:
+      PGPASSWORD: pulsegrid
+      DATABASE_OWNER_URL: postgresql+asyncpg://pulsegrid:pulsegrid@localhost:5432/pulsegrid
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run ty check
+      - name: Create database roles
+        working-directory: .
+        env:
+          POSTGRES_USER: pulsegrid
+          POSTGRES_DB: pulsegrid
+          PULSEGRID_APP_PASSWORD: pulsegrid_app
+          PULSEGRID_SERVICE_PASSWORD: pulsegrid_service
+        # init-roles.sh calls psql without a host; point it at the service.
+        run: PGHOST=localhost sh deploy/postgres/init-roles.sh
+      - run: uv run alembic upgrade head
+      - run: uv run pytest
+      - name: Downgrade and upgrade again
+        run: uv run alembic downgrade base && uv run alembic upgrade head
+
+  installer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh -n api/app/install.sh
+      - run: shellcheck -s sh api/app/install.sh deploy/postgres/init-roles.sh
+      - name: PowerShell installer parses
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/api/app/install.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors; exit 1 }

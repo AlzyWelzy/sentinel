@@ -1,0 +1,34 @@
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.config import settings
+from app.routes import admin, alerts, channels, install, internal, v1
+
+app = FastAPI(title="Pulsegrid API", version="0.1.0", root_path=settings.API_ROOT_PATH)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_methods=["*"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+app.include_router(v1.router)
+app.include_router(channels.router)
+app.include_router(alerts.router)
+app.include_router(install.router)
+app.include_router(internal.router)
+app.include_router(admin.router)
+
+# In production the binaries come from the CDN at PUBLIC_DOWNLOAD_URL; locally
+# the API serves whatever `make agent` put in dist/.
+if Path(settings.AGENT_DIST_DIR).is_dir():
+    app.mount("/agent", StaticFiles(directory=settings.AGENT_DIST_DIR), name="agent")
+
+
+@app.get("/healthz", include_in_schema=False)
+async def healthz() -> dict[str, str]:
+    return {"status": "ok"}

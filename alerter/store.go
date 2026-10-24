@@ -1,0 +1,281 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// The alerter connects as pulsegrid_service (BYPASSRLS): it evaluates every
+// tenant's rules. Every write takes tenant_id from the rule being evaluated,
+// and every query that touches hosts or channels filters on that tenant, so
+// one tenant's rule can never reach another tenant's hosts or contacts.
+
+type rule struct {
+	ID              string
+	TenantID        string
+	Name            string
+	Kind            string
+	Metric          string
+	Operator        string
+	Threshold       float64
+	DurationSeconds int
+	HostID          *string
+}
+
+type host struct {
+	ID        string
+	Hostname  string
+	CreatedAt time.Time
+}
+
+type channel struct {
+	ID     string
+	Type   string
+	Target string
+}
+
+type storedState struct {
+	alertState
+	IncidentID *string
+}
+
+type store struct {
+	pool *pgxpool.Pool
+}
+
+// rules returns enabled rules of active tenants in this worker's partition.
+// Partitioning by tenant keeps one tenant's rules on one worker.
+func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT r.id, r.tenant_id, r.name, r.kind, coalesce(r.metric, ''), coalesce(r.operator, ''),
+		       coalesce(r.threshold, 0), r.duration_seconds, r.host_id
+		  FROM alert_rules r JOIN tenants t ON t.id = r.tenant_id
+		 WHERE r.enabled AND t.status = 'active'
+		   AND abs(hashtext(r.tenant_id::text)) % $2 = $1`, partition, partitions)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (rule, error) {
+		var r rule
+		err := row.Scan(&r.ID, &r.TenantID, &r.Name, &r.Kind, &r.Metric, &r.Operator,
+			&r.Threshold, &r.DurationSeconds, &r.HostID)
+		return r, err
+	})
+}
+
+func (s *store) hosts(ctx context.Context, r rule) ([]host, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, hostname, created_at FROM hosts
+		 WHERE tenant_id = $1 AND revoked_at IS NULL AND ($2::uuid IS NULL OR id = $2)`,
+		r.TenantID, r.HostID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (host, error) {
+		var h host
+		err := row.Scan(&h.ID, &h.Hostname, &h.CreatedAt)
+		return h, err
+	})
+}
+
+func (s *store) states(ctx context.Context, ruleID string) (map[string]storedState, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT host_id, state, since, incident_id FROM alert_states WHERE rule_id = $1`, ruleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]storedState{}
+	for rows.Next() {
+		var hostID string
+		var st storedState
+		if err := rows.Scan(&hostID, &st.State, &st.Since, &st.IncidentID); err != nil {
+			return nil, err
+		}
+		out[hostID] = st
+	}
+	return out, rows.Err()
+}
+
+// channels: the rule's own verified channels, or the tenant's verified
+// default channel when the rule names none.
+func (s *store) channels(ctx context.Context, tx pgx.Tx, r rule) ([]channel, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT c.id, c.type, c.target
+		  FROM alert_rule_channels rc JOIN notification_channels c ON c.id = rc.channel_id
+		 WHERE rc.rule_id = $1 AND c.tenant_id = $2 AND c.verified_at IS NOT NULL`, r.ID, r.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	chans, err := pgx.CollectRows(rows, scanChannel)
+	if err != nil || len(chans) > 0 {
+		return chans, err
+	}
+	var linked bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM alert_rule_channels WHERE rule_id = $1)`, r.ID).Scan(&linked); err != nil {
+		return nil, err
+	}
+	if linked {
+		return nil, nil // channels chosen but none verified yet: send nothing
+	}
+	rows, err = tx.Query(ctx, `
+		SELECT id, type, target FROM notification_channels
+		 WHERE tenant_id = $1 AND is_default AND verified_at IS NOT NULL`, r.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, scanChannel)
+}
+
+func scanChannel(row pgx.CollectableRow) (channel, error) {
+	var c channel
+	err := row.Scan(&c.ID, &c.Type, &c.Target)
+	return c, err
+}
+
+// apply persists one transition, and opens or resolves the incident (plus
+// its notifications) in the same transaction, so state and incidents can't
+// disagree after a crash.
+func (s *store) apply(
+	ctx context.Context, r rule, h host, prev storedState, next alertState, act action, value float64,
+	msg func(kind string, incidentID string) message,
+) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	incidentID := prev.IncidentID
+	var kind string
+	switch act {
+	case actionOpen:
+		var id string
+		m := msg("alert_firing", "")
+		err = tx.QueryRow(ctx, `
+			INSERT INTO incidents (tenant_id, rule_id, host_id, summary, rule_name, hostname, value)
+			VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+			r.TenantID, r.ID, h.ID, m.Event["summary"], r.Name, h.Hostname, value).Scan(&id)
+		if err != nil {
+			return err
+		}
+		incidentID, kind = &id, "alert_firing"
+	case actionResolve:
+		if incidentID != nil {
+			_, err = tx.Exec(ctx, `
+				UPDATE incidents SET status = 'resolved', resolved_at = now()
+				 WHERE id = $1 AND tenant_id = $2`, *incidentID, r.TenantID)
+			if err != nil {
+				return err
+			}
+		}
+		kind = "alert_resolved"
+	}
+
+	if kind != "" && incidentID != nil {
+		chans, err := s.channels(ctx, tx, r)
+		if err != nil {
+			return err
+		}
+		m := msg(kind, *incidentID)
+		payload, err := json.Marshal(m)
+		if err != nil {
+			return err
+		}
+		for _, c := range chans {
+			_, err = tx.Exec(ctx, `
+				INSERT INTO outbound_messages (tenant_id, channel_id, incident_id, kind, payload)
+				VALUES ($1, $2, $3, $4, $5)`, r.TenantID, c.ID, *incidentID, kind, payload)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if act == actionResolve {
+		incidentID = nil
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO alert_states (rule_id, host_id, tenant_id, state, since, last_value, incident_id, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+		ON CONFLICT (rule_id, host_id) DO UPDATE SET
+		    state = EXCLUDED.state, since = EXCLUDED.since, last_value = EXCLUDED.last_value,
+		    incident_id = EXCLUDED.incident_id, updated_at = now()`,
+		r.ID, h.ID, r.TenantID, next.State, next.Since, value, incidentID)
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// ── Outbox ───────────────────────────────────────────────────────────────────
+
+type outboxItem struct {
+	ID       string
+	Kind     string
+	Payload  message
+	Attempts int
+	Channel  channel
+}
+
+const leaseDuration = 2 * time.Minute
+
+// claim leases pending messages by pushing next_attempt_at forward, so a
+// crashed sender's messages come back on their own and two dispatchers never
+// send the same one.
+func (s *store) claim(ctx context.Context, limit int) ([]outboxItem, error) {
+	rows, err := s.pool.Query(ctx, `
+		UPDATE outbound_messages m SET next_attempt_at = now() + make_interval(secs => $2)
+		  FROM notification_channels c
+		 WHERE c.id = m.channel_id AND c.tenant_id = m.tenant_id
+		   AND m.id IN (
+		       SELECT id FROM outbound_messages
+		        WHERE status = 'pending' AND next_attempt_at <= now()
+		        ORDER BY next_attempt_at
+		        LIMIT $1
+		          FOR UPDATE SKIP LOCKED)
+		RETURNING m.id, m.kind, m.payload, m.attempts, c.id, c.type, c.target`,
+		limit, leaseDuration.Seconds())
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (outboxItem, error) {
+		var it outboxItem
+		var payload []byte
+		err := row.Scan(&it.ID, &it.Kind, &payload, &it.Attempts, &it.Channel.ID, &it.Channel.Type, &it.Channel.Target)
+		if err == nil {
+			err = json.Unmarshal(payload, &it.Payload)
+		}
+		return it, err
+	})
+}
+
+func (s *store) markSent(ctx context.Context, id string) error {
+	// Verification codes are only needed until they're delivered.
+	_, err := s.pool.Exec(ctx, `
+		UPDATE outbound_messages
+		   SET status = 'sent', sent_at = now(), attempts = attempts + 1, last_error = NULL,
+		       payload = payload - 'code'
+		 WHERE id = $1`, id)
+	return err
+}
+
+func (s *store) markFailed(ctx context.Context, id string, sendErr error, retryIn time.Duration) error {
+	status := "pending"
+	var permanent *permanentError
+	if retryIn <= 0 || errors.As(sendErr, &permanent) {
+		status, retryIn = "failed", 0
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE outbound_messages
+		   SET status = $2, attempts = attempts + 1, last_error = left($3, 500),
+		       next_attempt_at = now() + make_interval(secs => $4)
+		 WHERE id = $1`, id, status, sendErr.Error(), retryIn.Seconds())
+	return err
+}

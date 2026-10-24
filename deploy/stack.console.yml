@@ -1,0 +1,157 @@
+# Pulsegrid behind the Example console's nginx (Docker Swarm), on the
+# console's own domain:
+#
+#   https://<console>/api/pulsegrid/...        dashboard API, install.sh, agent binaries
+#   https://<console>/pulsegrid/ingest/...     agent registration and metrics
+#
+# The console's nginx and backend reach Pulsegrid over an attachable overlay
+# network shared with this stack (PULSEGRID_NETWORK, e.g. pulsegrid-dev),
+# created once with:
+#   docker network create --driver overlay --attachable pulsegrid-dev
+# On it, Pulsegrid answers as pulsegrid-api:8000 / pulsegrid-ingest:8080 and
+# expects the console backend as console-backend:8000 (JWKS, email).
+#
+# Deploy (never under the name of a compose project on the same host):
+#   set -a; . deploy/<env>.env; set +a
+#   docker stack deploy -c deploy/stack.console.yml --with-registry-auth pulsegrid
+# then run migrations (README, "Deploy").
+
+x-pg-app-url: &app_db postgresql+asyncpg://pulsegrid_app:${PULSEGRID_APP_PASSWORD:?}@postgres:5432/pulsegrid
+x-pg-service-url: &service_db_py postgresql+asyncpg://pulsegrid_service:${PULSEGRID_SERVICE_PASSWORD:?}@postgres:5432/pulsegrid
+x-pg-service-url-go: &service_db_go postgres://pulsegrid_service:${PULSEGRID_SERVICE_PASSWORD:?}@postgres:5432/pulsegrid
+
+x-deploy: &rolling
+  update_config:
+    order: start-first
+    failure_action: rollback
+    monitor: 30s
+  rollback_config:
+    order: start-first
+  restart_policy:
+    condition: any
+    delay: 5s
+
+services:
+  api:
+    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-api:${PULSEGRID_VERSION:?}
+    environment:
+      ENVIRONMENT: production
+      API_ROOT_PATH: /api/pulsegrid
+      DATABASE_APP_URL: *app_db
+      DATABASE_SERVICE_URL: *service_db_py
+      REDIS_URL: redis://redis:6379/0
+      VICTORIAMETRICS_URL: http://victoriametrics:8428
+      PUBLIC_API_URL: https://${CONSOLE_HOST:?}/api/pulsegrid
+      PUBLIC_DOWNLOAD_URL: https://${CONSOLE_HOST}/api/pulsegrid
+      PUBLIC_INGEST_URL: https://${CONSOLE_HOST}/pulsegrid/ingest
+      AGENT_VERSION: ${PULSEGRID_VERSION}
+      CORS_ORIGINS: https://${CONSOLE_HOST}
+      JWKS_URI: ${JWKS_URI:-http://console-backend:8000/api/.well-known/jwks.json/}
+      JWT_TOKEN_ISSUER: ${JWT_TOKEN_ISSUER:?}
+      JWT_TOKEN_AUDIENCE: ${JWT_TOKEN_AUDIENCE:?}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
+    networks:
+      backend: {}
+      console:
+        aliases: [pulsegrid-api]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      <<: *rolling
+      replicas: 2
+
+  ingest:
+    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-ingest:${PULSEGRID_VERSION:?}
+    environment:
+      DATABASE_URL: *service_db_go
+      REDIS_URL: redis://redis:6379/0
+      VICTORIAMETRICS_URL: http://victoriametrics:8428
+      PUBLIC_INGEST_URL: https://${CONSOLE_HOST}/pulsegrid/ingest
+      PUBLIC_DOWNLOAD_URL: https://${CONSOLE_HOST}/api/pulsegrid
+      AGENT_VERSION: ${PULSEGRID_VERSION}
+    networks:
+      backend: {}
+      console:
+        aliases: [pulsegrid-ingest]
+    deploy:
+      <<: *rolling
+      replicas: 2
+
+  alerter:
+    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-alerter:${PULSEGRID_VERSION:?}
+    environment:
+      DATABASE_URL: *service_db_go
+      REDIS_URL: redis://redis:6379/0
+      VICTORIAMETRICS_URL: http://victoriametrics:8428
+      PUBLIC_DASHBOARD_URL: https://${CONSOLE_HOST}/monitoring?tab=servers
+      # Email goes through the console backend and its mail settings.
+      EMAIL_TRANSPORT: console
+      CONSOLE_EMAIL_URL: ${CONSOLE_EMAIL_URL:-http://console-backend:8000/api/internal/pulsegrid/email/}
+      CONSOLE_INTERNAL_API_KEY: ${CONSOLE_INTERNAL_API_KEY:?}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
+    networks: [backend, console]
+    deploy:
+      <<: *rolling
+      replicas: 2   # one evaluates, one stands by on the advisory lock
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: pulsegrid
+      POSTGRES_USER: pulsegrid
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      PULSEGRID_APP_PASSWORD: ${PULSEGRID_APP_PASSWORD:?}
+      PULSEGRID_SERVICE_PASSWORD: ${PULSEGRID_SERVICE_PASSWORD:?}
+    configs:
+      - source: init_roles
+        target: /docker-entrypoint-initdb.d/10-init-roles.sh
+        mode: 0555
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulsegrid -d pulsegrid"]
+      interval: 10s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks: [backend]
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.106.1
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=${METRICS_RETENTION:-90d}
+      - -httpListenAddr=:8428
+    volumes:
+      - vm-data:/storage
+    networks: [backend]
+
+configs:
+  init_roles:
+    file: ./postgres/init-roles.sh
+
+volumes:
+  postgres-data:
+  redis-data:
+  vm-data:
+
+networks:
+  backend:
+    driver: overlay
+    # attachable so the one-off migration job can join it
+    attachable: true
+  console:
+    external: true
+    name: ${PULSEGRID_NETWORK:?}

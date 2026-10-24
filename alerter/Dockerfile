@@ -1,0 +1,13 @@
+# Build context is the repo root.
+# Cross-compile on the build machine's own architecture (no emulation).
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+ARG TARGETOS TARGETARCH
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY alerter ./alerter
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/alerter ./alerter
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/alerter /alerter
+ENTRYPOINT ["/alerter"]

@@ -1,0 +1,32 @@
+{
+	email {$ACME_EMAIL}
+}
+
+# Dashboard API (called by the console in the browser) and install.sh.
+{$API_HOST} {
+	# Service-to-service routes stay off the internet.
+	@internal path /internal/*
+	respond @internal 404
+	reverse_proxy api:8000
+}
+
+# Agent registration and metric pushes.
+{$INGEST_HOST} {
+	request_body {
+		max_size 12MB
+	}
+	reverse_proxy ingest:8080
+}
+
+# install.sh and agent binaries. Binaries are uploaded into the agent-dist
+# volume by the release job (or point this host at a CDN instead).
+{$DOWNLOAD_HOST} {
+	handle /install.sh {
+		reverse_proxy api:8000
+	}
+	handle /agent/* {
+		root * /srv
+		file_server
+	}
+	respond 404
+}
