@@ -98,6 +98,12 @@ func senders() map[string]sender {
 		"discord":   &discordSender{client: webhook.client},
 		"telegram":  &telegramSender{client: public, baseURL: env("TELEGRAM_API_URL", "https://api.telegram.org")},
 		"pagerduty": &pagerDutySender{client: public, url: env("PAGERDUTY_EVENTS_URL", "https://events.pagerduty.com/v2/enqueue")},
+		"push": &pushSender{
+			publicKey:  os.Getenv("VAPID_PUBLIC_KEY"),
+			privateKey: os.Getenv("VAPID_PRIVATE_KEY"),
+			subject:    env("VAPID_SUBJECT", "mailto:support@Example.com"),
+			client:     public,
+		},
 	}
 }
 

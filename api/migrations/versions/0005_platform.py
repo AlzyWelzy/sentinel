@@ -176,10 +176,23 @@ def upgrade() -> None:
     """)
 
     # ── Alert states and incidents ───────────────────────────────────────────
+    # A state's subject is a host, or for an uptime check run by the probes,
+    # the check itself (it has no host).
     op.execute("""
         ALTER TABLE alert_states
             -- Recent transitions to firing, to detect flapping.
-            ADD COLUMN flips timestamptz[] NOT NULL DEFAULT '{}'
+            ADD COLUMN flips timestamptz[] NOT NULL DEFAULT '{}',
+            ADD COLUMN subject_id uuid,
+            ADD COLUMN check_id uuid REFERENCES checks (id) ON DELETE CASCADE
+    """)
+    op.execute("UPDATE alert_states SET subject_id = host_id")
+    op.execute("ALTER TABLE alert_states DROP CONSTRAINT alert_states_pkey")
+    op.execute("""
+        ALTER TABLE alert_states
+            ALTER COLUMN subject_id SET NOT NULL,
+            ALTER COLUMN host_id DROP NOT NULL,
+            ADD PRIMARY KEY (rule_id, subject_id),
+            ADD CHECK (num_nonnulls(host_id, check_id) >= 1)
     """)
     op.execute("""
         ALTER TABLE incidents
@@ -187,7 +200,8 @@ def upgrade() -> None:
             ADD COLUMN detail text,
             ADD COLUMN flapping boolean NOT NULL DEFAULT false,
             ADD COLUMN reopened_count integer NOT NULL DEFAULT 0,
-            ADD COLUMN resolved_by text
+            ADD COLUMN resolved_by text,
+            ADD COLUMN check_id uuid REFERENCES checks (id) ON DELETE SET NULL
     """)
     op.execute("""
         CREATE TABLE incident_events (
@@ -339,6 +353,8 @@ def upgrade() -> None:
     )
     op.execute("GRANT SELECT, UPDATE ON api_tokens TO pulsegrid_service")
     op.execute("GRANT UPDATE ON alert_rules TO pulsegrid_service")
+    # The alerter removes push subscriptions the browser has dropped.
+    op.execute("GRANT DELETE ON notification_channels TO pulsegrid_service")
 
 
 def downgrade() -> None:
@@ -364,9 +380,14 @@ def downgrade() -> None:
     op.execute("DROP TABLE incident_events")
     op.execute(
         "ALTER TABLE incidents DROP COLUMN severity, DROP COLUMN detail, DROP COLUMN flapping, "
-        "DROP COLUMN reopened_count, DROP COLUMN resolved_by"
+        "DROP COLUMN reopened_count, DROP COLUMN resolved_by, DROP COLUMN check_id"
     )
-    op.execute("ALTER TABLE alert_states DROP COLUMN flips")
+    op.execute("DELETE FROM alert_states WHERE host_id IS NULL")
+    op.execute(
+        "ALTER TABLE alert_states DROP CONSTRAINT alert_states_pkey, "
+        "ADD PRIMARY KEY (rule_id, host_id), DROP COLUMN flips, DROP COLUMN subject_id, "
+        "DROP COLUMN check_id"
+    )
     op.execute(
         "DELETE FROM alert_rules WHERE kind NOT IN ('metric', 'host_down', 'process_down', 'service_down') "
         "OR metric IN ('network_in', 'network_out')"

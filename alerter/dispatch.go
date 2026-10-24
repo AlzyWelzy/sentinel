@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 )
@@ -41,7 +42,11 @@ func (d *dispatcher) dispatchOnce(ctx context.Context) int {
 			sendErr = permanent("no sender for channel type %q", it.Channel.Type)
 		} else {
 			sendCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
-			sendErr = s.send(sendCtx, it.Channel.Target, it.Payload)
+			if cs, ok := s.(configSender); ok {
+				sendErr = cs.sendWithConfig(sendCtx, it.Channel.Target, it.Channel.Config, it.Payload)
+			} else {
+				sendErr = s.send(sendCtx, it.Channel.Target, it.Payload)
+			}
 			cancel()
 		}
 		if sendErr == nil {
@@ -56,6 +61,14 @@ func (d *dispatcher) dispatchOnce(ctx context.Context) int {
 			retryIn = retryBackoff[it.Attempts]
 		}
 		d.log.Warn("message not sent", "id", it.ID, "kind", it.Kind, "attempt", it.Attempts+1, "err", sendErr)
+		var gone *goneError
+		if errors.As(sendErr, &gone) {
+			// The browser dropped this subscription: remove the contact so
+			// it isn't retried on every alert.
+			if err := d.store.deleteChannel(ctx, it.Channel.ID); err != nil {
+				d.log.Error("removing expired push subscription", "channel_id", it.Channel.ID, "err", err)
+			}
+		}
 		if err := d.store.markFailed(ctx, it.ID, sendErr, retryIn); err != nil {
 			d.log.Error("recording send failure", "id", it.ID, "err", err)
 		}

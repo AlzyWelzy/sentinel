@@ -47,6 +47,12 @@ type sender interface {
 	send(ctx context.Context, target string, m message) error
 }
 
+// configSender is a sender that also needs the channel's stored config
+// (push subscriptions carry their encryption keys there).
+type configSender interface {
+	sendWithConfig(ctx context.Context, target string, cfg map[string]string, m message) error
+}
+
 // ── Email (SMTP) ─────────────────────────────────────────────────────────────
 
 type emailSender struct {
@@ -65,9 +71,20 @@ func (e *emailSender) send(ctx context.Context, to string, m message) error {
 	var body bytes.Buffer
 	fmt.Fprintf(&body, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\n",
 		e.from, to, mime.QEncoding.Encode("utf-8", subject), time.Now().Format(time.RFC1123Z))
-	body.WriteString("MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n")
-	body.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
-	body.WriteString(strings.ReplaceAll(text, "\n", "\r\n"))
+	body.WriteString("MIME-Version: 1.0\r\n")
+	if html := renderHTML(m); html != "" {
+		const boundary = "pulsegrid-alternative-boundary"
+		fmt.Fprintf(&body, "Content-Type: multipart/alternative; boundary=%q\r\n\r\n", boundary)
+		fmt.Fprintf(&body, "--%s\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n", boundary)
+		body.WriteString(strings.ReplaceAll(text, "\n", "\r\n"))
+		fmt.Fprintf(&body, "\r\n--%s\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n", boundary)
+		body.WriteString(strings.ReplaceAll(html, "\n", "\r\n"))
+		fmt.Fprintf(&body, "\r\n--%s--\r\n", boundary)
+	} else {
+		body.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+		body.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
+		body.WriteString(strings.ReplaceAll(text, "\n", "\r\n"))
+	}
 
 	addr := net.JoinHostPort(e.host, e.port)
 	dialer := &net.Dialer{Timeout: 15 * time.Second}
@@ -144,7 +161,7 @@ func (c *consoleMailer) send(ctx context.Context, to string, m message) error {
 	}
 	subject, text := m.render()
 	body, err := json.Marshal(map[string]string{
-		"to": to, "subject": subject, "text": text, "purpose": "monitoring",
+		"to": to, "subject": subject, "text": text, "html": renderHTML(m), "purpose": "monitoring",
 	})
 	if err != nil {
 		return err

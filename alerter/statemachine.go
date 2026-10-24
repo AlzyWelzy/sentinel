@@ -34,6 +34,8 @@ type observation struct {
 	HasData  bool
 	Breached bool
 	Value    float64
+	Total    float64 // probe checks: how many locations reported
+	Detail   string  // check rules: the latest result text
 }
 
 func transition(cur alertState, obs observation, duration time.Duration, now time.Time) (alertState, action) {
