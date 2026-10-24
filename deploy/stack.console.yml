@@ -20,7 +20,16 @@ x-pg-app-url: &app_db postgresql+asyncpg://pulsegrid_app:${PULSEGRID_APP_PASSWOR
 x-pg-service-url: &service_db_py postgresql+asyncpg://pulsegrid_service:${PULSEGRID_SERVICE_PASSWORD:?}@postgres:5432/pulsegrid
 x-pg-service-url-go: &service_db_go postgres://pulsegrid_service:${PULSEGRID_SERVICE_PASSWORD:?}@postgres:5432/pulsegrid
 
+# Every service is pinned (PULSEGRID_PLACEMENT, default: the manager node).
+# Unpinned, Swarm spreads tasks over every node in the swarm, including
+# nodes that belong to other stacks, and the databases' volumes end up on
+# whichever node a task first landed on.
+x-placement: &placement
+  placement:
+    constraints: ["${PULSEGRID_PLACEMENT:-node.role == manager}"]
+
 x-deploy: &rolling
+  <<: *placement
   update_config:
     order: start-first
     failure_action: rollback
@@ -120,6 +129,7 @@ services:
       test: ["CMD-SHELL", "pg_isready -U pulsegrid -d pulsegrid"]
       interval: 10s
       retries: 10
+    deploy: *placement
 
   redis:
     image: redis:7.4-alpine
@@ -127,6 +137,7 @@ services:
     volumes:
       - redis-data:/data
     networks: [backend]
+    deploy: *placement
 
   victoriametrics:
     image: victoriametrics/victoria-metrics:v1.106.1
@@ -137,6 +148,7 @@ services:
     volumes:
       - vm-data:/storage
     networks: [backend]
+    deploy: *placement
 
 configs:
   init_roles:
