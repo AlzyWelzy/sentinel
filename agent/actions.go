@@ -188,6 +188,9 @@ func cmdAllowAction(args []string) error {
 		if err := writeSudoers(existing, *user); err != nil {
 			return err
 		}
+		if err := systemdSudoDropIn(usesSudo(existing)); err != nil {
+			return err
+		}
 	}
 	if *remove {
 		fmt.Printf("Removed action %s\n", name)
@@ -255,4 +258,57 @@ func writeSudoers(actions map[string]string, user string) error {
 func sudoersEscape(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, `,`, `\,`, `:`, `\:`, `=`, `\=`)
 	return r.Replace(s)
+}
+
+func usesSudo(actions map[string]string) bool {
+	for _, cmd := range actions {
+		if args := strings.Fields(cmd); len(args) > 1 && filepath.Base(args[0]) == "sudo" {
+			return true
+		}
+	}
+	return false
+}
+
+const (
+	agentUnit  = "pulsegrid-agent"
+	dropInDir  = "/etc/systemd/system/" + agentUnit + ".service.d"
+	dropInFile = dropInDir + "/actions.conf"
+)
+
+// systemdSudoDropIn relaxes the agent unit's sandbox only while sudo
+// actions are allowed: NoNewPrivileges blocks sudo, and ProtectSystem=strict
+// would show the commands it runs a read-only system. Removed again with
+// the last such action.
+func systemdSudoDropIn(enable bool) error {
+	if _, err := os.Stat("/run/systemd/system"); err != nil {
+		return nil // not systemd
+	}
+	_, statErr := os.Stat(dropInFile)
+	if enable == (statErr == nil) {
+		return nil
+	}
+	if enable {
+		if err := os.MkdirAll(dropInDir, 0o755); err != nil {
+			return err
+		}
+		content := "# Written by pulsegrid-agent allow-action: actions that use sudo need these.\n" +
+			"[Service]\nNoNewPrivileges=false\nProtectSystem=full\n"
+		if err := os.WriteFile(dropInFile, []byte(content), 0o644); err != nil {
+			return err
+		}
+	} else if err := os.Remove(dropInFile); err != nil {
+		return err
+	}
+	systemctl, ok := findTool("systemctl")
+	if !ok {
+		return nil
+	}
+	if out, err := exec.Command(systemctl, "daemon-reload").CombinedOutput(); err != nil {
+		return fmt.Errorf("systemctl daemon-reload: %s", strings.TrimSpace(string(out)))
+	}
+	if out, err := exec.Command(systemctl, "restart", agentUnit).CombinedOutput(); err != nil {
+		return fmt.Errorf("restarting the agent: %s", strings.TrimSpace(string(out)))
+	}
+	fmt.Println("Restarted the agent so its actions can use sudo.")
+	return nil
 }

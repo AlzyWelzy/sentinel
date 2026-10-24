@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,6 +21,7 @@ import (
 	// may lack legacy names browsers still report (Asia/Calcutta).
 	_ "time/tzdata"
 
+	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
@@ -28,6 +30,16 @@ import (
 const advisoryLockBase = 0x50475244 // "PGRD"
 
 func main() {
+	// `pulsegrid-alerter vapid` prints a new Web Push key pair for the env.
+	if len(os.Args) > 1 && os.Args[1] == "vapid" {
+		priv, pub, err := webpush.GenerateVAPIDKeys()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Printf("VAPID_PUBLIC_KEY=%s\nVAPID_PRIVATE_KEY=%s\n", pub, priv)
+		return
+	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

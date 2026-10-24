@@ -49,6 +49,11 @@ try {
 New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
 & icacls $StateDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-19:(OI)(CI)M' | Out-Null
 
+# Plugin and action files: Administrators write them, the agent only reads.
+$ConfigDir = Join-Path $StateDir 'conf'
+New-Item -ItemType Directory -Force -Path (Join-Path $ConfigDir 'plugins.d') | Out-Null
+& icacls $ConfigDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-19:(OI)(CI)RX' | Out-Null
+
 # Windows PowerShell drops empty arguments to native programs, so --tags is
 # only passed when there are tags.
 $registerArgs = @('register', '--url', $IngestUrl, '--key', $Key, '--state-dir', $StateDir)
@@ -68,9 +73,11 @@ if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
 & sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/60000 | Out-Null
 Start-Service -Name $ServiceName
 
-# Daily self-update as SYSTEM (the agent itself can't replace its binary).
+# Hourly self-update check as SYSTEM (the agent itself can't replace its
+# binary); it only downloads when a new version is advertised.
 $action = New-ScheduledTaskAction -Execute $Bin -Argument "update --state-dir `"$StateDir`" --restart $ServiceName"
-$trigger = New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.AddHours((Get-Random -Minimum 0 -Maximum 24)))
+$trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes((Get-Random -Minimum 5 -Maximum 60))) `
+    -RepetitionInterval (New-TimeSpan -Hours 1)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 Register-ScheduledTask -TaskName 'Pulsegrid agent update' -Action $action -Trigger $trigger -Settings $settings `
     -User 'SYSTEM' -RunLevel Highest -Force | Out-Null

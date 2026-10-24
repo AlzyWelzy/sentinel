@@ -17,6 +17,8 @@ VERSION="__AGENT_VERSION__"
 
 BIN=/usr/local/bin/pulsegrid-agent
 STATE_DIR=/var/lib/pulsegrid
+# Plugin and action files: written by root only, read by the agent.
+CONFIG_DIR=/etc/pulsegrid
 SERVICE=pulsegrid-agent
 RC_SERVICE=pulsegrid_agent # rc.subr names can't contain dashes
 
@@ -96,13 +98,43 @@ create_user() {
 # every 5 minutes, for init systems that don't restart a crashed service.
 schedule_updates_with_cron() {
     minute=$(awk 'BEGIN { srand(); print int(rand() * 60) }')
-    hour=$(awk 'BEGIN { srand(); print int(rand() * 24) }')
+    # Hourly: the updater only downloads when a new version is advertised.
     { crontab -l 2>/dev/null | grep -v "pulsegrid" || true
-      echo "$minute $hour * * * $BIN update --state-dir $STATE_DIR --restart $SERVICE >/dev/null 2>&1 # pulsegrid"
+      echo "$minute * * * * $BIN update --state-dir $STATE_DIR --restart $SERVICE >/dev/null 2>&1 # pulsegrid"
       if [ $# -gt 0 ]; then
           echo "*/5 * * * * ($1) >/dev/null 2>&1 # pulsegrid watchdog"
       fi
     } | crontab -
+}
+
+# The config directory holds plugin files (database passwords) and the list
+# of actions the dashboard may run, so the agent can read but never write it.
+setup_config_dir() {
+    mkdir -p "$CONFIG_DIR/plugins.d" "$CONFIG_DIR/scripts"
+    chown root "$CONFIG_DIR" "$CONFIG_DIR/plugins.d" "$CONFIG_DIR/scripts"
+    chmod 0755 "$CONFIG_DIR" "$CONFIG_DIR/plugins.d" "$CONFIG_DIR/scripts"
+    if [ ! -f "$CONFIG_DIR/README" ]; then
+        cat >"$CONFIG_DIR/README" <<'PULSEGRID_README'
+Pulsegrid agent configuration (root-owned; the agent only reads it).
+
+plugins.d/<name>.conf   one plugin per file, "key = value" lines:
+    type = mysql        dsn = monitor:secret@tcp(127.0.0.1:3306)/
+    type = postgres     dsn = postgres://monitor:secret@127.0.0.1:5432/postgres
+    type = redis        address = 127.0.0.1:6379   (password = ...)
+    type = nginx        url = http://127.0.0.1/nginx_status
+    type = apache       url = http://127.0.0.1/server-status?auto
+    type = docker       socket = /var/run/docker.sock  (add the agent's user to the docker group)
+    type = prometheus   url = http://127.0.0.1:9100/metrics   (include = regexp)
+    type = script       command = /etc/pulsegrid/scripts/my-metrics.sh  (prints "name value" lines)
+  Files holding passwords: chmod 0640 and chgrp them to the agent's group.
+  Test them with: pulsegrid-agent plugins
+
+actions.conf            actions the dashboard may run on this server. Manage with:
+    sudo pulsegrid-agent allow-action restart-nginx -- /usr/bin/systemctl restart nginx
+    sudo pulsegrid-agent allow-action --remove restart-nginx
+PULSEGRID_README
+        chmod 0644 "$CONFIG_DIR/README"
+    fi
 }
 
 install_systemd() {
@@ -137,12 +169,12 @@ ExecStart=$BIN update --state-dir $STATE_DIR --restart $SERVICE
 EOF
     cat >/etc/systemd/system/$SERVICE-update.timer <<EOF
 [Unit]
-Description=Check for Pulsegrid agent updates daily
+Description=Check for Pulsegrid agent updates hourly
 
 [Timer]
-OnBootSec=15min
-OnUnitActiveSec=1d
-RandomizedDelaySec=1h
+OnBootSec=10min
+OnUnitActiveSec=1h
+RandomizedDelaySec=10min
 Persistent=true
 
 [Install]
@@ -267,6 +299,7 @@ mkdir -p "$(dirname "$BIN")"
 install -m 0755 "$tmp/$asset" "$BIN"
 create_user
 mkdir -p "$STATE_DIR"
+setup_config_dir
 
 "$BIN" register --url "$INGEST_URL" --key "$KEY" --tags "$TAGS" --state-dir "$STATE_DIR"
 chown -R "$SERVICE_USER" "$STATE_DIR"

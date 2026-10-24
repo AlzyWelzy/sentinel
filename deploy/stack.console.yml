@@ -60,6 +60,14 @@ services:
       JWT_TOKEN_AUDIENCE: ${JWT_TOKEN_AUDIENCE:?}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
       ACK_SIGNING_SECRET: ${ACK_SIGNING_SECRET:-}
+      VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
+      RAW_RETENTION_DAYS: ${METRICS_RETENTION_DAYS:-90}
+      PUBLIC_DASHBOARD_URL: https://${CONSOLE_HOST}/monitoring?tab=servers
+      # Contact types customers can add (others already saved keep working).
+      ENABLED_CHANNEL_TYPES: ${ENABLED_CHANNEL_TYPES:-email,push}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      # Console uids whose agents staff may make public probes.
+      PROBE_ACCOUNT_IDS: ${PROBE_ACCOUNT_IDS:-}
     networks:
       backend: {}
       console:
@@ -109,10 +117,35 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_FROM: ${TWILIO_FROM:-}
+      # Web Push: generate once with `pulsegrid-alerter vapid` (or any VAPID tool).
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:support@Example.com}
     networks: [backend, console]
     deploy:
       <<: *rolling
       replicas: 2   # one evaluates, one stands by on the advisory lock
+
+  # Monthly reports, hourly metric rollups, cleanup (python -m app.jobs).
+  jobs:
+    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-api:${PULSEGRID_VERSION:?}
+    command: ["python", "-m", "app.jobs"]
+    environment:
+      ENVIRONMENT: production
+      DATABASE_APP_URL: *app_db
+      DATABASE_SERVICE_URL: *service_db_py
+      REDIS_URL: redis://redis:6379/0
+      VICTORIAMETRICS_URL: http://victoriametrics:8428
+      VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
+      PUBLIC_DASHBOARD_URL: https://${CONSOLE_HOST}/monitoring?tab=servers
+      JWKS_URI: ${JWKS_URI:-http://console-backend:8000/api/.well-known/jwks.json/}
+      JWT_TOKEN_ISSUER: ${JWT_TOKEN_ISSUER:?}
+      JWT_TOKEN_AUDIENCE: ${JWT_TOKEN_AUDIENCE:?}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
+    networks: [backend]
+    deploy:
+      <<: *rolling
+      replicas: 1
 
   postgres:
     image: postgres:18-alpine
@@ -154,6 +187,18 @@ services:
     networks: [backend]
     deploy: *placement
 
+  # Hourly rollups of everything, kept for years (written by jobs).
+  victoriametrics-long:
+    image: victoriametrics/victoria-metrics:v1.106.1
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=${LONG_METRICS_RETENTION:-2y}
+      - -httpListenAddr=:8428
+    volumes:
+      - vm-long-data:/storage
+    networks: [backend]
+    deploy: *placement
+
 configs:
   init_roles:
     file: ./postgres/init-roles.sh
@@ -162,6 +207,7 @@ volumes:
   postgres-data:
   redis-data:
   vm-data:
+  vm-long-data:
 
 networks:
   backend:
