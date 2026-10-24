@@ -25,7 +25,17 @@ from app.config import settings
 from app.db import service_session
 from app.models import Host, Incident, Tenant
 from app.routes.alerts import IncidentOut, _incident_out
-from app.routes.v1 import HostOut, MetricName, MetricsOut, Series, _host_out
+from app.routes.v1 import (
+    ChecksOut,
+    HostOut,
+    MetricName,
+    MetricsOut,
+    ProcessesOut,
+    Series,
+    _host_out,
+    checks_of,
+    processes_of,
+)
 from app.services import heartbeats, metrics
 
 bearer = HTTPBearer(auto_error=False)
@@ -199,6 +209,17 @@ async def host_metrics(
     return MetricsOut(
         metric=metric, unit=metrics.CATALOG[metric].unit, series=[Series(**s) for s in series]
     )
+
+
+@router.get("/hosts/{host_id}/processes")
+async def host_processes(host_id: uuid.UUID, db: ServiceDB) -> ProcessesOut:
+    host = await _host(db, host_id)
+    return await processes_of(host.tenant_id, host.id)
+
+
+@router.get("/hosts/{host_id}/checks")
+async def host_checks(host_id: uuid.UUID, db: ServiceDB) -> ChecksOut:
+    return await checks_of(db, await _host(db, host_id))
 
 
 class StaffIncident(IncidentOut):

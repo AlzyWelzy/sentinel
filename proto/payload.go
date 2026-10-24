@@ -14,6 +14,8 @@ type RegisterRequest struct {
 	PlatformVersion string `json:"platform_version"`
 	Arch            string `json:"arch"`
 	AgentVersion    string `json:"agent_version"`
+	// Tags are added to the host's tags (install.sh --tags web,production).
+	Tags []string `json:"tags,omitempty"`
 }
 
 // RegisterResponse gives the agent its own token. The install key is not used again.
@@ -32,6 +34,10 @@ type AgentConfig struct {
 	// live at <DownloadURL>/agent/<LatestVersion>/pulsegrid-agent-<os>-<arch>.
 	LatestVersion string `json:"latest_version,omitempty"`
 	DownloadURL   string `json:"download_url,omitempty"`
+	// Processes and services to report on even when absent or stopped. They
+	// come from the host's alert rules, so adding a rule configures agents.
+	WatchProcesses []string `json:"watch_processes,omitempty"`
+	WatchServices  []string `json:"watch_services,omitempty"`
 }
 
 // Sample is one measurement. Names follow Prometheus conventions
@@ -51,6 +57,17 @@ type Batch struct {
 // MetricsRequest may carry several batches when the agent is replaying its
 // offline buffer.
 type MetricsRequest struct {
-	AgentVersion string  `json:"agent_version"`
-	Batches      []Batch `json:"batches"`
+	AgentVersion string    `json:"agent_version"`
+	Batches      []Batch   `json:"batches"`
+	Host         *HostMeta `json:"host,omitempty"`
+}
+
+// HostMeta is what the agent currently knows about its machine. It's sent
+// with every push so the dashboard follows hostname, IP and OS changes.
+type HostMeta struct {
+	Hostname        string   `json:"hostname,omitempty"`
+	PlatformVersion string   `json:"platform_version,omitempty"`
+	IPAddresses     []string `json:"ip_addresses,omitempty"`
+	CPUCores        int      `json:"cpu_cores,omitempty"`
+	MemoryBytes     uint64   `json:"memory_bytes,omitempty"`
 }

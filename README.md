@@ -69,8 +69,20 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 - One-line install from the dashboard; the agent never runs privileged. Its
   state (including the host token) is readable only by it and administrators.
 - Buffers every batch on disk until ingest accepts it; outages lose nothing.
-- Fetches its ingest URL and interval from Pulsegrid hourly, falling back to
-  the URL it registered with, so domains can move without reinstalls.
+- Fetches its config from Pulsegrid every 2 minutes, falling back to the URL
+  it registered with, so domains can move without reinstalls. The config
+  also lists the processes and services to watch, taken from the host's
+  alert rules: creating a "nginx isn't running" rule configures the agents.
+- Collects: CPU (total, per core, and per mode including iowait and steal),
+  memory, swap, load, disk usage and inodes per filesystem, disk I/O (bytes,
+  operations and busy time per physical disk), network, uptime, the busiest
+  processes by CPU and memory (grouped by name), and watched processes and
+  services (systemd, OpenRC/SysV, rc.d, Windows SCM). On Linux it also
+  reports failed systemd units. Not every OS accounts everything: iowait and
+  steal exist on Linux; disk busy time on Linux and FreeBSD; NetBSD has no
+  disk I/O counters and its process list comes from `ps`.
+- Reports the machine's IP addresses, CPU count and memory with each push,
+  and takes tags at install (`install.sh --tags web,production`).
 - Self-updates daily from a separate privileged job: downloads the advertised
   version, verifies its SHA-256, self-tests it and swaps it in atomically
   (on Windows the running `.exe` is moved aside first).
@@ -83,13 +95,28 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 
 ## Alerting
 
-- Rules: metric thresholds (CPU, memory, swap, disk, load) held for N
-  minutes, or a server going silent. Per server or every server.
+- Rules: metric thresholds (CPU, memory, swap, disk, inodes, load, iowait,
+  steal, disk busy) held for N minutes; a server going silent; a process not
+  running; a service down. For every server, one server, or every server
+  with a tag (servers added later included). "Add recommended rules" creates
+  a starter set.
+- Escalation: up to 5 steps per rule ("after 15 minutes, also notify …").
+  Steps stop when the incident is acknowledged (dashboard or the signed
+  one-click link in every alert, `ACK_SIGNING_SECRET`) or resolves.
+- Maintenance windows (one-off, or weekly in a timezone) for every server, one
+  server or a tag: no incidents open and nothing is sent; a problem that
+  outlasts the window fires when it ends.
+- Dependencies: a server can depend on another (a gateway, a hypervisor).
+  While that one is silent, the dependent server's alerts are held back.
 - The alerter evaluates every 30s: `ok → pending → firing → resolved`, with
   incidents opened and resolved in the same transaction as the state change.
 - Notifications go through an outbox (`outbound_messages`) with retries and
-  backoff. Email (SMTP), webhooks (signed `X-Pulsegrid-Signature: sha256=…`,
-  private addresses refused), SMS (Twilio).
+  backoff. Email (SMTP, or through the console), webhooks (signed
+  `X-Pulsegrid-Signature: sha256=…`, private addresses refused), Slack,
+  Microsoft Teams, Discord, Telegram (the customer's bot), PagerDuty (Events
+  v2: Pulsegrid incidents trigger and resolve PagerDuty incidents), SMS and
+  voice calls (Twilio). Secret targets (webhook URLs, bot tokens, keys) are
+  masked whenever the API returns them.
 - Contacts: the console email is prefilled and verified; others get a 6-digit
   code (5 attempts, 30-minute expiry) and receive nothing until verified.
 - Run 2+ alerter replicas: a Postgres advisory lock keeps one active and the

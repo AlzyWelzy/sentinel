@@ -1,8 +1,8 @@
 # Pulsegrid agent installer for Windows (Server 2016+ / Windows 10+), run as Administrator:
-#   & ([scriptblock]::Create((irm __DOWNLOAD_URL__/install.ps1))) -Key <install key>
+#   & ([scriptblock]::Create((irm __DOWNLOAD_URL__/install.ps1))) -Key <install key> [-Tags web,production]
 #
 # Served by the Pulsegrid API with the URLs below filled in from its config.
-param([Parameter(Mandatory = $true)][string]$Key)
+param([Parameter(Mandatory = $true)][string]$Key, [string]$Tags = '')
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'   # makes Invoke-WebRequest much faster
@@ -49,7 +49,11 @@ try {
 New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
 & icacls $StateDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-19:(OI)(CI)M' | Out-Null
 
-& $Bin register --url $IngestUrl --key $Key --state-dir $StateDir
+# Windows PowerShell drops empty arguments to native programs, so --tags is
+# only passed when there are tags.
+$registerArgs = @('register', '--url', $IngestUrl, '--key', $Key, '--state-dir', $StateDir)
+if ($Tags) { $registerArgs += @('--tags', $Tags) }
+& $Bin @registerArgs
 if ($LASTEXITCODE -ne 0) { throw 'pulsegrid: registration failed' }
 
 $binPath = "`"$Bin`" run --state-dir `"$StateDir`""

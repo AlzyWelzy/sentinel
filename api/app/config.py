@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     # ── Service-to-service (console backend -> /internal/*) ──────────────────
     INTERNAL_API_KEY: str = "change-me-pulsegrid-internal-key"
 
+    # Signs the one-click acknowledge links in alerts; the alerter has the
+    # same value. Empty: alerts carry no acknowledge link.
+    ACK_SIGNING_SECRET: str = ""
+
     # A host is shown offline once its last push is older than this.
     HOST_OFFLINE_AFTER_SECONDS: int = 120
 

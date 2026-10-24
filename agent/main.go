@@ -13,7 +13,9 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,10 +27,14 @@ import (
 var version = "dev"
 
 const (
-	defaultInterval    = 30
-	configRefreshEvery = time.Hour
-	maxBatchesPerPush  = 20
-	spoolMaxBatches    = 2880 // 24h at 30s
+	defaultInterval = 30
+	// Alert rules decide which processes and services agents watch, so a new
+	// rule should reach the agent within a couple of minutes.
+	configRefreshEvery = 2 * time.Minute
+	// Hostname, IPs and OS version rarely change; re-read them now and then.
+	metaRefreshEvery  = 10 * time.Minute
+	maxBatchesPerPush = 20
+	spoolMaxBatches   = 2880 // 24h at 30s
 )
 
 func main() {
@@ -56,7 +62,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: pulsegrid-agent register --url URL --key KEY [--state-dir DIR]")
+	fmt.Fprintln(os.Stderr, "usage: pulsegrid-agent register --url URL --key KEY [--tags a,b] [--state-dir DIR]")
 	fmt.Fprintln(os.Stderr, "       pulsegrid-agent run [--state-dir DIR] [--pidfile FILE]")
 	fmt.Fprintln(os.Stderr, "       pulsegrid-agent update [--state-dir DIR] [--restart SERVICE]")
 	fmt.Fprintln(os.Stderr, "       pulsegrid-agent version")
@@ -67,6 +73,7 @@ func cmdRegister(args []string) error {
 	fs := flag.NewFlagSet("register", flag.ExitOnError)
 	url := fs.String("url", "", "Pulsegrid ingest URL")
 	key := fs.String("key", "", "install key from the dashboard")
+	tags := fs.String("tags", "", "comma-separated tags to add to this server, e.g. web,production")
 	stateDir := fs.String("state-dir", defaultStateDir(), "where the agent keeps its state")
 	fs.Parse(args)
 	if *url == "" || *key == "" {
@@ -98,6 +105,7 @@ func cmdRegister(args []string) error {
 		PlatformVersion: info.PlatformVersion,
 		Arch:            info.Arch,
 		AgentVersion:    version,
+		Tags:            splitTags(*tags),
 	})
 	if err != nil {
 		return fmt.Errorf("registration failed: %w", err)
@@ -143,6 +151,7 @@ func cmdRun(args []string, log *slog.Logger) error {
 		return err
 	}
 
+	col.Watch(st.WatchProcesses, st.WatchServices)
 	a := &agent{st: st, stateDir: *stateDir, col: col, spool: sp, client: newClient(), log: log}
 	log.Info("agent started", "version", version, "host_id", st.HostID, "ingest_url", st.IngestURL)
 
@@ -163,6 +172,8 @@ type agent struct {
 	spool    *spool
 	client   *client
 	log      *slog.Logger
+	meta     *proto.HostMeta
+	metaAt   time.Time
 }
 
 func (a *agent) loop(ctx context.Context) {
@@ -217,7 +228,7 @@ func (a *agent) flush(ctx context.Context) {
 			return
 		}
 		err = a.client.push(ctx, a.st.IngestURL, a.st.HostToken, proto.MetricsRequest{
-			AgentVersion: version, Batches: batches,
+			AgentVersion: version, Batches: batches, Host: a.hostMeta(ctx),
 		})
 		var se *statusError
 		switch {
@@ -250,16 +261,45 @@ func (a *agent) refreshConfig(ctx context.Context) bool {
 	next := a.st
 	next.IngestURL = orDefault(cfg.IngestURL, a.st.IngestURL)
 	next.IntervalSeconds = orDefaultInt(cfg.IntervalSeconds, a.st.IntervalSeconds)
-	if next == a.st {
+	next.WatchProcesses, next.WatchServices = cfg.WatchProcesses, cfg.WatchServices
+	if sameState(next, a.st) {
 		return false
 	}
 	intervalChanged := next.IntervalSeconds != a.st.IntervalSeconds
-	a.log.Info("config updated", "ingest_url", next.IngestURL, "interval_seconds", next.IntervalSeconds)
+	a.col.Watch(next.WatchProcesses, next.WatchServices)
+	a.log.Info("config updated", "ingest_url", next.IngestURL, "interval_seconds", next.IntervalSeconds,
+		"watch_processes", next.WatchProcesses, "watch_services", next.WatchServices)
 	a.st = next
 	if err := a.st.save(a.stateDir); err != nil {
 		a.log.Error("saving state failed", "err", err)
 	}
 	return intervalChanged
+}
+
+func sameState(a, b state) bool {
+	return a.BootstrapURL == b.BootstrapURL && a.IngestURL == b.IngestURL &&
+		a.IntervalSeconds == b.IntervalSeconds && a.HostID == b.HostID && a.HostToken == b.HostToken &&
+		slices.Equal(a.WatchProcesses, b.WatchProcesses) && slices.Equal(a.WatchServices, b.WatchServices)
+}
+
+// hostMeta returns what the agent knows about the machine, re-read every
+// metaRefreshEvery.
+func (a *agent) hostMeta(ctx context.Context) *proto.HostMeta {
+	if a.meta == nil || time.Since(a.metaAt) >= metaRefreshEvery {
+		m := collector.Meta(ctx)
+		a.meta, a.metaAt = &m, time.Now()
+	}
+	return a.meta
+}
+
+func splitTags(s string) []string {
+	var tags []string
+	for _, t := range strings.Split(s, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			tags = append(tags, t)
+		}
+	}
+	return tags
 }
 
 func orDefault(v, fallback string) string {

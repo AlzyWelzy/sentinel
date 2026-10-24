@@ -1,6 +1,6 @@
 #!/bin/sh
 # Pulsegrid agent installer for Linux, FreeBSD, OpenBSD and NetBSD.
-#   curl -fsSL __DOWNLOAD_URL__/install.sh | sudo sh -s -- --key <install key>
+#   curl -fsSL __DOWNLOAD_URL__/install.sh | sudo sh -s -- --key <install key> [--tags web,production]
 #   (FreeBSD without curl: fetch -qo - ... | sh -s -- ...; OpenBSD: ftp -o - ... | doas sh -s -- ...)
 #
 # Served by the Pulsegrid API with the URLs below filled in from its config.
@@ -24,14 +24,17 @@ die() { echo "pulsegrid: $*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 KEY=""
+TAGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --key) [ $# -ge 2 ] || die "--key needs a value"; KEY="$2"; shift 2 ;;
         --key=*) KEY="${1#*=}"; shift ;;
+        --tags) [ $# -ge 2 ] || die "--tags needs a value"; TAGS="$2"; shift 2 ;;
+        --tags=*) TAGS="${1#*=}"; shift ;;
         *) die "unknown option: $1" ;;
     esac
 done
-[ -n "$KEY" ] || die "usage: install.sh --key <install key>"
+[ -n "$KEY" ] || die "usage: install.sh --key <install key> [--tags a,b]"
 [ "$(id -u)" -eq 0 ] || die "run as root (sudo or doas)"
 
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -265,7 +268,7 @@ install -m 0755 "$tmp/$asset" "$BIN"
 create_user
 mkdir -p "$STATE_DIR"
 
-"$BIN" register --url "$INGEST_URL" --key "$KEY" --state-dir "$STATE_DIR"
+"$BIN" register --url "$INGEST_URL" --key "$KEY" --tags "$TAGS" --state-dir "$STATE_DIR"
 chown -R "$SERVICE_USER" "$STATE_DIR"
 chmod 0700 "$STATE_DIR"
 

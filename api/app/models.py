@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 
-from sqlalchemy import DateTime, ForeignKey, Text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Text, Time, func
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -66,6 +66,13 @@ class Host(TenantScoped):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     last_seen_at: Mapped[datetime | None]
     revoked_at: Mapped[datetime | None]
+    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    depends_on_host_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("hosts.id", ondelete="SET NULL")
+    )
+    ip_addresses: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    cpu_cores: Mapped[int | None]
+    memory_bytes: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class NotificationChannel(TenantScoped):
@@ -97,9 +104,43 @@ class AlertRule(TenantScoped):
     host_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("hosts.id", ondelete="CASCADE")
     )
+    tag: Mapped[str | None] = mapped_column(Text)
+    target: Mapped[str | None] = mapped_column(Text)
     enabled: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class AlertEscalationStep(TenantScoped):
+    __tablename__ = "alert_escalation_steps"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    rule_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("alert_rules.id", ondelete="CASCADE")
+    )
+    position: Mapped[int]
+    delay_seconds: Mapped[int]
+    channel_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID))
+
+
+class MaintenanceWindow(TenantScoped):
+    __tablename__ = "maintenance_windows"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(Text)
+    host_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("hosts.id", ondelete="CASCADE")
+    )
+    tag: Mapped[str | None] = mapped_column(Text)
+    schedule: Mapped[str] = mapped_column(Text)
+    starts_at: Mapped[datetime | None]
+    ends_at: Mapped[datetime | None]
+    weekdays: Mapped[list[int] | None] = mapped_column(ARRAY(Integer))
+    start_time: Mapped[time | None] = mapped_column(Time)
+    duration_minutes: Mapped[int | None]
+    timezone: Mapped[str] = mapped_column(Text, default="UTC")
+    enabled: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class AlertRuleChannel(TenantScoped):
@@ -138,7 +179,9 @@ class Incident(TenantScoped):
     value: Mapped[float | None]
     opened_at: Mapped[datetime]
     acknowledged_at: Mapped[datetime | None]
+    acknowledged_by: Mapped[str | None] = mapped_column(Text)
     resolved_at: Mapped[datetime | None]
+    escalation_level: Mapped[int] = mapped_column(default=0)
 
 
 class OutboundMessage(TenantScoped):

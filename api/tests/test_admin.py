@@ -71,3 +71,16 @@ async def test_unknown_ids_are_404(client, staff_headers):
     missing = uuid.uuid4()
     for path in [f"/admin/v1/tenants/{missing}/hosts", f"/admin/v1/hosts/{missing}"]:
         assert (await client.get(path, headers=staff_headers)).status_code == 404
+
+
+async def test_staff_see_processes_and_checks(client, staff_headers, alice: User):
+    tid = await alice.tenant_id()
+    host = await insert_host(tid)
+    rule = {"name": "nginx", "kind": "service_down", "target": "nginx"}
+    assert (await alice.request("POST", "/v1/alert-rules", json=rule)).status_code == 201
+    for path in (f"/admin/v1/hosts/{host}/processes", f"/admin/v1/hosts/{host}/checks"):
+        assert (await alice.request("GET", path)).status_code == 403, path
+        r = await client.get(path, headers=staff_headers)
+        assert r.status_code in (200, 503), (path, r.text)  # 503 only without VictoriaMetrics
+    checks = (await client.get(f"/admin/v1/hosts/{host}/checks", headers=staff_headers)).json()
+    assert [c["name"] for c in checks["checks"]] == ["nginx"]

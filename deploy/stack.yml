@@ -69,6 +69,7 @@ services:
       JWT_TOKEN_ISSUER: ${JWT_TOKEN_ISSUER:?}
       JWT_TOKEN_AUDIENCE: ${JWT_TOKEN_AUDIENCE:?}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
+      ACK_SIGNING_SECRET: ${ACK_SIGNING_SECRET:-}
     networks: [edge, backend]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
@@ -100,6 +101,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
       PUBLIC_DASHBOARD_URL: ${PUBLIC_DASHBOARD_URL:?}
+      PUBLIC_API_URL: https://${API_HOST}
+      ACK_SIGNING_SECRET: ${ACK_SIGNING_SECRET:-}
       SMTP_HOST: ${SMTP_HOST:?}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USERNAME: ${SMTP_USERNAME:-}

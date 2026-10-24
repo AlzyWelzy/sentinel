@@ -46,28 +46,16 @@ func main() {
 
 	st := &store{pool: pool}
 	ev := &evaluator{
-		store:   st,
-		vmURL:   env("VICTORIAMETRICS_URL", "http://localhost:8428"),
-		http:    &http.Client{Timeout: 15 * time.Second},
-		rdb:     rdb,
-		log:     log,
-		baseURL: os.Getenv("PUBLIC_DASHBOARD_URL"),
+		store:     st,
+		vmURL:     env("VICTORIAMETRICS_URL", "http://localhost:8428"),
+		http:      &http.Client{Timeout: 15 * time.Second},
+		rdb:       rdb,
+		log:       log,
+		baseURL:   os.Getenv("PUBLIC_DASHBOARD_URL"),
+		apiURL:    os.Getenv("PUBLIC_API_URL"),
+		ackSecret: os.Getenv("ACK_SIGNING_SECRET"),
 	}
-	disp := &dispatcher{
-		store: st,
-		log:   log,
-		senders: map[string]sender{
-			"email": emailTransport(),
-			"webhook": newWebhookSender(os.Getenv("WEBHOOK_SIGNING_SECRET"),
-				os.Getenv("ALLOW_PRIVATE_WEBHOOKS") == "true"),
-			"sms": &smsSender{
-				accountSID: os.Getenv("TWILIO_ACCOUNT_SID"),
-				authToken:  os.Getenv("TWILIO_AUTH_TOKEN"),
-				from:       os.Getenv("TWILIO_FROM"),
-				client:     &http.Client{Timeout: 15 * time.Second},
-			},
-		},
-	}
+	disp := &dispatcher{store: st, log: log, senders: senders()}
 
 	interval := time.Duration(envInt("EVALUATION_INTERVAL_SECONDS", 30)) * time.Second
 	partitions := envInt("ALERTER_PARTITIONS", 1)
@@ -79,6 +67,35 @@ func main() {
 	log.Info("alerter started", "partitions", partitions, "interval", interval.String())
 	<-ctx.Done()
 	log.Info("alerter stopping")
+}
+
+func senders() map[string]sender {
+	webhook := newWebhookSender(os.Getenv("WEBHOOK_SIGNING_SECRET"), os.Getenv("ALLOW_PRIVATE_WEBHOOKS") == "true")
+	public := &http.Client{Timeout: 15 * time.Second}
+	twilio := env("TWILIO_API_URL", "https://api.twilio.com")
+	return map[string]sender{
+		"email":   emailTransport(),
+		"webhook": webhook,
+		"sms": &smsSender{
+			accountSID: os.Getenv("TWILIO_ACCOUNT_SID"),
+			authToken:  os.Getenv("TWILIO_AUTH_TOKEN"),
+			from:       os.Getenv("TWILIO_FROM"),
+			client:     public,
+		},
+		"voice": &voiceSender{
+			accountSID: os.Getenv("TWILIO_ACCOUNT_SID"),
+			authToken:  os.Getenv("TWILIO_AUTH_TOKEN"),
+			from:       os.Getenv("TWILIO_FROM"),
+			client:     public,
+			baseURL:    twilio,
+		},
+		// Customer-supplied URLs: the webhook client refuses private addresses.
+		"slack":     &slackSender{client: webhook.client},
+		"teams":     &teamsSender{client: webhook.client},
+		"discord":   &discordSender{client: webhook.client},
+		"telegram":  &telegramSender{client: public, baseURL: env("TELEGRAM_API_URL", "https://api.telegram.org")},
+		"pagerduty": &pagerDutySender{client: public, url: env("PAGERDUTY_EVENTS_URL", "https://events.pagerduty.com/v2/enqueue")},
+	}
 }
 
 // emailTransport: EMAIL_TRANSPORT=console sends through the console backend

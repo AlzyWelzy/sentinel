@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"runtime"
+
+	"github.com/example-org/pulsegrid/proto"
 )
 
 var errUnsupported = errors.New("pulsegrid agent doesn't support " + runtime.GOOS + " yet")
@@ -13,3 +15,5 @@ var errUnsupported = errors.New("pulsegrid agent doesn't support " + runtime.GOO
 func New() (Collector, error) { return nil, errUnsupported }
 
 func Info(context.Context) (HostInfo, error) { return HostInfo{}, errUnsupported }
+
+func Meta(context.Context) proto.HostMeta { return proto.HostMeta{} }

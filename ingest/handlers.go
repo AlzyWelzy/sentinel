@@ -2,6 +2,7 @@ package main
 
 import (
 	"compress/gzip"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -42,13 +43,19 @@ func (s *server) routes() http.Handler {
 	return mux
 }
 
-func (s *server) agentConfig() proto.AgentConfig {
-	return proto.AgentConfig{
+// agentConfig is the host's config: endpoints and interval for everyone, and
+// the processes and services its alert rules watch. If those can't be read
+// the agent keeps the lists it has (an empty list here would clear them).
+func (s *server) agentConfig(ctx context.Context, id hostIdentity) (proto.AgentConfig, error) {
+	cfg := proto.AgentConfig{
 		IngestURL:       s.cfg.PublicIngestURL,
 		IntervalSeconds: s.cfg.IntervalSeconds,
 		LatestVersion:   s.cfg.AgentVersion,
 		DownloadURL:     s.cfg.DownloadURL,
 	}
+	var err error
+	cfg.WatchProcesses, cfg.WatchServices, err = s.store.watches(ctx, id)
+	return cfg, err
 }
 
 func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -81,8 +88,13 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		s.cache.forgetHost(r.Context(), oldTokenHash)
 	}
 	s.log.Info("host registered", "host_id", id.HostID, "tenant_id", id.TenantID, "hostname", req.Hostname)
+	cfg, err := s.agentConfig(r.Context(), id)
+	if err != nil {
+		// Registered either way; the agent picks the watches up on its next refresh.
+		s.log.Warn("watches not loaded", "err", err, "host_id", id.HostID)
+	}
 	writeJSON(w, http.StatusOK, proto.RegisterResponse{
-		HostID: id.HostID, HostToken: token, Config: s.agentConfig(),
+		HostID: id.HostID, HostToken: token, Config: cfg,
 	})
 }
 
@@ -122,17 +134,24 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if err := s.cache.markSeen(r.Context(), id.HostID, now); err != nil {
 		s.log.Warn("heartbeat not recorded", "err", err, "host_id", id.HostID)
 	}
-	if err := s.store.touchHost(r.Context(), id.HostID, req.AgentVersion); err != nil {
+	if err := s.store.touchHost(r.Context(), id.HostID, req.AgentVersion, req.Host); err != nil {
 		s.log.Warn("last_seen_at not updated", "err", err, "host_id", id.HostID)
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"accepted": kept, "dropped": dropped})
 }
 
 func (s *server) handleAgentConfig(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.authenticate(w, r); !ok {
+	id, ok := s.authenticate(w, r)
+	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.agentConfig())
+	cfg, err := s.agentConfig(r.Context(), id)
+	if err != nil {
+		s.log.Error("loading watches failed", "err", err, "host_id", id.HostID)
+		httpError(w, http.StatusServiceUnavailable, "try again later")
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
 }
 
 // authenticate resolves the host token to a host and tenant. This lookup is

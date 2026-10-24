@@ -11,28 +11,52 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel, Field
-from sqlalchemy import select
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import AgentKey, Host
+from app.models import AgentKey, AlertRule, Host, MaintenanceWindow
 from app.models import Tenant as TenantRow
 from app.services import heartbeats, metrics
+from app.services.maintenance import in_maintenance
 from app.services.secrets import new_agent_key
-from app.tenancy import Tenant
+from app.tenancy import Tenant, TenantContext
+from app.validation import normalize_tags
 
 router = APIRouter(prefix="/v1")
 
 
-def install_command(key: str) -> str:
+def install_command(key: str, tags: list[str] | None = None) -> str:
     """Linux and BSD (FreeBSD/OpenBSD/NetBSD)."""
-    return f"curl -fsSL {settings.PUBLIC_DOWNLOAD_URL}/install.sh | sudo sh -s -- --key {key}"
+    extra = f" --tags {','.join(tags)}" if tags else ""
+    return (
+        f"curl -fsSL {settings.PUBLIC_DOWNLOAD_URL}/install.sh | sudo sh -s -- --key {key}{extra}"
+    )
 
 
-def install_command_windows(key: str) -> str:
+def install_command_windows(key: str, tags: list[str] | None = None) -> str:
     """Elevated PowerShell."""
     url = f"{settings.PUBLIC_DOWNLOAD_URL}/install.ps1"
-    return f"& ([scriptblock]::Create((irm {url}))) -Key {key}"
+    extra = f" -Tags {','.join(tags)}" if tags else ""
+    return f"& ([scriptblock]::Create((irm {url}))) -Key {key}{extra}"
+
+
+def cloud_init(key: str, tags: list[str] | None = None) -> str:
+    """User data for a new Linux VM (cloud-init runs it once, as root, at
+    first boot). It waits for the network, then installs the agent."""
+    extra = f" --tags {','.join(tags)}" if tags else ""
+    return (
+        "#!/bin/sh\n"
+        "# Installs the Pulsegrid monitoring agent at first boot.\n"
+        "for i in $(seq 1 30); do\n"
+        f"  curl -fsSL {settings.PUBLIC_DOWNLOAD_URL}/install.sh -o /tmp/pulsegrid-install.sh"
+        " && break\n"
+        "  sleep 10\n"
+        "done\n"
+        f"sh /tmp/pulsegrid-install.sh --key {key}{extra}\n"
+        "rm -f /tmp/pulsegrid-install.sh\n"
+    )
 
 
 # ── Account ──────────────────────────────────────────────────────────────────
@@ -63,6 +87,12 @@ async def me(t: Tenant) -> MeOut:
 
 class AgentKeyIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+    tags: list[str] = Field(default_factory=list, description="added to servers installed with it")
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, v: list[str]) -> list[str]:
+        return normalize_tags(v)
 
 
 class AgentKeyOut(BaseModel):
@@ -77,6 +107,7 @@ class AgentKeyCreated(AgentKeyOut):
     key: str  # shown once; only the hash is stored
     install_command: str
     install_command_windows: str
+    cloud_init: str  # user data that installs the agent on a new Linux VM
 
 
 def _agent_key_out(k: AgentKey) -> AgentKeyOut:
@@ -107,8 +138,9 @@ async def create_agent_key(body: AgentKeyIn, t: Tenant) -> AgentKeyCreated:
     return AgentKeyCreated(
         **_agent_key_out(key).model_dump(),
         key=plaintext,
-        install_command=install_command(plaintext),
-        install_command_windows=install_command_windows(plaintext),
+        install_command=install_command(plaintext, body.tags),
+        install_command_windows=install_command_windows(plaintext, body.tags),
+        cloud_init=cloud_init(plaintext, body.tags),
     )
 
 
@@ -138,9 +170,15 @@ class HostOut(BaseModel):
     online: bool
     last_seen: int | None  # unix seconds
     created_at: datetime
+    tags: list[str]
+    depends_on_host_id: uuid.UUID | None
+    ip_addresses: list[str]
+    cpu_cores: int | None
+    memory_bytes: int | None
+    in_maintenance: bool
 
 
-def _host_out(h: Host, last_seen: int | None) -> HostOut:
+def _host_out(h: Host, last_seen: int | None, maintenance: bool = False) -> HostOut:
     return HostOut(
         id=h.id,
         hostname=h.hostname,
@@ -152,10 +190,33 @@ def _host_out(h: Host, last_seen: int | None) -> HostOut:
         online=heartbeats.is_online(last_seen),
         last_seen=last_seen,
         created_at=h.created_at,
+        tags=list(h.tags or []),
+        depends_on_host_id=h.depends_on_host_id,
+        ip_addresses=list(h.ip_addresses or []),
+        cpu_cores=h.cpu_cores,
+        memory_bytes=h.memory_bytes,
+        in_maintenance=maintenance,
     )
 
 
-async def _get_host(t: Tenant, host_id: uuid.UUID) -> Host:
+async def _windows(t: TenantContext) -> list[MaintenanceWindow]:
+    return list(
+        await t.db.scalars(
+            select(MaintenanceWindow).where(
+                MaintenanceWindow.tenant_id == t.tenant_id, MaintenanceWindow.enabled
+            )
+        )
+    )
+
+
+async def _hosts_out(t: TenantContext, hosts: list[Host]) -> list[HostOut]:
+    seen = await heartbeats.last_seen([h.id for h in hosts])
+    windows = await _windows(t)
+    now = datetime.now(UTC)
+    return [_host_out(h, seen[h.id], in_maintenance(windows, h, now)) for h in hosts]
+
+
+async def _get_host(t: TenantContext, host_id: uuid.UUID) -> Host:
     host = await t.db.scalar(select(Host).where(Host.id == host_id, Host.tenant_id == t.tenant_id))
     if host is None:
         raise HTTPException(status_code=404, detail="Host not found")
@@ -163,21 +224,74 @@ async def _get_host(t: Tenant, host_id: uuid.UUID) -> Host:
 
 
 @router.get("/hosts")
-async def list_hosts(t: Tenant) -> list[HostOut]:
-    hosts = list(
-        await t.db.scalars(
-            select(Host).where(Host.tenant_id == t.tenant_id).order_by(Host.hostname)
-        )
-    )
-    seen = await heartbeats.last_seen([h.id for h in hosts])
-    return [_host_out(h, seen[h.id]) for h in hosts]
+async def list_hosts(
+    t: Tenant,
+    tag: Annotated[str | None, Query(description="only hosts with this tag")] = None,
+    ip: Annotated[str | None, Query(description="only hosts with this IP address")] = None,
+) -> list[HostOut]:
+    q = select(Host).where(Host.tenant_id == t.tenant_id)
+    if tag:
+        q = q.where(Host.tags.contains([tag.strip().lower()]))
+    if ip:
+        q = q.where(Host.ip_addresses.contains([ip.strip()]))
+    hosts = list(await t.db.scalars(q.order_by(Host.hostname)))
+    return await _hosts_out(t, hosts)
 
 
 @router.get("/hosts/{host_id}")
 async def get_host(host_id: uuid.UUID, t: Tenant) -> HostOut:
     host = await _get_host(t, host_id)
-    seen = await heartbeats.last_seen([host.id])
-    return _host_out(host, seen[host.id])
+    return (await _hosts_out(t, [host]))[0]
+
+
+class HostPatch(BaseModel):
+    tags: list[str] | None = None
+    depends_on_host_id: uuid.UUID | None = Field(
+        default=None, description="alerts are held back while this host is silent"
+    )
+    clear_depends_on: bool = False
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, v: list[str] | None) -> list[str] | None:
+        return None if v is None else normalize_tags(v)
+
+
+@router.patch("/hosts/{host_id}")
+async def update_host(host_id: uuid.UUID, body: HostPatch, t: Tenant) -> HostOut:
+    host = await _get_host(t, host_id)
+    if body.tags is not None:
+        host.tags = body.tags
+    if body.clear_depends_on:
+        host.depends_on_host_id = None
+    elif body.depends_on_host_id is not None:
+        await _check_dependency(t, host, body.depends_on_host_id)
+        host.depends_on_host_id = body.depends_on_host_id
+    await t.db.flush()
+    return (await _hosts_out(t, [host]))[0]
+
+
+async def _check_dependency(t: TenantContext, host: Host, parent_id: uuid.UUID) -> None:
+    """The parent must be the tenant's own, and following parents from it
+    must never come back to this host (a loop would hide both hosts' alerts
+    whenever either went quiet)."""
+    if parent_id == host.id:
+        raise HTTPException(status_code=422, detail="A server can't depend on itself")
+    current: uuid.UUID | None = parent_id
+    for _ in range(50):
+        if current is None:
+            return
+        row = await t.db.scalar(
+            select(Host).where(Host.id == current, Host.tenant_id == t.tenant_id)
+        )
+        if row is None:
+            raise HTTPException(status_code=422, detail="depends_on_host_id not found")
+        if row.depends_on_host_id == host.id:
+            raise HTTPException(
+                status_code=422, detail="That would make the servers depend on each other"
+            )
+        current = row.depends_on_host_id
+    raise HTTPException(status_code=422, detail="Dependency chain is too long")
 
 
 @router.delete("/hosts/{host_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -193,6 +307,136 @@ async def delete_host(host_id: uuid.UUID, t: Tenant) -> None:
         pass
 
 
+class TagOut(BaseModel):
+    tag: str
+    hosts: int
+
+
+@router.get("/tags")
+async def list_tags(t: Tenant) -> list[TagOut]:
+    tag = func.unnest(Host.tags).label("tag")
+    sub = select(tag).where(Host.tenant_id == t.tenant_id).subquery()
+    rows = await t.db.execute(
+        select(sub.c.tag, func.count()).group_by(sub.c.tag).order_by(sub.c.tag)
+    )
+    return [TagOut(tag=r[0], hosts=r[1]) for r in rows]
+
+
+class ProcessOut(BaseModel):
+    name: str
+    cpu_percent: float | None  # share of the whole machine
+    memory_bytes: float | None
+    count: int | None
+
+
+class ProcessesOut(BaseModel):
+    total: int | None  # every process on the host
+    processes: list[ProcessOut]  # the busiest by CPU and by memory
+
+
+@router.get("/hosts/{host_id}/processes")
+async def host_processes(host_id: uuid.UUID, t: Tenant) -> ProcessesOut:
+    host = await _get_host(t, host_id)
+    return await processes_of(t.tenant_id, host.id)
+
+
+async def processes_of(tenant_id: uuid.UUID, host_id: uuid.UUID) -> ProcessesOut:
+    """Latest top processes from the agent. Names that dropped out of the
+    agent's top list in the last minute still show, with their last values."""
+    try:
+        cpu = await metrics.query_latest(tenant_id, host_id, "pulsegrid_process_cpu_percent", "90s")
+        mem = await metrics.query_latest(
+            tenant_id, host_id, "pulsegrid_process_memory_bytes", "90s"
+        )
+        cnt = await metrics.query_latest(tenant_id, host_id, "pulsegrid_process_count", "90s")
+        total = await metrics.query_latest(tenant_id, host_id, "pulsegrid_processes_total", "3m")
+    except metrics.MetricsUnavailable:
+        raise HTTPException(status_code=503, detail="Metrics store unavailable") from None
+    rows: dict[str, ProcessOut] = {}
+
+    def row(labels: dict[str, str]) -> ProcessOut:
+        name = labels.get("process", "")
+        return rows.setdefault(
+            name, ProcessOut(name=name, cpu_percent=None, memory_bytes=None, count=None)
+        )
+
+    for labels, v in cpu:
+        row(labels).cpu_percent = v
+    for labels, v in mem:
+        row(labels).memory_bytes = v
+    for labels, v in cnt:
+        row(labels).count = int(v)
+    ordered = sorted(
+        rows.values(), key=lambda p: (-(p.cpu_percent or 0), -(p.memory_bytes or 0), p.name)
+    )
+    return ProcessesOut(total=int(total[0][1]) if total else None, processes=ordered)
+
+
+class CheckOut(BaseModel):
+    kind: Literal["process", "service"]
+    name: str
+    # running / stopped as last reported; "waiting" until the agent first
+    # reports it (it picks up new watches within a couple of minutes).
+    state: Literal["running", "stopped", "waiting"]
+    processes: int | None  # for processes: how many are running
+    rule_ids: list[uuid.UUID]
+
+
+class ChecksOut(BaseModel):
+    checks: list[CheckOut]
+    failed_units: int | None  # systemd units in the failed state (Linux)
+
+
+@router.get("/hosts/{host_id}/checks")
+async def host_checks(host_id: uuid.UUID, t: Tenant) -> ChecksOut:
+    """The processes and services this host's alert rules watch, and their
+    state as last reported by the agent."""
+    return await checks_of(t.db, await _get_host(t, host_id))
+
+
+async def checks_of(db: AsyncSession, host: Host) -> ChecksOut:
+    rules = await db.scalars(
+        select(AlertRule).where(
+            AlertRule.tenant_id == host.tenant_id,
+            AlertRule.kind.in_(["process_down", "service_down"]),
+            AlertRule.enabled,
+            or_(AlertRule.host_id.is_(None), AlertRule.host_id == host.id),
+        )
+    )
+    wanted: dict[tuple[Literal["process", "service"], str], list[uuid.UUID]] = {}
+    for r in rules:
+        if r.tag is not None and r.tag not in (host.tags or []):
+            continue
+        kind: Literal["process", "service"] = "process" if r.kind == "process_down" else "service"
+        wanted.setdefault((kind, r.target or ""), []).append(r.id)
+    try:
+        procs = await metrics.query_latest(
+            host.tenant_id, host.id, "pulsegrid_watched_process_count"
+        )
+        svcs = await metrics.query_latest(host.tenant_id, host.id, "pulsegrid_service_up")
+        failed = await metrics.query_latest(
+            host.tenant_id, host.id, "pulsegrid_systemd_failed_units"
+        )
+    except metrics.MetricsUnavailable:
+        raise HTTPException(status_code=503, detail="Metrics store unavailable") from None
+    seen_procs = {labels.get("process"): v for labels, v in procs}
+    seen_svcs = {labels.get("service"): v for labels, v in svcs}
+    checks = []
+    for (kind, name), rule_ids in sorted(wanted.items()):
+        value = (seen_procs if kind == "process" else seen_svcs).get(name)
+        state = "waiting" if value is None else ("running" if value >= 1 else "stopped")
+        checks.append(
+            CheckOut(
+                kind=kind,
+                name=name,
+                state=state,
+                processes=int(value) if kind == "process" and value is not None else None,
+                rule_ids=rule_ids,
+            )
+        )
+    return ChecksOut(checks=checks, failed_units=int(failed[0][1]) if failed else None)
+
+
 class Series(BaseModel):
     labels: dict[str, str]
     points: list[list[float]]  # [unix seconds, value]
@@ -204,7 +448,21 @@ class MetricsOut(BaseModel):
     series: list[Series]
 
 
-MetricName = Literal["cpu", "memory", "swap", "disk", "load", "network"]
+MetricName = Literal[
+    "cpu",
+    "cpu_modes",
+    "cpu_cores",
+    "memory",
+    "swap",
+    "disk",
+    "inodes",
+    "disk_io",
+    "disk_iops",
+    "disk_busy",
+    "load",
+    "network",
+    "processes",
+]
 
 
 @router.get("/hosts/{host_id}/metrics")

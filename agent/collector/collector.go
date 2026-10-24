@@ -12,6 +12,9 @@ import (
 
 type Collector interface {
 	Collect(ctx context.Context) ([]proto.Sample, error)
+	// Watch sets the processes and services to report on even when idle or
+	// absent (alert rules for "nginx isn't running" need a 0, not silence).
+	Watch(processes, services []string)
 }
 
 // HostInfo describes the machine at registration time.
