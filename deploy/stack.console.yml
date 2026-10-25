@@ -50,6 +50,7 @@ services:
       DATABASE_SERVICE_URL: *service_db_py
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
+      LOKI_URL: http://loki:3100
       PUBLIC_API_URL: https://${CONSOLE_HOST:?}/api/pulsegrid
       PUBLIC_DOWNLOAD_URL: https://${CONSOLE_HOST}/api/pulsegrid
       PUBLIC_INGEST_URL: https://${CONSOLE_HOST}/pulsegrid/ingest
@@ -88,6 +89,7 @@ services:
       DATABASE_URL: *service_db_go
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
+      LOKI_URL: http://loki:3100
       PUBLIC_INGEST_URL: https://${CONSOLE_HOST}/pulsegrid/ingest
       PUBLIC_DOWNLOAD_URL: https://${CONSOLE_HOST}/api/pulsegrid
       AGENT_VERSION: ${PULSEGRID_VERSION}
@@ -199,7 +201,21 @@ services:
     networks: [backend]
     deploy: *placement
 
+  # Log search: one Loki tenant per account (auth_enabled).
+  loki:
+    image: grafana/loki:3.5.7
+    command: ["-config.file=/etc/loki/loki.yml"]
+    configs:
+      - source: loki
+        target: /etc/loki/loki.yml
+    volumes:
+      - loki-data:/loki
+    networks: [backend]
+    deploy: *placement
+
 configs:
+  loki:
+    file: ./loki/loki.yml
   init_roles:
     file: ./postgres/init-roles.sh
 
@@ -208,6 +224,7 @@ volumes:
   redis-data:
   vm-data:
   vm-long-data:
+  loki-data:
 
 networks:
   backend:
