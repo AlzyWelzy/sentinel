@@ -1,0 +1,52 @@
+# Tempo for Pulsegrid APM. multitenancy_enabled makes every request name its
+# tenant (X-Scope-OrgID = the Pulsegrid account id): ingest writes with it,
+# the API reads with it. local-blocks lets the API ask TraceQL metrics
+# (request rate, errors, latency percentiles) without a separate store.
+multitenancy_enabled: true
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 168h # 7 days
+
+metrics_generator:
+  storage:
+    path: /var/tempo/generator/wal
+  traces_storage:
+    path: /var/tempo/generator/traces
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [local-blocks]
+    ingestion:
+      rate_limit_bytes: 5000000
+      burst_size_bytes: 10000000
+      max_traces_per_user: 20000
+    global:
+      max_bytes_per_trace: 5000000
+
+usage_report:
+  reporting_enabled: false

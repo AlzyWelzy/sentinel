@@ -29,7 +29,8 @@ type server struct {
 	store   *store
 	cache   *cache
 	vm      *victoriaMetrics
-	loki    *loki // nil when log search is off
+	loki    *loki  // nil when log search is off
+	tempo   *tempo // nil when APM is off
 	log     *slog.Logger
 	configs *configCache
 }
@@ -40,6 +41,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /v1/metrics", s.handleMetrics)
 	mux.HandleFunc("GET /v1/agent/config", s.handleAgentConfig)
 	mux.HandleFunc("POST /v1/logs", s.handleLogs)
+	mux.HandleFunc("POST /v1/traces", s.handleTraces)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("ok"))
 	})
@@ -204,6 +206,27 @@ func (s *server) authenticate(w http.ResponseWriter, r *http.Request) (hostIdent
 		return hostIdentity{}, false
 	}
 	return id, true
+}
+
+// readBody returns the request body, inflated if gzipped, up to maxBodyBytes.
+func readBody(r *http.Request) ([]byte, error) {
+	var reader io.Reader = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			return nil, errors.New("invalid gzip body")
+		}
+		defer gz.Close()
+		reader = gz
+	}
+	body, err := io.ReadAll(io.LimitReader(reader, maxBodyBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxBodyBytes {
+		return nil, errors.New("body too large")
+	}
+	return body, nil
 }
 
 func decodeBody(r *http.Request, v any) error {

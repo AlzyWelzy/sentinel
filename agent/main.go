@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/example-org/pulsegrid/agent/apm"
 	"github.com/example-org/pulsegrid/agent/checks"
 	"github.com/example-org/pulsegrid/agent/collector"
 	"github.com/example-org/pulsegrid/agent/logs"
@@ -240,6 +241,7 @@ func (a *agent) loop(ctx context.Context) {
 	a.refreshConfig(ctx)
 	go a.checkLoop(ctx)
 	go a.logLoop(ctx)
+	go a.apmLoop(ctx)
 	ticker := time.NewTicker(a.interval())
 	defer ticker.Stop()
 	lastRefresh := time.Now()
@@ -348,6 +350,66 @@ func (a *agent) logLoop(ctx context.Context) {
 			shipper.Commit()
 		default:
 			a.log.Warn("log push failed; will retry", "err", err)
+		}
+	}
+}
+
+// apmLoop runs the local OTLP receiver while apm.conf asks for it,
+// restarting it when the file changes.
+func (a *agent) apmLoop(ctx context.Context) {
+	var running context.CancelFunc
+	var current apm.Config
+	failed := make(chan struct{}, 1) // the receiver exited with an error: retry
+	stop := func() {
+		if running != nil {
+			running()
+			running = nil
+		}
+	}
+	defer stop()
+	forward := func(fctx context.Context, contentType string, body []byte) (bool, error) {
+		pctx, cancel := context.WithTimeout(fctx, 30*time.Second)
+		defer cancel()
+		err := a.client.traces(pctx, a.st.IngestURL, a.st.HostToken, contentType, body)
+		var se *statusError
+		if errors.As(err, &se) && (se.permanent() || se.Code == http.StatusNotFound) {
+			return false, err
+		}
+		return err != nil, err
+	}
+	for {
+		select {
+		case <-failed:
+			stop()
+		default:
+		}
+		cfg, on, err := apm.LoadConfig(a.configDir)
+		if err != nil {
+			a.log.Warn("apm.conf unusable", "err", err)
+		}
+		switch {
+		case (!on || err != nil) && running != nil:
+			stop()
+			a.log.Info("APM receiver stopped")
+		case on && err == nil && (running == nil || cfg != current):
+			stop()
+			rctx, cancel := context.WithCancel(ctx)
+			running, current = cancel, cfg
+			recv := apm.NewReceiver(a.log, forward)
+			go func() {
+				if err := recv.Run(rctx, cfg); err != nil {
+					a.log.Error("APM receiver failed; retrying in a minute", "err", err, "addr", cfg.Listen)
+					select {
+					case failed <- struct{}{}:
+					default:
+					}
+				}
+			}()
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(pluginReloadEvery):
 		}
 	}
 }

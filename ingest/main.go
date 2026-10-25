@@ -29,6 +29,9 @@ type config struct {
 	// Loki for log search; empty turns it off.
 	LokiURL           string
 	LogLinesPerMinute int
+	// Tempo for APM traces; empty turns it off.
+	TempoURL       string
+	SpansPerMinute int
 }
 
 func loadConfig() config {
@@ -43,6 +46,8 @@ func loadConfig() config {
 		DownloadURL:       os.Getenv("PUBLIC_DOWNLOAD_URL"),
 		LokiURL:           os.Getenv("LOKI_URL"),
 		LogLinesPerMinute: envInt("LOG_LINES_PER_MINUTE", 6000),
+		TempoURL:          os.Getenv("TEMPO_URL"),
+		SpansPerMinute:    envInt("SPANS_PER_MINUTE", 30000),
 	}
 }
 
@@ -75,6 +80,9 @@ func main() {
 		vm:      &victoriaMetrics{baseURL: cfg.VictoriaMetrics, client: &http.Client{Timeout: 15 * time.Second}},
 		log:     log,
 		configs: newConfigCache(),
+	}
+	if cfg.TempoURL != "" {
+		srv.tempo = &tempo{baseURL: cfg.TempoURL, client: &http.Client{Timeout: 15 * time.Second}}
 	}
 	if cfg.LokiURL != "" {
 		srv.loki = &loki{baseURL: cfg.LokiURL, client: &http.Client{Timeout: 15 * time.Second}}

@@ -111,10 +111,15 @@ func (c *cache) storeCheckResults(ctx context.Context, id hostIdentity, hc *host
 // takeLogQuota counts lines against the host's per-minute allowance and
 // returns how many of n may go in.
 func (c *cache) takeLogQuota(ctx context.Context, hostID string, n, perMinute int) (int, error) {
+	return c.takeQuota(ctx, "logquota", hostID, n, perMinute)
+}
+
+// takeQuota counts n against a per-host, per-minute allowance named kind.
+func (c *cache) takeQuota(ctx context.Context, kind, hostID string, n, perMinute int) (int, error) {
 	if perMinute <= 0 || n == 0 {
 		return n, nil
 	}
-	key := fmt.Sprintf("pulsegrid:logquota:%s:%d", hostID, time.Now().Unix()/60)
+	key := fmt.Sprintf("pulsegrid:%s:%s:%d", kind, hostID, time.Now().Unix()/60)
 	used, err := c.rdb.IncrBy(ctx, key, int64(n)).Result()
 	if err != nil {
 		return n, err

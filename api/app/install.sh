@@ -139,6 +139,11 @@ logs.conf               log files to ship for log search (nothing is shipped wit
     journal = true      (systemd journal; the agent's user is in systemd-journal)
   New lines only, from when a file is first seen. The agent's user must be able
   to read the files (it's in the adm group, which covers most of /var/log).
+
+apm.conf                receive OpenTelemetry traces from apps on this server:
+    listen = 127.0.0.1:4318
+  Then run your apps with OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+  (and OTEL_SERVICE_NAME=<name>); traces appear under APM in the dashboard.
 PULSEGRID_README
     chmod 0644 "$CONFIG_DIR/README"
 }

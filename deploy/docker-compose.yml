@@ -67,6 +67,17 @@ services:
     ports:
       - "127.0.0.1:${LOKI_PORT:-3100}:3100"
 
+  tempo:
+    image: grafana/tempo:2.8.2
+    user: "0"
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:${TEMPO_PORT:-3200}:3200"
+      - "127.0.0.1:${TEMPO_OTLP_PORT:-4319}:4318"
+
   migrate:
     build:
       context: ..
@@ -97,6 +108,7 @@ services:
       ACK_SIGNING_SECRET: change-me-ack-secret
       VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
       LOKI_URL: http://loki:3100
+      TEMPO_URL: http://tempo:3200
       PUBLIC_DASHBOARD_URL: ${PUBLIC_DASHBOARD_URL:-http://localhost:5173/monitoring?tab=servers}
       ENABLED_CHANNEL_TYPES: ${ENABLED_CHANNEL_TYPES:-email,push,webhook}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
@@ -126,6 +138,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
       LOKI_URL: http://loki:3100
+      TEMPO_URL: http://tempo:4318
       PUBLIC_INGEST_URL: ${PUBLIC_INGEST_URL:-http://localhost:8080}
       PUBLIC_DOWNLOAD_URL: ${PUBLIC_DOWNLOAD_URL:-http://localhost:8000}
       AGENT_VERSION: ${AGENT_VERSION:-dev}
@@ -193,3 +206,4 @@ volumes:
   vm-data:
   vm-long-data:
   loki-data:
+  tempo-data:

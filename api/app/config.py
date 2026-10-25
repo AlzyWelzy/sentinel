@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     # Loki for log search (ingest writes, the API reads, one Loki tenant per
     # account). Empty: log search is off.
     LOKI_URL: str = ""
+    # Tempo's query API for APM (ingest writes OTLP to it). Empty: APM is off.
+    TEMPO_URL: str = ""
 
     # Where links in report emails point (the console's Monitoring page).
     PUBLIC_DASHBOARD_URL: str = ""

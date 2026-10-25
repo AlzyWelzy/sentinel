@@ -51,6 +51,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
       LOKI_URL: http://loki:3100
+      TEMPO_URL: http://tempo:3200
       PUBLIC_API_URL: https://${CONSOLE_HOST:?}/api/pulsegrid
       PUBLIC_DOWNLOAD_URL: https://${CONSOLE_HOST}/api/pulsegrid
       PUBLIC_INGEST_URL: https://${CONSOLE_HOST}/pulsegrid/ingest
@@ -90,6 +91,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
       LOKI_URL: http://loki:3100
+      TEMPO_URL: http://tempo:4318
       PUBLIC_INGEST_URL: https://${CONSOLE_HOST}/pulsegrid/ingest
       PUBLIC_DOWNLOAD_URL: https://${CONSOLE_HOST}/api/pulsegrid
       AGENT_VERSION: ${PULSEGRID_VERSION}
@@ -213,7 +215,22 @@ services:
     networks: [backend]
     deploy: *placement
 
+  # APM traces: one Tempo tenant per account (multitenancy_enabled).
+  tempo:
+    image: grafana/tempo:2.8.2
+    user: "0"
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    configs:
+      - source: tempo
+        target: /etc/tempo/tempo.yml
+    volumes:
+      - tempo-data:/var/tempo
+    networks: [backend]
+    deploy: *placement
+
 configs:
+  tempo:
+    file: ./tempo/tempo.yml
   loki:
     file: ./loki/loki.yml
   init_roles:
@@ -225,6 +242,7 @@ volumes:
   vm-data:
   vm-long-data:
   loki-data:
+  tempo-data:
 
 networks:
   backend:
