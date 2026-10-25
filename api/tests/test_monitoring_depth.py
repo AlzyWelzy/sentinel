@@ -509,3 +509,35 @@ async def test_console_uptime_alerts_reach_push_devices(client, alice: User):
     assert r.json() == {"queued": 0}
     r = await client.post(f"/internal/v1/tenants/{alice.uid}/notify", json=body)
     assert r.status_code == 401
+
+
+async def test_console_asks_whether_an_address_is_in_maintenance(client, alice: User):
+    headers = {"X-Internal-Api-Key": settings.INTERNAL_API_KEY}
+    tid = await alice.tenant_id()
+    host = await insert_host(tid, "Web-1.example.com")
+    async with ServiceSession() as db, db.begin():
+        await db.execute(
+            text("UPDATE hosts SET ip_addresses = '{203.0.113.7}' WHERE id = :h"), {"h": host}
+        )
+    url = f"/internal/v1/tenants/{alice.uid}/maintenance"
+
+    async def ask(address):
+        r = await client.get(url, params={"address": address}, headers=headers)
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    assert (await ask("203.0.113.7"))["in_maintenance"] is False
+    now = datetime.now(UTC)
+    window = {
+        "name": "upgrade",
+        "host_id": str(host),
+        "schedule": "once",
+        "starts_at": (now - timedelta(minutes=5)).isoformat(),
+        "ends_at": (now + timedelta(hours=1)).isoformat(),
+    }
+    assert (await alice.request("POST", "/v1/maintenance", json=window)).status_code == 201
+    assert await ask("203.0.113.7") == {"in_maintenance": True, "hosts": ["Web-1.example.com"]}
+    assert (await ask("web-1.example.com"))["in_maintenance"] is True
+    assert (await ask("198.51.100.1"))["in_maintenance"] is False
+    r = await client.get(url, params={"address": "203.0.113.7"})
+    assert r.status_code == 401

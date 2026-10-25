@@ -12,15 +12,23 @@ from typing import Annotated, Literal
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select, text
+from sqlalchemy import any_, func, literal, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.internal import verify_internal_api_key
 from app.config import settings
 from app.db import service_session
-from app.models import AgentKey, Host, NotificationChannel, OutboundMessage, Tenant
+from app.models import (
+    AgentKey,
+    Host,
+    MaintenanceWindow,
+    NotificationChannel,
+    OutboundMessage,
+    Tenant,
+)
 from app.routes.v1 import cloud_init, install_command, install_command_windows
 from app.services import heartbeats
+from app.services.maintenance import in_maintenance
 from app.services.secrets import new_agent_key
 from app.validation import normalize_tags
 
@@ -217,3 +225,48 @@ async def notify(external_account_id: str, body: NotifyIn, db: ServiceDB) -> Not
         )
         queued += 1
     return NotifyOut(queued=queued)
+
+
+class MaintenanceOut(BaseModel):
+    in_maintenance: bool
+    hosts: list[str]
+
+
+@router.get("/tenants/{external_account_id}/maintenance")
+async def maintenance_for_address(
+    external_account_id: str, address: str, db: ServiceDB
+) -> MaintenanceOut:
+    """Is the user's server at this IP or hostname in a maintenance window
+    right now? The console asks before alerting on an uptime check aimed at
+    it, so one maintenance window quiets both kinds of alert."""
+    address = address.strip().lower()
+    tenant = await db.scalar(
+        select(Tenant).where(
+            Tenant.source == settings.TENANT_SOURCE,
+            Tenant.external_account_id == external_account_id,
+        )
+    )
+    if tenant is None or not address:
+        return MaintenanceOut(in_maintenance=False, hosts=[])
+    hosts = list(
+        await db.scalars(
+            select(Host).where(
+                Host.tenant_id == tenant.id,
+                Host.revoked_at.is_(None),
+                (func.lower(Host.hostname) == address)
+                | (literal(address) == any_(Host.ip_addresses)),
+            )
+        )
+    )
+    if not hosts:
+        return MaintenanceOut(in_maintenance=False, hosts=[])
+    windows = list(
+        await db.scalars(
+            select(MaintenanceWindow).where(
+                MaintenanceWindow.tenant_id == tenant.id, MaintenanceWindow.enabled
+            )
+        )
+    )
+    now = datetime.now(UTC)
+    covered = [h.hostname for h in hosts if in_maintenance(windows, h, now)]
+    return MaintenanceOut(in_maintenance=bool(covered), hosts=covered)
