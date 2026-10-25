@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from app.routes.statuspages import _cache
@@ -16,7 +17,8 @@ async def _page(alice: User, slug: str, items=None) -> dict:
 
 
 async def test_announcements_lifecycle(alice: User, bob: User, client):
-    page = await _page(alice, "acme-announce")
+    slug = f"acme-{uuid.uuid4().hex[:8]}"
+    page = await _page(alice, slug)
     url = f"/v1/status-pages/{page['id']}/updates"
     r = await alice.request(
         "POST",
@@ -30,10 +32,10 @@ async def test_announcements_lifecycle(alice: User, bob: User, client):
     )
     assert r.status_code == 201, r.text
     upd = r.json()
-    pub = (await client.get("/public/status/acme-announce")).json()
+    pub = (await client.get(f"/public/status/{slug}")).json()
     assert [a["title"] for a in pub["active"]] == ["Checkout errors"] and pub["history"] == []
     assert pub["status"] == "degraded"
-    html = (await client.get("/status/acme-announce")).text
+    html = (await client.get(f"/status/{slug}")).text
     assert "Checkout errors" in html and "Investigating" in html
     # Resolving moves it to history.
     r = await alice.request(
@@ -43,7 +45,7 @@ async def test_announcements_lifecycle(alice: User, bob: User, client):
     )
     assert r.status_code == 200, r.text
     _cache.clear()
-    pub = (await client.get("/public/status/acme-announce")).json()
+    pub = (await client.get(f"/public/status/{slug}")).json()
     assert pub["active"] == [] and pub["history"][0]["state"] == "resolved"
     # Validation, isolation, delete.
     bad = {"kind": "incident", "state": "scheduled", "title": "x"}
@@ -58,7 +60,8 @@ async def test_announcements_lifecycle(alice: User, bob: User, client):
 async def test_maintenance_windows_announce_themselves(alice: User, client):
     tid = await alice.tenant_id()
     host = await insert_host(tid, "web-1")
-    await _page(alice, "acme-mw", items=[{"label": "Shop", "host_id": str(host)}])
+    slug = f"acme-mw-{uuid.uuid4().hex[:8]}"
+    await _page(alice, slug, items=[{"label": "Shop", "host_id": str(host)}])
     now = datetime.now(UTC)
     window = {
         "name": "upgrade",
@@ -69,7 +72,7 @@ async def test_maintenance_windows_announce_themselves(alice: User, client):
     }
     assert (await alice.request("POST", "/v1/maintenance", json=window)).status_code == 201
     _cache.clear()
-    pub = (await client.get("/public/status/acme-mw")).json()
+    pub = (await client.get(f"/public/status/{slug}")).json()
     assert pub["active"][0]["title"] == "Planned maintenance: Shop"
     assert pub["active"][0]["state"] == "in_progress"
     assert "web-1" not in str(pub)  # labels only, never hostnames
