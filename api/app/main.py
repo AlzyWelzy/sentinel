@@ -15,6 +15,7 @@ from app.routes import (
     hostops,
     install,
     internal,
+    logs,
     maintenance,
     members,
     reports,
@@ -40,6 +41,7 @@ app.include_router(hostops.router)
 app.include_router(apps.router)
 app.include_router(tokens.router)
 app.include_router(members.router)
+app.include_router(logs.router)
 app.include_router(statuspages.router)
 app.include_router(statuspages.public)
 app.include_router(reports.router)

@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/example-org/pulsegrid/agent/checks"
 	"github.com/example-org/pulsegrid/agent/collector"
+	"github.com/example-org/pulsegrid/agent/logs"
 	"github.com/example-org/pulsegrid/agent/plugins"
 	"github.com/example-org/pulsegrid/proto"
 )
@@ -46,6 +48,8 @@ const (
 	// Plugin files are re-read this often, so a new one is picked up
 	// without restarting the agent.
 	pluginReloadEvery     = time.Minute
+	logShipEvery          = 10 * time.Second
+	maxLogLinesPerPush    = 2000
 	defaultInventoryEvery = 6 * time.Hour
 	maxDoneActions        = 100
 )
@@ -206,6 +210,7 @@ type agent struct {
 	pluginErr        []error
 	pluginsAt        time.Time
 	lastPluginStatus []proto.PluginStatus
+	logStatus        *proto.LogsStatus
 	inventoryAt      time.Time
 	// Waiting to go out with the next successful push.
 	mu            sync.Mutex
@@ -233,6 +238,7 @@ func (a *agent) loop(ctx context.Context) {
 	a.doneActions = slices.Clone(a.st.DoneActions)
 	a.refreshConfig(ctx)
 	go a.checkLoop(ctx)
+	go a.logLoop(ctx)
 	ticker := time.NewTicker(a.interval())
 	defer ticker.Stop()
 	lastRefresh := time.Now()
@@ -283,6 +289,72 @@ func (a *agent) checkLoop(ctx context.Context) {
 		case <-t.C:
 		}
 	}
+}
+
+// logLoop ships new lines from the sources in logs.conf. Ingest answering
+// 404 means log search isn't enabled there: try again much later.
+func (a *agent) logLoop(ctx context.Context) {
+	shipper := logs.NewShipper(a.stateDir)
+	var cfg logs.Config
+	var on bool
+	var loadedAt time.Time
+	wait := logShipEvery
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+		wait = logShipEvery
+		if loadedAt.IsZero() || time.Since(loadedAt) >= pluginReloadEvery {
+			var err error
+			cfg, on, err = logs.LoadConfig(a.configDir)
+			loadedAt = time.Now()
+			if err != nil {
+				a.log.Warn("logs.conf unusable", "err", err)
+				a.setLogStatus(&proto.LogsStatus{Problems: []string{err.Error()}})
+				continue
+			}
+			if !on {
+				a.setLogStatus(nil)
+				continue
+			}
+		}
+		if !on {
+			continue
+		}
+		entries, problems := shipper.Collect(cfg, maxLogLinesPerPush)
+		a.setLogStatus(&proto.LogsStatus{Files: cfg.Files, Journal: cfg.Journal, Problems: problems})
+		if len(entries) == 0 {
+			shipper.Commit()
+			continue
+		}
+		pushCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		_, err := a.client.logs(pushCtx, a.st.IngestURL, a.st.HostToken, proto.LogsRequest{Entries: entries})
+		cancel()
+		var se *statusError
+		switch {
+		case err == nil:
+			shipper.Commit()
+			if len(entries) == maxLogLinesPerPush {
+				wait = time.Second // more waiting: catch up
+			}
+		case errors.As(err, &se) && se.Code == http.StatusNotFound:
+			a.log.Info("log search isn't enabled on this Pulsegrid; will check again later")
+			wait = 10 * time.Minute
+		case errors.As(err, &se) && se.permanent():
+			a.log.Warn("ingest rejected log lines; skipping them", "err", err)
+			shipper.Commit()
+		default:
+			a.log.Warn("log push failed; will retry", "err", err)
+		}
+	}
+}
+
+func (a *agent) setLogStatus(st *proto.LogsStatus) {
+	a.mu.Lock()
+	a.logStatus = st
+	a.mu.Unlock()
 }
 
 // pluginSamples runs the locally configured plugins, re-reading their files
@@ -367,6 +439,7 @@ func (a *agent) maybeInventory(ctx context.Context) {
 		inv.AllowedActions = allowedActionNames(allowed)
 		a.mu.Lock()
 		inv.Plugins = a.lastPluginStatus
+		inv.Logs = a.logStatus
 		a.inventory = &inv
 		a.mu.Unlock()
 	}()

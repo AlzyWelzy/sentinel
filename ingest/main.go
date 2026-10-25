@@ -26,18 +26,23 @@ type config struct {
 	IntervalSeconds int
 	AgentVersion    string
 	DownloadURL     string
+	// Loki for log search; empty turns it off.
+	LokiURL           string
+	LogLinesPerMinute int
 }
 
 func loadConfig() config {
 	return config{
-		ListenAddr:      env("LISTEN_ADDR", ":8080"),
-		DatabaseURL:     env("DATABASE_URL", "postgres://pulsegrid_service:pulsegrid_service@localhost:5432/pulsegrid"),
-		RedisURL:        env("REDIS_URL", "redis://localhost:6379/0"),
-		VictoriaMetrics: env("VICTORIAMETRICS_URL", "http://localhost:8428"),
-		PublicIngestURL: env("PUBLIC_INGEST_URL", "http://localhost:8080"),
-		IntervalSeconds: envInt("AGENT_INTERVAL_SECONDS", 30),
-		AgentVersion:    os.Getenv("AGENT_VERSION"),
-		DownloadURL:     os.Getenv("PUBLIC_DOWNLOAD_URL"),
+		ListenAddr:        env("LISTEN_ADDR", ":8080"),
+		DatabaseURL:       env("DATABASE_URL", "postgres://pulsegrid_service:pulsegrid_service@localhost:5432/pulsegrid"),
+		RedisURL:          env("REDIS_URL", "redis://localhost:6379/0"),
+		VictoriaMetrics:   env("VICTORIAMETRICS_URL", "http://localhost:8428"),
+		PublicIngestURL:   env("PUBLIC_INGEST_URL", "http://localhost:8080"),
+		IntervalSeconds:   envInt("AGENT_INTERVAL_SECONDS", 30),
+		AgentVersion:      os.Getenv("AGENT_VERSION"),
+		DownloadURL:       os.Getenv("PUBLIC_DOWNLOAD_URL"),
+		LokiURL:           os.Getenv("LOKI_URL"),
+		LogLinesPerMinute: envInt("LOG_LINES_PER_MINUTE", 6000),
 	}
 }
 
@@ -70,6 +75,9 @@ func main() {
 		vm:      &victoriaMetrics{baseURL: cfg.VictoriaMetrics, client: &http.Client{Timeout: 15 * time.Second}},
 		log:     log,
 		configs: newConfigCache(),
+	}
+	if cfg.LokiURL != "" {
+		srv.loki = &loki{baseURL: cfg.LokiURL, client: &http.Client{Timeout: 15 * time.Second}}
 	}
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,

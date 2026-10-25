@@ -108,6 +108,15 @@ type Inventory struct {
 	AllowedActions []string `json:"allowed_actions,omitempty"`
 	// Plugins configured locally and whether their last run worked.
 	Plugins []PluginStatus `json:"plugins,omitempty"`
+	// Log shipping as configured in logs.conf; nil when it's off.
+	Logs *LogsStatus `json:"logs,omitempty"`
+}
+
+// LogsStatus is what the agent ships and what it couldn't read.
+type LogsStatus struct {
+	Files    []string `json:"files,omitempty"`
+	Journal  bool     `json:"journal,omitempty"`
+	Problems []string `json:"problems,omitempty"`
 }
 
 type Package struct {
@@ -172,4 +181,27 @@ type HostMeta struct {
 	IPAddresses     []string `json:"ip_addresses,omitempty"`
 	CPUCores        int      `json:"cpu_cores,omitempty"`
 	MemoryBytes     uint64   `json:"memory_bytes,omitempty"`
+}
+
+// LogsRequest carries new log lines from the files and journal the server's
+// administrator chose to ship (logs.conf). Sent apart from metrics, at most
+// every few seconds.
+type LogsRequest struct {
+	Entries []LogEntry `json:"entries"`
+}
+
+// LogEntry is one log line. Level is detected by the agent (journal
+// priority, or a level word in the line) and may be empty.
+type LogEntry struct {
+	TimestampNs int64  `json:"ts"`
+	Source      string `json:"source"`
+	Level       string `json:"level,omitempty"`
+	Line        string `json:"line"`
+}
+
+// LogsResponse says how many lines were kept. Ingest drops lines over the
+// host's rate limit rather than failing the request.
+type LogsResponse struct {
+	Accepted int `json:"accepted"`
+	Dropped  int `json:"dropped"`
 }

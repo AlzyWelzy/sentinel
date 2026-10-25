@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -105,4 +106,28 @@ func (c *cache) storeCheckResults(ctx context.Context, id hostIdentity, hc *host
 	}
 	_, err := pipe.Exec(ctx)
 	return err
+}
+
+// takeLogQuota counts lines against the host's per-minute allowance and
+// returns how many of n may go in.
+func (c *cache) takeLogQuota(ctx context.Context, hostID string, n, perMinute int) (int, error) {
+	if perMinute <= 0 || n == 0 {
+		return n, nil
+	}
+	key := fmt.Sprintf("pulsegrid:logquota:%s:%d", hostID, time.Now().Unix()/60)
+	used, err := c.rdb.IncrBy(ctx, key, int64(n)).Result()
+	if err != nil {
+		return n, err
+	}
+	if used == int64(n) {
+		c.rdb.Expire(ctx, key, 2*time.Minute)
+	}
+	before := int(used) - n
+	switch {
+	case before >= perMinute:
+		return 0, nil
+	case int(used) > perMinute:
+		return perMinute - before, nil
+	}
+	return n, nil
 }

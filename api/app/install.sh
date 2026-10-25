@@ -113,8 +113,8 @@ setup_config_dir() {
     mkdir -p "$CONFIG_DIR/plugins.d" "$CONFIG_DIR/scripts"
     chown root "$CONFIG_DIR" "$CONFIG_DIR/plugins.d" "$CONFIG_DIR/scripts"
     chmod 0755 "$CONFIG_DIR" "$CONFIG_DIR/plugins.d" "$CONFIG_DIR/scripts"
-    if [ ! -f "$CONFIG_DIR/README" ]; then
-        cat >"$CONFIG_DIR/README" <<'PULSEGRID_README'
+    # Ours, so rewritten on every install to describe this version.
+    cat >"$CONFIG_DIR/README" <<'PULSEGRID_README'
 Pulsegrid agent configuration (root-owned; the agent only reads it).
 
 plugins.d/<name>.conf   one plugin per file, "key = value" lines:
@@ -132,9 +132,15 @@ plugins.d/<name>.conf   one plugin per file, "key = value" lines:
 actions.conf            actions the dashboard may run on this server. Manage with:
     sudo pulsegrid-agent allow-action restart-nginx -- /usr/bin/systemctl restart nginx
     sudo pulsegrid-agent allow-action --remove restart-nginx
+
+logs.conf               log files to ship for log search (nothing is shipped without it):
+    file = /var/log/nginx/*.log
+    file = /var/log/myapp/app.log
+    journal = true      (systemd journal; the agent's user is in systemd-journal)
+  New lines only, from when a file is first seen. The agent's user must be able
+  to read the files (it's in the adm group, which covers most of /var/log).
 PULSEGRID_README
-        chmod 0644 "$CONFIG_DIR/README"
-    fi
+    chmod 0644 "$CONFIG_DIR/README"
 }
 
 install_systemd() {

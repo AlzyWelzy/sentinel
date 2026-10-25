@@ -29,6 +29,7 @@ type server struct {
 	store   *store
 	cache   *cache
 	vm      *victoriaMetrics
+	loki    *loki // nil when log search is off
 	log     *slog.Logger
 	configs *configCache
 }
@@ -38,6 +39,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /v1/register", s.handleRegister)
 	mux.HandleFunc("POST /v1/metrics", s.handleMetrics)
 	mux.HandleFunc("GET /v1/agent/config", s.handleAgentConfig)
+	mux.HandleFunc("POST /v1/logs", s.handleLogs)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("ok"))
 	})

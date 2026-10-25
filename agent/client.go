@@ -90,6 +90,12 @@ func (c *client) push(ctx context.Context, baseURL, token string, req proto.Metr
 	return resp, err
 }
 
+func (c *client) logs(ctx context.Context, baseURL, token string, req proto.LogsRequest) (proto.LogsResponse, error) {
+	var resp proto.LogsResponse
+	err := c.do(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/v1/logs", token, req, &resp)
+	return resp, err
+}
+
 func (c *client) config(ctx context.Context, baseURL, token string) (proto.AgentConfig, error) {
 	var cfg proto.AgentConfig
 	err := c.do(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/agent/config", token, nil, &cfg)

@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # Raw samples are kept this long (VictoriaMetrics -retentionPeriod);
     # older ranges are read from the rollups.
     RAW_RETENTION_DAYS: int = 90
+    # Loki for log search (ingest writes, the API reads, one Loki tenant per
+    # account). Empty: log search is off.
+    LOKI_URL: str = ""
 
     # Where links in report emails point (the console's Monitoring page).
     PUBLIC_DASHBOARD_URL: str = ""
