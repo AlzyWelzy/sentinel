@@ -55,7 +55,7 @@ services:
       PUBLIC_API_URL: https://${CONSOLE_HOST:?}/api/pulsegrid
       PUBLIC_DOWNLOAD_URL: https://${CONSOLE_HOST}/api/pulsegrid
       PUBLIC_INGEST_URL: https://${CONSOLE_HOST}/pulsegrid/ingest
-      AGENT_VERSION: ${PULSEGRID_VERSION}
+      AGENT_VERSION: ${AGENT_VERSION:?}
       CORS_ORIGINS: https://${CONSOLE_HOST}
       JWKS_URI: ${JWKS_URI:-http://console-backend:8000/api/.well-known/jwks.json/}
       JWT_TOKEN_ISSUER: ${JWT_TOKEN_ISSUER:?}
@@ -94,7 +94,7 @@ services:
       TEMPO_URL: http://tempo:4318
       PUBLIC_INGEST_URL: https://${CONSOLE_HOST}/pulsegrid/ingest
       PUBLIC_DOWNLOAD_URL: https://${CONSOLE_HOST}/api/pulsegrid
-      AGENT_VERSION: ${PULSEGRID_VERSION}
+      AGENT_VERSION: ${AGENT_VERSION:?}
     networks:
       backend: {}
       console:
@@ -137,6 +137,8 @@ services:
     command: ["python", "-m", "app.jobs"]
     environment:
       ENVIRONMENT: production
+      AGENT_VERSION: ${AGENT_VERSION:?}
+      AGENT_CANARY_PERCENT: ${AGENT_CANARY_PERCENT:-10}
       DATABASE_APP_URL: *app_db
       DATABASE_SERVICE_URL: *service_db_py
       REDIS_URL: redis://redis:6379/0

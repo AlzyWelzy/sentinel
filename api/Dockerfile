@@ -1,7 +1,19 @@
-# Build context is the repo root: the image carries the agent binaries for
-# its own release (served at <PUBLIC_DOWNLOAD_URL>/agent/<version>/), so a
-# deployment needs no separate download hosting.
+# Build context is the repo root: the image carries the agent binaries
+# (served at <PUBLIC_DOWNLOAD_URL>/agent/<version>/), so a deployment needs no
+# separate download hosting. AGENT_VERSION is agent/VERSION, not the release:
+# a server-only release ships the same agent.
+#
+# PREVIOUS_AGENTS (the last API image) carries the versions it served, so
+# rollbacks and pinned accounts can still download them; the newest
+# KEEP_AGENT_VERSIONS are kept.
 ARG AGENT_VERSION=dev
+ARG PREVIOUS_AGENTS=no-previous-agents
+ARG KEEP_AGENT_VERSIONS=6
+
+FROM busybox:1.37 AS no-previous-agents
+RUN mkdir -p /app/dist
+
+FROM ${PREVIOUS_AGENTS} AS previous
 
 # Agent binaries don't depend on the image's architecture: build them
 # natively on the build machine.
@@ -14,6 +26,15 @@ COPY scripts/build-agents.sh ./scripts/
 COPY proto ./proto
 COPY agent ./agent
 RUN sh scripts/build-agents.sh "$AGENT_VERSION" "/dist/$AGENT_VERSION"
+
+FROM busybox:1.37 AS dist
+ARG AGENT_VERSION
+ARG KEEP_AGENT_VERSIONS
+COPY --from=previous /app/dist /dist
+COPY --from=agents /dist /dist
+# Newest first by version number; drop the rest (never the one just built).
+RUN cd /dist && ls -1 | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -t. -k1,1nr -k2,2nr -k3,3nr \
+      | tail -n +$((KEEP_AGENT_VERSIONS + 1)) | grep -vx "$AGENT_VERSION" | xargs -r rm -rf
 
 FROM python:3.13-slim
 ARG AGENT_VERSION
@@ -33,7 +54,7 @@ RUN uv sync --locked --no-dev --no-install-project
 
 COPY api/ .
 RUN uv sync --locked --no-dev
-COPY --from=agents /dist ./dist
+COPY --from=dist /dist ./dist
 
 RUN useradd --system pulsegrid
 USER pulsegrid

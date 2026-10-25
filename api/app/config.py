@@ -47,7 +47,11 @@ class Settings(BaseSettings):
     PUBLIC_API_URL: str = "http://localhost:8000"
     PUBLIC_INGEST_URL: str = "http://localhost:8080"
     PUBLIC_DOWNLOAD_URL: str = "http://localhost:8000"
+    # The agent version this release ships (agent/VERSION). A newer one than
+    # the rollout's stable version starts as a candidate for this share of
+    # servers; staff promote it (or the health gate rolls it back).
     AGENT_VERSION: str = "latest"
+    AGENT_CANARY_PERCENT: int = 10
     # Local directory served at /agent/ when present (dev builds of the agent binary).
     AGENT_DIST_DIR: str = "dist"
 

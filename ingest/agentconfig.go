@@ -80,7 +80,7 @@ func (s *server) loadHostConfig(ctx context.Context, id hostIdentity) (*hostConf
 	cfg := proto.AgentConfig{
 		IngestURL:       s.cfg.PublicIngestURL,
 		IntervalSeconds: s.cfg.IntervalSeconds,
-		LatestVersion:   s.cfg.AgentVersion,
+		LatestVersion:   s.agentVersionFor(ctx, id),
 		DownloadURL:     s.cfg.DownloadURL,
 	}
 	e := &hostConfig{checks: map[string]checkDef{}}

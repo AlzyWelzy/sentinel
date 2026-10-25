@@ -124,6 +124,30 @@ services:
       # Two replicas: one evaluates, the other waits on the advisory lock.
       replicas: 2
 
+  # Monthly reports, hourly metric rollups, cleanup and agent rollouts
+  # (python -m app.jobs). Extra replicas stand by on an advisory lock.
+  jobs:
+    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-api:${PULSEGRID_VERSION:?}
+    command: ["python", "-m", "app.jobs"]
+    environment:
+      ENVIRONMENT: production
+      AGENT_VERSION: ${AGENT_VERSION:?}
+      AGENT_CANARY_PERCENT: ${AGENT_CANARY_PERCENT:-10}
+      DATABASE_APP_URL: *app_db
+      DATABASE_SERVICE_URL: *service_db_py
+      REDIS_URL: redis://redis:6379/0
+      VICTORIAMETRICS_URL: http://victoriametrics:8428
+      VICTORIAMETRICS_LONG_URL: ${VICTORIAMETRICS_LONG_URL:-}
+      PUBLIC_DASHBOARD_URL: ${PUBLIC_DASHBOARD_URL:-}
+      JWKS_URI: ${JWKS_URI:?}
+      JWT_TOKEN_ISSUER: ${JWT_TOKEN_ISSUER:?}
+      JWT_TOKEN_AUDIENCE: ${JWT_TOKEN_AUDIENCE:?}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
+    networks: [backend]
+    deploy:
+      <<: *rolling
+      replicas: 1
+
   postgres:
     image: postgres:18-alpine
     environment:

@@ -116,9 +116,26 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
   ingest keeps the package changes between inventories.
 - Picks up config changes within one push: ingest returns the config version
   with every push and the agent refetches when it changes.
-- Self-updates hourly from a separate privileged job: downloads the advertised
-  version, verifies its SHA-256, self-tests it and swaps it in atomically
-  (on Windows the running `.exe` is moved aside first).
+- Self-updates hourly from a separate privileged job: downloads the version
+  the rollout offers it, verifies its SHA-256, self-tests it and swaps it in
+  atomically (on Windows the running `.exe` is moved aside first). In a
+  container, the `pulsegrid-agent` image (`deploy/agent-container/`) does the
+  same from its entrypoint and restarts the agent on the new binary.
+
+### Agent rollouts
+
+The agent has its own version (`agent/VERSION`), so a server-only release
+ships no new agent. Ingest offers each server one version
+(`agent_rollout`, `ingest/rollout.go` = `app/services/rollout.py`): the
+account's pin if staff set one, else the candidate when the server's bucket
+(FNV-1a of the host id, mod 100) is below `candidate_percent`, else stable.
+On a deploy with a newer `AGENT_VERSION` the jobs worker makes it the
+candidate for `AGENT_CANARY_PERCENT` (10) of servers; staff promote it or
+roll it back (`/admin/v1/agent-rollout`, Fleet & probes). The health gate
+rolls a candidate back by itself once its servers go silent noticeably more
+than the rest (20% and 10 points above, after 75 minutes). Each API image
+carries the previous image's agent versions (`PREVIOUS_AGENTS`, newest 6), so
+a rollback or a pin can still download its version.
 - Host identity is the OS machine id plus the hostname. Placeholder hardware
   UUIDs (all zeros, as many hypervisors report) are rejected in favour of an
   id generated once and kept with the agent's state; including the hostname
@@ -259,7 +276,8 @@ status pages, install keys and a hosts data source, with an API token.
 lock): monthly report emails, hourly rollups of every series into the
 long-term VictoriaMetrics (`VICTORIAMETRICS_LONG_URL`; gauges keep the hourly
 average, counters the hour-end value), which charts read for ranges past raw
-retention or longer than a month, and daily cleanup.
+retention or longer than a month, daily cleanup, and agent rollouts (adopting
+a new `AGENT_VERSION` as the canary, and the health gate).
 
 ## Probes
 
@@ -298,8 +316,9 @@ Override host ports and public URLs through `deploy/.env` (`API_PORT`,
 Push a tag (`v0.2.0`). The `Release` workflow publishes
 `ghcr.io/example-org/pulsegrid-{api,ingest,alerter}:0.2.0` and attaches
 agent binaries with `.sha256` files to the GitHub release. Upload those files
-to the download host under `/agent/0.2.0/`, then bump `PULSEGRID_VERSION` and
-`AGENT_VERSION` and redeploy; installed agents update within the hour.
+to the download host under `/agent/<agent version>/`, then bump
+`PULSEGRID_VERSION` (and `AGENT_VERSION`, when `agent/VERSION` changed) and
+redeploy: a new agent version reaches the canary share first.
 Web Push needs `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` once per environment:
 `docker run --rm ghcr.io/example-org/pulsegrid-alerter:<v> vapid`.
 

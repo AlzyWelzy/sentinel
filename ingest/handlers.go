@@ -33,6 +33,7 @@ type server struct {
 	tempo   *tempo // nil when APM is off
 	log     *slog.Logger
 	configs *configCache
+	rollout rolloutCache
 }
 
 func (s *server) routes() http.Handler {

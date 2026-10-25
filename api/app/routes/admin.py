@@ -12,7 +12,7 @@ the only gate. Keep every handler behind `staff`.
 
 import time
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -38,7 +38,7 @@ from app.routes.v1 import (
     checks_of,
     processes_of,
 )
-from app.services import checkresults, heartbeats, metrics
+from app.services import checkresults, heartbeats, metrics, rollout
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -387,26 +387,29 @@ class Fleet(BaseModel):
     versions: list[FleetVersion]
     outdated: list[FleetHost]
     probes: list[FleetHost]
+    rollout: "RolloutOut"
 
 
 @router.get("/fleet")
 async def fleet(db: ServiceDB) -> Fleet:
     """Agent versions across every account. Agents update themselves within
-    the hour (installer timer); one stuck on an old version usually means
-    its updater can't reach the download URL."""
+    the hour (installer timer) to the version the rollout offers them; one
+    stuck on another version usually means its updater can't reach the
+    download URL, or it runs in a container without the self-updating image."""
+    plan = await rollout.current(db)
     rows = (
         await db.execute(
-            select(Host, Tenant.email)
+            select(Host, Tenant.email, Tenant.agent_version_pin)
             .join(Tenant, Tenant.id == Host.tenant_id)
             .where(Host.revoked_at.is_(None))
         )
     ).all()
-    seen = await heartbeats.last_seen([h.id for h, _ in rows])
+    seen = await heartbeats.last_seen([h.id for h, _, _ in rows])
     counts: dict[str, int] = {}
     outdated: list[FleetHost] = []
     probes: list[FleetHost] = []
-    latest = settings.AGENT_VERSION
-    for h, email in rows:
+    latest = plan.stable_version
+    for h, email, pin in rows:
         counts[h.agent_version or "unknown"] = counts.get(h.agent_version or "unknown", 0) + 1
         fh = FleetHost(
             id=h.id,
@@ -420,7 +423,8 @@ async def fleet(db: ServiceDB) -> Fleet:
         )
         if h.probe_region:
             probes.append(fh)
-        if latest not in ("", "latest", "dev") and h.agent_version != latest:
+        offered = rollout.version_for(plan, h.id, pin)
+        if offered not in ("", "latest", "dev") and h.agent_version != offered:
             outdated.append(fh)
     versions = [FleetVersion(version=v, hosts=n) for v, n in counts.items()]
     versions.sort(key=lambda v: -v.hosts)
@@ -430,7 +434,142 @@ async def fleet(db: ServiceDB) -> Fleet:
         versions=versions,
         outdated=sorted(outdated, key=lambda h: h.hostname)[:500],
         probes=probes,
+        rollout=await _rollout_out(db, plan),
     )
+
+
+# ── Agent rollout ────────────────────────────────────────────────────────────
+
+
+class RolloutOut(BaseModel):
+    stable_version: str
+    candidate_version: str | None
+    candidate_percent: int
+    candidate_since: datetime | None
+    rolled_back_version: str | None
+    rollback_reason: str | None
+    updated_at: datetime | None
+    updated_by: str | None
+    available_versions: list[str]
+    pins: list[dict]
+
+
+Fleet.model_rebuild()
+
+
+class RolloutIn(BaseModel):
+    stable_version: str = Field(pattern=rollout.VERSION_RE.pattern)
+    candidate_version: str | None = Field(default=None, pattern=rollout.VERSION_RE.pattern)
+    candidate_percent: int = Field(default=0, ge=0, le=100)
+
+
+class PinIn(BaseModel):
+    version: str | None = Field(
+        default=None, pattern=rollout.VERSION_RE.pattern, description="null to follow the rollout"
+    )
+
+
+async def _rollout_out(db: AsyncSession, plan: rollout.Rollout) -> RolloutOut:
+    pins = (
+        await db.execute(
+            select(Tenant.id, Tenant.email, Tenant.display_name, Tenant.agent_version_pin).where(
+                Tenant.agent_version_pin.is_not(None)
+            )
+        )
+    ).all()
+    return RolloutOut(
+        **plan.__dict__,
+        available_versions=rollout.available_versions(),
+        pins=[
+            {
+                "tenant_id": str(p.id),
+                "email": p.email,
+                "name": p.display_name,
+                "version": p.agent_version_pin,
+            }
+            for p in pins
+        ],
+    )
+
+
+def _require_available(*versions: str | None) -> None:
+    have = rollout.available_versions()
+    if not have:  # dev builds without a dist directory
+        return
+    missing = [v for v in versions if v and v not in have]
+    if missing:
+        raise HTTPException(
+            status_code=422, detail=f"No agent binaries for {missing[0]} on this server"
+        )
+
+
+def _actor(p: Principal) -> str:
+    return p.email or p.name or "staff"
+
+
+@router.get("/agent-rollout")
+async def get_rollout(db: ServiceDB) -> RolloutOut:
+    return await _rollout_out(db, await rollout.current(db))
+
+
+@router.put("/agent-rollout")
+async def set_rollout(
+    body: RolloutIn, db: ServiceDB, principal: Annotated[Principal, Depends(staff)]
+) -> RolloutOut:
+    """Set the stable version and an optional candidate for a share of servers."""
+    if body.candidate_version is None and body.candidate_percent:
+        raise HTTPException(status_code=422, detail="A share needs a candidate version")
+    if body.candidate_version == body.stable_version:
+        raise HTTPException(status_code=422, detail="The candidate must differ from stable")
+    _require_available(body.stable_version, body.candidate_version)
+    plan = await rollout.current(db)
+    if body.candidate_version != plan.candidate_version:
+        plan.candidate_since = datetime.now(UTC) if body.candidate_version else None
+    plan.stable_version = body.stable_version
+    plan.candidate_version = body.candidate_version
+    plan.candidate_percent = body.candidate_percent if body.candidate_version else 0
+    await rollout.save(db, plan, _actor(principal))
+    return await _rollout_out(db, plan)
+
+
+@router.post("/agent-rollout/promote")
+async def promote_candidate(
+    db: ServiceDB, principal: Annotated[Principal, Depends(staff)]
+) -> RolloutOut:
+    """The candidate becomes stable for every server."""
+    plan = await rollout.current(db)
+    if not plan.candidate_version:
+        raise HTTPException(status_code=409, detail="There is no candidate to promote")
+    plan.stable_version = plan.candidate_version
+    plan.candidate_version, plan.candidate_percent, plan.candidate_since = None, 0, None
+    await rollout.save(db, plan, _actor(principal))
+    return await _rollout_out(db, plan)
+
+
+@router.post("/agent-rollout/rollback")
+async def rollback_candidate(
+    db: ServiceDB, principal: Annotated[Principal, Depends(staff)]
+) -> RolloutOut:
+    """Take the candidate back: its servers return to stable within the hour."""
+    plan = await rollout.current(db)
+    if not plan.candidate_version:
+        raise HTTPException(status_code=409, detail="There is no candidate to roll back")
+    plan.rolled_back_version = plan.candidate_version
+    plan.rollback_reason = f"rolled back by {_actor(principal)}"
+    plan.candidate_version, plan.candidate_percent, plan.candidate_since = None, 0, None
+    await rollout.save(db, plan, _actor(principal))
+    return await _rollout_out(db, plan)
+
+
+@router.put("/tenants/{tenant_id}/agent-pin")
+async def pin_tenant(tenant_id: uuid.UUID, body: PinIn, db: ServiceDB) -> dict:
+    """Hold one account's servers at a version (or let them follow the rollout)."""
+    tenant = await db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    _require_available(body.version)
+    tenant.agent_version_pin = body.version
+    return {"tenant_id": str(tenant.id), "version": tenant.agent_version_pin}
 
 
 # ── Probes (the one thing staff change here) ─────────────────────────────────

@@ -7,6 +7,8 @@
   back years after raw samples expire. Gauges keep their hourly average;
   counters keep their value at the end of the hour, so rate() still works.
 - Daily cleanup of delivered messages, finished actions and old incidents.
+- Agent rollouts: a new agent version becomes the canary on deploy, and the
+  health gate rolls a canary back if its servers go silent.
 
 Run one or more replicas: a Postgres advisory lock lets one work while the
 others stand by.
@@ -23,6 +25,7 @@ from sqlalchemy import select, text
 from app.config import settings
 from app.db import ServiceSession
 from app.models import Host, NotificationChannel, OutboundMessage, Tenant
+from app.services import rollout
 from app.services.heartbeats import redis
 from app.services.reports import build_summary, previous_month, render_html, render_text
 
@@ -181,8 +184,20 @@ async def cleanup(now: datetime) -> None:
         )
 
 
+async def rollouts(now: datetime) -> None:
+    async with ServiceSession() as db, db.begin():
+        changed = await rollout.adopt_release(db)
+        if changed:
+            log.info("agent rollout: %s", changed)
+        await rollout.health_gate(db, now)
+
+
 async def tick() -> None:
     now = datetime.now(UTC)
+    try:
+        await rollouts(now)
+    except Exception:
+        log.exception("agent rollout check failed")
     try:
         n = await rollup(now)
         if n:

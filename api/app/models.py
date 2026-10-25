@@ -36,6 +36,7 @@ class Tenant(Base):
     monthly_report: Mapped[bool] = mapped_column(default=True)
     report_sent_for: Mapped[date | None]
     logs_account_id: Mapped[int] = mapped_column(BigInteger, server_default=FetchedValue())
+    agent_version_pin: Mapped[str | None] = mapped_column(Text)
 
 
 class TenantMember(Base):
