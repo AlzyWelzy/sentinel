@@ -84,3 +84,25 @@ async def test_staff_see_processes_and_checks(client, staff_headers, alice: User
         assert r.status_code in (200, 503), (path, r.text)  # 503 only without VictoriaMetrics
     checks = (await client.get(f"/admin/v1/hosts/{host}/checks", headers=staff_headers)).json()
     assert [c["name"] for c in checks["checks"]] == ["nginx"]
+
+
+async def test_staff_list_every_server_and_check(client, staff_headers, alice: User, bob: User):
+    a, b = await alice.tenant_id(), await bob.tenant_id()
+    await insert_host(a, "alice-web")
+    await insert_host(b, "bob-db")
+    body = {"name": "site", "type": "http", "target": "https://example.com", "on_probes": True}
+    assert (await bob.request("POST", "/v1/checks", json=body)).status_code == 201
+    hosts = (
+        await client.get("/admin/v1/hosts", params={"q": alice.email}, headers=staff_headers)
+    ).json()
+    assert [(h["hostname"], h["account_email"]) for h in hosts] == [("alice-web", alice.email)]
+    every = (await client.get("/admin/v1/hosts", headers=staff_headers)).json()
+    assert {(h["hostname"], h["account_email"]) for h in every} >= {
+        ("alice-web", alice.email),
+        ("bob-db", bob.email),
+    }
+    checks = (await client.get("/admin/v1/checks", headers=staff_headers)).json()
+    mine = [c for c in checks if c["account_email"] == bob.email]
+    assert [(c["name"], c["status"]) for c in mine] == [("site", "pending")]
+    for path in ("/admin/v1/hosts", "/admin/v1/checks"):
+        assert (await alice.request("GET", path)).status_code == 403
