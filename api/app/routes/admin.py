@@ -24,8 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.console import InvalidToken, Principal, admin_verifier
 from app.config import settings
 from app.db import service_session
-from app.models import Host, Incident, IncidentEvent, Tenant
+from app.models import Check, Host, Incident, IncidentEvent, Tenant
 from app.routes.alerts import IncidentDetail, IncidentEventOut, IncidentOut, _incident_out
+from app.routes.checks import CheckStatus, _status
 from app.routes.v1 import (
     ChecksOut,
     HostOut,
@@ -37,7 +38,7 @@ from app.routes.v1 import (
     checks_of,
     processes_of,
 )
-from app.services import heartbeats, metrics
+from app.services import checkresults, heartbeats, metrics
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -172,6 +173,96 @@ async def tenant_hosts(tenant_id: uuid.UUID, db: ServiceDB) -> list[HostOut]:
     )
     seen = await heartbeats.last_seen([h.id for h in hosts])
     return [_host_out(h, seen[h.id]) for h in hosts]
+
+
+class StaffHost(HostOut):
+    tenant_id: uuid.UUID
+    account_email: str | None
+
+
+@router.get("/hosts")
+async def all_hosts(
+    db: ServiceDB,
+    q: Annotated[str | None, Query(max_length=200, description="hostname, tag or account")] = None,
+    limit: Annotated[int, Query(ge=1, le=2000)] = 1000,
+) -> list[StaffHost]:
+    """Every server in every account, for staff who look after all of them."""
+    query = (
+        select(Host, Tenant.email)
+        .join(Tenant, Tenant.id == Host.tenant_id)
+        .where(Host.revoked_at.is_(None))
+    )
+    if q:
+        like = f"%{q.strip()}%"
+        query = query.where(
+            or_(Host.hostname.ilike(like), Tenant.email.ilike(like), Host.public_ip == q.strip())
+        )
+    rows = (await db.execute(query.order_by(Tenant.email, Host.hostname).limit(limit))).all()
+    seen = await heartbeats.last_seen([h.id for h, _ in rows])
+    return [
+        StaffHost(**_host_out(h, seen[h.id]).model_dump(), tenant_id=h.tenant_id, account_email=e)
+        for h, e in rows
+    ]
+
+
+class StaffCheck(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    account_email: str | None
+    name: str
+    type: str
+    target: str
+    on_probes: bool
+    interval_seconds: int
+    host_id: uuid.UUID | None
+    tag: str | None
+    status: CheckStatus
+    latency_ms: float | None
+    last_failure: str | None
+    slo_target: float
+
+
+@router.get("/checks")
+async def all_checks(
+    db: ServiceDB, limit: Annotated[int, Query(ge=1, le=2000)] = 1000
+) -> list[StaffCheck]:
+    """Every check in every account with its current status, failing first."""
+    rows = (
+        await db.execute(
+            select(Check, Tenant.email)
+            .join(Tenant, Tenant.id == Check.tenant_id)
+            .order_by(Tenant.email, Check.name)
+            .limit(limit)
+        )
+    ).all()
+    ids = [c.id for c, _ in rows]
+    latest = await checkresults.latest(ids)
+    failures = await checkresults.last_failures(ids)
+    out = []
+    for c, email in rows:
+        results = latest.get(c.id, [])
+        lat = [r["latency_ms"] for r in results if r.get("latency_ms")]
+        out.append(
+            StaffCheck(
+                id=c.id,
+                tenant_id=c.tenant_id,
+                account_email=email,
+                name=c.name,
+                type=c.type,
+                target=c.target,
+                on_probes=c.on_probes,
+                interval_seconds=c.interval_seconds,
+                host_id=c.host_id,
+                tag=c.tag,
+                status=_status(c, results),
+                latency_ms=round(sum(lat) / len(lat), 1) if lat else None,
+                last_failure=(failures.get(c.id) or {}).get("detail"),
+                slo_target=float(c.slo_target),
+            )
+        )
+    order = {"down": 0, "pending": 1, "up": 2, "paused": 3}
+    out.sort(key=lambda x: order[x.status])
+    return out
 
 
 async def _host(db: AsyncSession, host_id: uuid.UUID) -> Host:
