@@ -26,6 +26,8 @@ type pushPayload struct {
 	Tag      string `json:"tag,omitempty"`
 	Severity string `json:"severity,omitempty"`
 	Resolved bool   `json:"resolved,omitempty"`
+	// One-click acknowledge from the notification (a signed link; no sign-in).
+	AckURL string `json:"ack_url,omitempty"`
 }
 
 func (p *pushSender) send(context.Context, string, message) error {
@@ -108,6 +110,9 @@ func pushContent(m message) pushPayload {
 		case "alert_escalation":
 			p.Title = "Escalated: " + p.Title
 		}
+	}
+	if !p.Resolved {
+		p.AckURL = extractLink(m.Text, "Acknowledge (stops escalation): ")
 	}
 	if len(p.Body) > 1000 {
 		p.Body = p.Body[:1000]

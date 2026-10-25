@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, time
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Text, Time, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Numeric, Text, Time, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -90,6 +90,7 @@ class Host(TenantScoped):
         UUID, ForeignKey("hosts.id", ondelete="SET NULL")
     )
     ip_addresses: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    public_ip: Mapped[str | None] = mapped_column(Text)
     cpu_cores: Mapped[int | None]
     memory_bytes: Mapped[int | None] = mapped_column(BigInteger)
     probe_region: Mapped[str | None] = mapped_column(Text)
@@ -220,6 +221,8 @@ class Incident(TenantScoped):
     reopened_count: Mapped[int] = mapped_column(default=0)
     resolved_by: Mapped[str | None] = mapped_column(Text)
     check_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    snoozed_until: Mapped[datetime | None]
+    snoozed_by: Mapped[str | None] = mapped_column(Text)
 
 
 class IncidentEvent(TenantScoped):
@@ -252,6 +255,7 @@ class Check(TenantScoped):
     probe_regions: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
     min_failing: Mapped[int] = mapped_column(default=1)
     enabled: Mapped[bool] = mapped_column(default=True)
+    slo_target: Mapped[float] = mapped_column(Numeric(6, 3), default=99.9)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
@@ -303,6 +307,23 @@ class StatusPage(TenantScoped):
     description: Mapped[str | None] = mapped_column(Text)
     show_values: Mapped[bool] = mapped_column(default=True)
     published: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class StatusPageUpdate(TenantScoped):
+    __tablename__ = "status_page_updates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    page_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("status_pages.id", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text, default="")
+    starts_at: Mapped[datetime | None]
+    ends_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

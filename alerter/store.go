@@ -479,7 +479,8 @@ type escalation struct {
 }
 
 // dueEscalations finds incidents in this partition whose next step's delay
-// (counted from when the incident opened) has passed.
+// (counted from when the incident opened) has passed. A snoozed incident
+// waits; when the snooze ends, any overdue step goes out at once.
 func (s *store) dueEscalations(ctx context.Context, partition, partitions int) ([]escalation, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT i.id, i.tenant_id, i.host_id, i.summary, i.rule_name, i.hostname, i.value,
@@ -492,6 +493,7 @@ func (s *store) dueEscalations(ctx context.Context, partition, partitions int) (
 		  JOIN alert_escalation_steps st
 		       ON st.rule_id = r.id AND st.tenant_id = i.tenant_id AND st.position = i.escalation_level
 		 WHERE i.status = 'open' AND i.acknowledged_at IS NULL
+		   AND (i.snoozed_until IS NULL OR i.snoozed_until <= now())
 		   AND i.opened_at + make_interval(secs => st.delay_seconds) <= now()
 		   AND abs(hashtext(i.tenant_id::text)) % $2 = $1`, partition, partitions)
 	if err != nil {

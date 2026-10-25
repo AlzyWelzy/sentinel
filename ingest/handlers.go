@@ -156,7 +156,7 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if err := s.cache.markSeen(r.Context(), id.HostID, now); err != nil {
 		s.log.Warn("heartbeat not recorded", "err", err, "host_id", id.HostID)
 	}
-	if err := s.store.touchHost(r.Context(), id.HostID, req.AgentVersion, req.Host); err != nil {
+	if err := s.store.touchHost(r.Context(), id.HostID, req.AgentVersion, publicClientIP(r), req.Host); err != nil {
 		s.log.Warn("last_seen_at not updated", "err", err, "host_id", id.HostID)
 	}
 	writeJSON(w, http.StatusOK, proto.MetricsResponse{Accepted: kept, Dropped: dropped, ConfigVersion: hc.cfg.Version})

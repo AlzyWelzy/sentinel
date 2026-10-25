@@ -7,12 +7,14 @@ timeline, add notes, acknowledge, resolve by hand, and reopen them.
 
 import re
 import uuid
-from datetime import UTC, datetime
+from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import any_, delete, func, literal, select, update
 
 from app.models import (
     AlertEscalationStep,
@@ -25,6 +27,8 @@ from app.models import (
     IncidentEvent,
     NotificationChannel,
 )
+from app.services import backtest
+from app.services.metrics import MetricsUnavailable
 from app.tenancy import Tenant, TenantContext
 from app.validation import normalize_tag, validate_target
 
@@ -265,6 +269,8 @@ class IncidentOut(BaseModel):
     resolved_by: str | None
     check_id: uuid.UUID | None
     duration_seconds: int
+    snoozed_until: datetime | None = None
+    snoozed_by: str | None = None
 
 
 class IncidentEventOut(BaseModel):
@@ -281,6 +287,11 @@ class IncidentDetail(IncidentOut):
 
 class NoteIn(BaseModel):
     message: str = Field(min_length=1, max_length=5000)
+
+
+class SnoozeIn(BaseModel):
+    minutes: int = Field(ge=5, le=7 * 24 * 60, description="hold escalations and reminders")
+    reason: str | None = Field(default=None, max_length=500)
 
 
 def _incident_out(i: Incident) -> IncidentOut:
@@ -305,6 +316,10 @@ def _incident_out(i: Incident) -> IncidentOut:
         resolved_by=i.resolved_by,
         check_id=i.check_id,
         duration_seconds=int(((i.resolved_at or datetime.now(UTC)) - i.opened_at).total_seconds()),
+        snoozed_until=i.snoozed_until
+        if i.snoozed_until and i.snoozed_until > datetime.now(UTC)
+        else None,
+        snoozed_by=i.snoozed_by,
     )
 
 
@@ -742,3 +757,200 @@ async def reopen(incident_id: uuid.UUID, t: Tenant, body: NoteIn | None = None) 
         _event(t, incident, "reopened", message)
     await t.db.flush()
     return await _detail(t, incident)
+
+
+@router.post("/incidents/{incident_id}/snooze")
+async def snooze(incident_id: uuid.UUID, body: SnoozeIn, t: Tenant) -> IncidentDetail:
+    """ "I know, I'm on it": hold escalations and reminders for a while
+    without resolving. The incident stays open and visible; when the snooze
+    runs out, escalation picks up where it left off."""
+    incident = await _get_incident(t, incident_id)
+    if incident.status != "open":
+        raise HTTPException(status_code=409, detail="Only open incidents can be snoozed")
+    incident.snoozed_until = datetime.now(UTC) + timedelta(minutes=body.minutes)
+    incident.snoozed_by = _actor(t)
+    message = f"Snoozed for {_human_minutes(body.minutes)}"
+    if body.reason:
+        message += ": " + body.reason.strip()
+    _event(t, incident, "snoozed", message)
+    await t.db.flush()
+    return await _detail(t, incident)
+
+
+@router.delete("/incidents/{incident_id}/snooze")
+async def unsnooze(incident_id: uuid.UUID, t: Tenant) -> IncidentDetail:
+    incident = await _get_incident(t, incident_id)
+    if incident.snoozed_until is not None:
+        incident.snoozed_until = None
+        _event(t, incident, "unsnoozed", "Snooze ended early")
+    await t.db.flush()
+    return await _detail(t, incident)
+
+
+def _human_minutes(minutes: int) -> str:
+    if minutes % 1440 == 0:
+        return f"{minutes // 1440} day{'s' if minutes > 1440 else ''}"
+    if minutes % 60 == 0:
+        return f"{minutes // 60} hour{'s' if minutes > 60 else ''}"
+    return f"{minutes} minutes"
+
+
+def _span(seconds: float | None) -> str:
+    if seconds is None:
+        return "—"
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    h, m = divmod(seconds // 60, 60)
+    return f"{h}h {m}m" if h else f"{m}m"
+
+
+def _when(d: datetime | None) -> str:
+    return d.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC") if d else "—"
+
+
+@router.get("/incidents/{incident_id}/postmortem", response_class=PlainTextResponse)
+async def postmortem(incident_id: uuid.UUID, t: Tenant) -> str:
+    """A postmortem draft in Markdown: the facts filled in from the incident
+    (times, timeline, notes, related alerts on the same server), with the
+    sections people write themselves left as prompts."""
+    incident = await _get_incident(t, incident_id)
+    detail = await _detail(t, incident)
+    opened = incident.opened_at
+    tta = (incident.acknowledged_at - opened).total_seconds() if incident.acknowledged_at else None
+    ttr = (incident.resolved_at - opened).total_seconds() if incident.resolved_at else None
+    related = []
+    if incident.host_id is not None:
+        related = list(
+            await t.db.scalars(
+                select(Incident)
+                .where(
+                    Incident.tenant_id == t.tenant_id,
+                    Incident.host_id == incident.host_id,
+                    Incident.id != incident.id,
+                    Incident.opened_at >= opened - timedelta(hours=2),
+                    Incident.opened_at <= (incident.resolved_at or datetime.now(UTC)),
+                )
+                .order_by(Incident.opened_at)
+                .limit(20)
+            )
+        )
+    lines = [
+        f"# Postmortem: {incident.summary}",
+        "",
+        f"_Draft generated by Pulsegrid on {_when(datetime.now(UTC))}. "
+        "Facts are filled in; edit the sections in italics._",
+        "",
+        "## Summary",
+        "",
+        "| | |",
+        "|---|---|",
+        f"| Status | {incident.status} |",
+        f"| Severity | {incident.severity} |",
+        f"| Server | {incident.hostname or '—'} |",
+        f"| Alert rule | {incident.rule_name} |",
+        f"| Value when it fired | {incident.value if incident.value is not None else '—'} |",
+        f"| Opened | {_when(opened)} |",
+        f"| Acknowledged | {_when(incident.acknowledged_at)}"
+        + (f" by {incident.acknowledged_by}" if incident.acknowledged_by else "")
+        + " |",
+        f"| Resolved | {_when(incident.resolved_at)}"
+        + (f" by {incident.resolved_by}" if incident.resolved_by else "")
+        + " |",
+        f"| Time to acknowledge | {_span(tta)} |",
+        f"| Time to resolve | {_span(ttr)} |",
+        f"| Reopened | {incident.reopened_count} time(s) |",
+        "",
+    ]
+    if incident.detail:
+        lines += ["## What the alert said", "", incident.detail, ""]
+    lines += ["## Timeline", ""]
+    lines += [f"- **{_when(opened)}** — Incident opened: {incident.summary}"]
+    lines += [
+        f"- **{_when(e.created_at)}** — {e.kind.replace('_', ' ').capitalize()}: {e.message}"
+        + (f" ({e.actor})" if e.actor else "")
+        for e in detail.events
+        if e.kind != "note"
+    ]
+    notes = [e for e in detail.events if e.kind == "note"]
+    if notes:
+        lines += ["", "## Notes from responders", ""]
+        lines += [f"- {_when(e.created_at)}, {e.actor or 'someone'}: {e.message}" for e in notes]
+    if related:
+        lines += ["", "## Other alerts on this server around the same time", ""]
+        lines += [
+            f"- {_when(r.opened_at)} — {r.summary} ({r.severity}, {r.status})" for r in related
+        ]
+    lines += [
+        "",
+        "## Impact",
+        "",
+        "_Who was affected, how, and for how long?_",
+        "",
+        "## Root cause",
+        "",
+        '_What actually went wrong? Ask "why" until the answer is something you can change._',
+        "",
+        "## What went well / what didn't",
+        "",
+        "_Detection, response, communication._",
+        "",
+        "## Action items",
+        "",
+        "- [ ] _Prevent it:_",
+        "- [ ] _Detect it sooner:_ (an alert rule, a lower threshold, a check)",
+        "- [ ] _Recover faster:_ (a runbook in the rule's description, a self-healing action)",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+@router.post("/alert-rules/preview")
+async def preview_rule(
+    body: RuleIn, t: Tenant, days: Annotated[int, Query(ge=1, le=14)] = 7
+) -> dict:
+    """How often this rule would have fired over the last days, per host,
+    without saving it: metric and custom rules."""
+    if body.kind not in ("metric", "custom") or body.operator is None or body.threshold is None:
+        raise HTTPException(status_code=422, detail="Preview works for metric and custom rules")
+    host_ids = None
+    if body.tag is not None:
+        host_ids = [
+            str(h)
+            for h in await t.db.scalars(
+                select(Host.id).where(
+                    Host.tenant_id == t.tenant_id,
+                    Host.revoked_at.is_(None),
+                    literal(body.tag) == any_(Host.tags),
+                )
+            )
+        ]
+        if not host_ids:
+            return asdict(backtest.Preview(days=days))
+    try:
+        result = await backtest.preview(
+            t.tenant_id,
+            kind=body.kind,
+            metric=body.metric,
+            target=body.target,
+            labels=body.labels,
+            operator=body.operator,
+            threshold=body.threshold,
+            duration_seconds=body.duration_seconds,
+            recovery_threshold=body.recovery_threshold,
+            aggregation=body.aggregation,
+            window_seconds=body.window_seconds,
+            host_id=body.host_id,
+            host_ids=host_ids,
+            days=days,
+        )
+    except MetricsUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Metrics are unavailable right now") from exc
+    names = {
+        str(h.id): h.hostname
+        for h in await t.db.scalars(select(Host).where(Host.tenant_id == t.tenant_id))
+    }
+    out = asdict(result)
+    for h in out["hosts"]:
+        h["hostname"] = names.get(h["host_id"], h["host_id"])
+    return out

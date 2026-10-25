@@ -120,7 +120,7 @@ func (s *store) lookupHost(ctx context.Context, tokenHash string) (hostIdentity,
 // updated at most once a minute per host. A new hostname is taken unless
 // another host of the tenant already has it with the same machine id (the
 // pair identifies a host at registration).
-func (s *store) touchHost(ctx context.Context, hostID, agentVersion string, meta *proto.HostMeta) error {
+func (s *store) touchHost(ctx context.Context, hostID, agentVersion, publicIP string, meta *proto.HostMeta) error {
 	var m proto.HostMeta
 	if meta != nil {
 		m = *meta
@@ -134,6 +134,7 @@ func (s *store) touchHost(ctx context.Context, hostID, agentVersion string, meta
 		       last_seen_at = now(),
 		       agent_version = $2,
 		       ip_addresses = coalesce($3::text[], h.ip_addresses),
+		       public_ip = coalesce(nullif($8::text, ''), h.public_ip),
 		       cpu_cores = coalesce(nullif($4::integer, 0), h.cpu_cores),
 		       memory_bytes = coalesce(nullif($5::bigint, 0), h.memory_bytes),
 		       platform_version = coalesce(nullif($6::text, ''), h.platform_version),
@@ -146,8 +147,9 @@ func (s *store) touchHost(ctx context.Context, hostID, agentVersion string, meta
 		 WHERE h.id = $1
 		   AND (h.last_seen_at IS NULL
 		        OR h.last_seen_at < now() - interval '1 minute'
-		        OR h.agent_version IS DISTINCT FROM $2)`,
-		hostID, agentVersion, ips, m.CPUCores, int64(m.MemoryBytes), m.PlatformVersion, cleanHostname(m.Hostname))
+		        OR h.agent_version IS DISTINCT FROM $2
+		        OR (nullif($8::text, '') IS NOT NULL AND h.public_ip IS DISTINCT FROM $8::text))`,
+		hostID, agentVersion, ips, m.CPUCores, int64(m.MemoryBytes), m.PlatformVersion, cleanHostname(m.Hostname), publicIP)
 	return err
 }
 

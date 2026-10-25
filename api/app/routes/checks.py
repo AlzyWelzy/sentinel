@@ -102,6 +102,7 @@ class CheckIn(BaseModel):
     probe_regions: list[str] = Field(default_factory=list, max_length=20)
     min_failing: int = Field(default=1, ge=1, le=10)
     enabled: bool = True
+    slo_target: float = Field(default=99.9, gt=0, lt=100, description="promised availability, %")
     alert: bool = Field(default=True, description="also create an alert rule (on create)")
     severity: Literal["critical", "warning", "info"] = "critical"
 
@@ -229,6 +230,7 @@ class CheckOut(BaseModel):
     probe_regions: list[str]
     min_failing: int
     enabled: bool
+    slo_target: float
     created_at: datetime
     updated_at: datetime
     status: CheckStatus
@@ -293,6 +295,7 @@ async def _out(t: TenantContext, checks: list[Check]) -> list[CheckOut]:
                 probe_regions=list(c.probe_regions or []),
                 min_failing=c.min_failing,
                 enabled=c.enabled,
+                slo_target=float(c.slo_target),
                 created_at=c.created_at,
                 updated_at=c.updated_at,
                 status=_status(c, results),
