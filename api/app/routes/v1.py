@@ -12,11 +12,11 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import AgentKey, AlertRule, Host, MaintenanceWindow
+from app.models import AgentKey, AlertRule, AlertState, Host, Incident, MaintenanceWindow
 from app.models import Tenant as TenantRow
 from app.services import heartbeats, metrics
 from app.services.maintenance import in_maintenance
@@ -300,8 +300,21 @@ async def _check_dependency(t: TenantContext, host: Host, parent_id: uuid.UUID) 
 
 @router.delete("/hosts/{host_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_host(host_id: uuid.UUID, t: Tenant) -> None:
-    """Removes the host; its agent's token stops working immediately."""
+    """Removes the host; its agent's token stops working immediately. Its
+    open incidents resolve (nothing else ever would) and its alert state goes."""
     host = await _get_host(t, host_id)
+    await t.db.execute(
+        update(Incident)
+        .where(
+            Incident.tenant_id == t.tenant_id,
+            Incident.host_id == host.id,
+            Incident.status == "open",
+        )
+        .values(status="resolved", resolved_at=datetime.now(UTC), resolved_by="server removed")
+    )
+    await t.db.execute(
+        delete(AlertState).where(AlertState.tenant_id == t.tenant_id, AlertState.host_id == host.id)
+    )
     await t.db.delete(host)
     await heartbeats.forget_host_tokens([host.token_hash])
     try:

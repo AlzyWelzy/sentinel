@@ -209,3 +209,21 @@ async def test_changing_or_deleting_a_rule_closes_its_incidents(alice: User):
     got = (await alice.request("GET", f"/v1/incidents/{incident_id}")).json()
     assert got["status"] == "resolved" and got["resolved_at"] is not None
     assert (await alice.request("GET", f"/v1/alert-rules/{rule['id']}")).json()["firing_hosts"] == 0
+
+
+async def test_deleting_a_host_resolves_its_open_incidents(alice):
+    tenant_id = await alice.tenant_id()
+    host_id = await insert_host(tenant_id, "gone-1")
+    async with ServiceSession() as db, db.begin():
+        await db.execute(
+            text(
+                "INSERT INTO incidents (tenant_id, host_id, summary, rule_name, hostname) "
+                "VALUES (:t, :h, 'gone-1 is not reporting', 'down', 'gone-1')"
+            ),
+            {"t": tenant_id, "h": host_id},
+        )
+    assert (await alice.request("DELETE", f"/v1/hosts/{host_id}")).status_code == 204
+    incidents = (await alice.request("GET", "/v1/incidents", params={"status": "open"})).json()
+    assert not [i for i in incidents if i["hostname"] == "gone-1"]
+    resolved = (await alice.request("GET", "/v1/incidents", params={"status": "resolved"})).json()
+    assert [i["resolved_by"] for i in resolved if i["hostname"] == "gone-1"] == ["server removed"]
