@@ -133,6 +133,7 @@ class InventoryOut(BaseModel):
     listening_ports: list[dict] = []
     plugins: list[dict] = []
     allowed_actions: list[str] = []
+    logs: dict | None = None  # what logs.conf ships; None when off
     changes: list[dict] = []
 
 
@@ -167,5 +168,6 @@ async def inventory(
         listening_ports=data.get("listening_ports") or [],
         plugins=data.get("plugins") or [],
         allowed_actions=data.get("allowed_actions") or [],
+        logs=data.get("logs"),
         changes=inv.changes or [],
     )
