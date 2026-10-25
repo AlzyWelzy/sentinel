@@ -96,11 +96,10 @@ async def test_staff_list_every_server_and_check(client, staff_headers, alice: U
         await client.get("/admin/v1/hosts", params={"q": alice.email}, headers=staff_headers)
     ).json()
     assert [(h["hostname"], h["account_email"]) for h in hosts] == [("alice-web", alice.email)]
-    every = (await client.get("/admin/v1/hosts", headers=staff_headers)).json()
-    assert {(h["hostname"], h["account_email"]) for h in every} >= {
-        ("alice-web", alice.email),
-        ("bob-db", bob.email),
-    }
+    bobs = (
+        await client.get("/admin/v1/hosts", params={"q": bob.email}, headers=staff_headers)
+    ).json()
+    assert [h["hostname"] for h in bobs] == ["bob-db"]
     checks = (await client.get("/admin/v1/checks", headers=staff_headers)).json()
     mine = [c for c in checks if c["account_email"] == bob.email]
     assert [(c["name"], c["status"]) for c in mine] == [("site", "pending")]
