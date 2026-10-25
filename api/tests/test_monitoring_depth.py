@@ -469,3 +469,43 @@ async def test_legacy_timezone_names_are_accepted(alice: User):
     }
     r = await alice.request("POST", "/v1/maintenance", json=body)
     assert r.status_code == 201, r.text
+
+
+async def test_console_uptime_alerts_reach_push_devices(client, alice: User):
+    headers = {"X-Internal-Api-Key": settings.INTERNAL_API_KEY}
+    tid = await alice.tenant_id()
+    # Two browsers, one only for critical alerts; the default email contact is left alone.
+    for device, floor in (("a1", "info"), ("b2", "critical")):
+        sub = {
+            "endpoint": f"https://fcm.googleapis.com/fcm/send/{device}",
+            "keys": {
+                "p256dh": "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQ",
+                "auth": "tBHItJI5svbpez7KI4CCXg",
+            },
+            "min_severity": floor,
+        }
+        assert (await alice.request("POST", "/v1/channels/push", json=sub)).status_code == 201
+    body = {"title": "shop.example is down", "text": "HTTP 502", "severity": "warning", "key": "42"}
+    r = await client.post(f"/internal/v1/tenants/{alice.uid}/notify", json=body, headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"queued": 1}
+    # Recoveries go to every device that may have seen the outage.
+    body |= {"title": "shop.example is up", "resolved": True}
+    r = await client.post(f"/internal/v1/tenants/{alice.uid}/notify", json=body, headers=headers)
+    assert r.json() == {"queued": 2}
+    async with ServiceSession() as db:
+        kinds = (
+            await db.execute(
+                text(
+                    "SELECT kind, payload->'event'->>'incident_id' FROM outbound_messages "
+                    "WHERE tenant_id = :t AND payload->'event'->>'source' = 'uptime'"
+                ),
+                {"t": tid},
+            )
+        ).all()
+    assert sorted(kinds) == [("alert_firing", "uptime-42")] + [("alert_resolved", "uptime-42")] * 2
+    # Unknown users and missing keys.
+    r = await client.post(f"/internal/v1/tenants/{uuid.uuid4()}/notify", json=body, headers=headers)
+    assert r.json() == {"queued": 0}
+    r = await client.post(f"/internal/v1/tenants/{alice.uid}/notify", json=body)
+    assert r.status_code == 401

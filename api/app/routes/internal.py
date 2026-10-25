@@ -7,7 +7,7 @@ they sit behind the internal API key and must never be exposed publicly.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.internal import verify_internal_api_key
 from app.config import settings
 from app.db import service_session
-from app.models import AgentKey, Host, Tenant
+from app.models import AgentKey, Host, NotificationChannel, OutboundMessage, Tenant
 from app.routes.v1 import cloud_init, install_command, install_command_windows
 from app.services import heartbeats
 from app.services.secrets import new_agent_key
@@ -153,3 +153,67 @@ async def provision_agent_key(
         install_command_windows=install_command_windows(plaintext, body.tags),
         cloud_init=cloud_init(plaintext, body.tags),
     )
+
+
+SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
+
+
+class NotifyIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    text: str = Field(default="", max_length=2000)
+    severity: Literal["critical", "warning", "info"] = "critical"
+    url: str = Field(default="", max_length=500)
+    # Same key on "down" and "up": the recovery notification replaces the outage one.
+    key: str = Field(default="", max_length=100)
+    resolved: bool = False
+
+
+class NotifyOut(BaseModel):
+    queued: int
+
+
+@router.post("/tenants/{external_account_id}/notify")
+async def notify(external_account_id: str, body: NotifyIn, db: ServiceDB) -> NotifyOut:
+    """A push notification for something the console watches (an uptime
+    monitor going down or up), sent to the user's Pulsegrid push devices so
+    they get one stream of alerts. Email stays with the console. A user with
+    no tenant or no push devices is not an error: nothing is queued."""
+    tenant = await db.scalar(
+        select(Tenant).where(
+            Tenant.source == settings.TENANT_SOURCE,
+            Tenant.external_account_id == external_account_id,
+        )
+    )
+    if tenant is None or tenant.status != "active":
+        return NotifyOut(queued=0)
+    channels = await db.scalars(
+        select(NotificationChannel).where(
+            NotificationChannel.tenant_id == tenant.id,
+            NotificationChannel.type == "push",
+            NotificationChannel.verified_at.is_not(None),
+        )
+    )
+    event = {
+        "type": "alert_resolved" if body.resolved else "alert_firing",
+        "summary": body.title,
+        "condition": body.text,
+        "severity": body.severity,
+        "url": body.url,
+        "incident_id": f"uptime-{body.key}" if body.key else "",
+        "source": "uptime",
+    }
+    queued = 0
+    for channel in channels:
+        wanted = SEVERITY_RANK.get(channel.min_severity, 0)
+        if not body.resolved and SEVERITY_RANK[body.severity] < wanted:
+            continue
+        db.add(
+            OutboundMessage(
+                tenant_id=tenant.id,
+                channel_id=channel.id,
+                kind=event["type"],
+                payload={"subject": body.title, "text": body.text, "event": event},
+            )
+        )
+        queued += 1
+    return NotifyOut(queued=queued)
