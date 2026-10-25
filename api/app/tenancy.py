@@ -34,11 +34,36 @@ bearer = HTTPBearer(auto_error=False)
 READ_ONLY_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
+ACCOUNT_HEADER = "X-Pulsegrid-Account"
+
+ROLES = ("viewer", "operator", "admin", "owner")
+
+# What a team member may change, by route. Viewers only read; everyone may
+# register their own browser for push; owners alone manage members and
+# API tokens (see OWNER_ONLY).
+ANY_MEMBER_WRITES = frozenset({"/v1/channels/push"})
+OPERATOR_WRITES = frozenset(
+    {
+        "/v1/incidents/{incident_id}/acknowledge",
+        "/v1/incidents/{incident_id}/notes",
+        "/v1/incidents/{incident_id}/resolve",
+        "/v1/incidents/{incident_id}/reopen",
+        "/v1/maintenance",
+        "/v1/maintenance/{window_id}",
+        "/v1/hosts/{host_id}/actions",
+    }
+)
+OWNER_ONLY_PREFIXES = ("/v1/members", "/v1/api-tokens")
+
+
 @dataclass(frozen=True)
 class TenantContext:
     tenant_id: uuid.UUID
     principal: Principal
     db: AsyncSession
+    # "owner" for the account's own console user and its API tokens;
+    # otherwise the team member's role.
+    role: str = "owner"
 
 
 async def current_principal(
@@ -125,6 +150,50 @@ async def bind_tenant(db: AsyncSession, principal: Principal) -> tuple[uuid.UUID
     return row.out_tenant_id, row.out_status
 
 
+async def bind_member_tenant(
+    db: AsyncSession, principal: Principal, shared: str
+) -> tuple[uuid.UUID, str, str]:
+    """Scope this transaction to an account the caller was invited to."""
+    try:
+        tenant_id = uuid.UUID(shared)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Bad {ACCOUNT_HEADER}") from None
+    row = (
+        await db.execute(
+            text("SELECT out_role, out_status FROM pulsegrid_member_tenant(:t, :s, :e, :m, :n)"),
+            {
+                "t": tenant_id,
+                "s": principal.source,
+                "e": principal.external_account_id,
+                "m": principal.email,
+                "n": principal.name,
+            },
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="You're not a member of that account"
+        )
+    await db.execute(text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant_id)})
+    return tenant_id, row.out_status, row.out_role
+
+
+def check_member_write(request: Request, role: str) -> None:
+    route = request.scope.get("route")
+    path = getattr(route, "path", request.url.path)
+    if path.startswith(OWNER_ONLY_PREFIXES):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Only the account owner can do that"
+        )
+    if request.method.upper() in READ_ONLY_METHODS or path in ANY_MEMBER_WRITES:
+        return
+    if role == "admin" or (role == "operator" and path in OPERATOR_WRITES):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN, detail=f"Your role ({role}) can't change this"
+    )
+
+
 async def tenant_context(
     request: Request,
     principal: Annotated[Principal, Depends(current_principal)],
@@ -138,13 +207,19 @@ async def tenant_context(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="This API token is read-only"
         )
+    shared = request.headers.get(ACCOUNT_HEADER)
     async with AppSession() as db, db.begin():
-        tenant_id, tenant_status = await bind_tenant(db, principal)
+        role = "owner"
+        if shared and principal.api_token_id is None:
+            tenant_id, tenant_status, role = await bind_member_tenant(db, principal, shared)
+            check_member_write(request, role)
+        else:
+            tenant_id, tenant_status = await bind_tenant(db, principal)
         if tenant_status != "active":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Monitoring is suspended"
             )
-        yield TenantContext(tenant_id=tenant_id, principal=principal, db=db)
+        yield TenantContext(tenant_id=tenant_id, principal=principal, db=db, role=role)
 
 
 Tenant = Annotated[TenantContext, Depends(tenant_context)]

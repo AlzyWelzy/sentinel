@@ -27,6 +27,23 @@ class Tenant(Base):
     report_sent_for: Mapped[date | None]
 
 
+class TenantMember(Base):
+    __tablename__ = "tenant_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID, primary_key=True, server_default=func.gen_random_uuid()
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID)
+    email: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(Text)
+    source: Mapped[str | None] = mapped_column(Text)
+    external_account_id: Mapped[str | None] = mapped_column(Text)
+    display_name: Mapped[str | None] = mapped_column(Text)
+    invited_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    joined_at: Mapped[datetime | None]
+    last_seen_at: Mapped[datetime | None]
+
+
 class TenantScoped(Base):
     """Every table except tenants carries tenant_id, and RLS filters on it.
 
