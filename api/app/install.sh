@@ -126,6 +126,9 @@ plugins.d/<name>.conf   one plugin per file, "key = value" lines:
     type = docker       socket = /var/run/docker.sock  (add the agent's user to the docker group)
     type = prometheus   url = http://127.0.0.1:9100/metrics   (include = regexp)
     type = script       command = /etc/pulsegrid/scripts/my-metrics.sh  (prints "name value" lines)
+    type = snmp         address = 10.0.0.2   community = public   (or version = 3, user, auth_*, priv_*)
+                        interfaces = true    oids = ups_load=1.3.6.1.2.1.33.1.4.4.1.5.1
+  Disk health (SMART) and board sensors (IPMI): sudo pulsegrid-agent enable-hardware
   Files holding passwords: chmod 0640 and chgrp them to the agent's group.
   Test them with: pulsegrid-agent plugins
 

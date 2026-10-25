@@ -188,7 +188,7 @@ func cmdAllowAction(args []string) error {
 		if err := writeSudoers(existing, *user); err != nil {
 			return err
 		}
-		if err := systemdSudoDropIn(usesSudo(existing)); err != nil {
+		if err := systemdSudoDropIn(usesSudo(existing) || hardwareUsesSudo()); err != nil {
 			return err
 		}
 	}
@@ -291,7 +291,7 @@ func systemdSudoDropIn(enable bool) error {
 		if err := os.MkdirAll(dropInDir, 0o755); err != nil {
 			return err
 		}
-		content := "# Written by pulsegrid-agent allow-action: actions that use sudo need these.\n" +
+		content := "# Written by pulsegrid-agent (allow-action, enable-hardware): sudo needs these.\n" +
 			"[Service]\nNoNewPrivileges=false\nProtectSystem=full\n"
 		if err := os.WriteFile(dropInFile, []byte(content), 0o644); err != nil {
 			return err

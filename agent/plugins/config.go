@@ -49,6 +49,9 @@ var collectors = map[string]collectFunc{
 	"docker":     collectDocker,
 	"prometheus": collectPrometheus,
 	"script":     collectScript,
+	"smart":      collectSmart,
+	"ipmi":       collectIPMI,
+	"snmp":       collectSNMP,
 }
 
 // Types lists the supported plugin types.

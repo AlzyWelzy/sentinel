@@ -5,6 +5,7 @@ go 1.26.5
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/go-sql-driver/mysql v1.9.3
+	github.com/gosnmp/gosnmp v1.47.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/shirou/gopsutil/v4 v4.26.9

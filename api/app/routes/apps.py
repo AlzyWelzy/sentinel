@@ -115,6 +115,61 @@ PLUGIN_CHARTS: dict[str, list[tuple[str, str, str, list[str]]]] = {
         ("Container memory", "pulsegrid_container_memory_bytes{SEL}", "bytes", ["container"]),
         ("Containers by state", "pulsegrid_containers{SEL}", "count", ["state"]),
     ],
+    "smart": [
+        ("Disk health (1 = passing)", "pulsegrid_custom_smart_healthy{SEL}", "count", ["device"]),
+        (
+            "Disk temperature (°C)",
+            "pulsegrid_custom_smart_temperature_celsius{SEL}",
+            "count",
+            ["device"],
+        ),
+        (
+            "Reallocated sectors",
+            "pulsegrid_custom_smart_reallocated_sectors{SEL}",
+            "count",
+            ["device"],
+        ),
+        ("Pending sectors", "pulsegrid_custom_smart_pending_sectors{SEL}", "count", ["device"]),
+        (
+            "NVMe wear (% used)",
+            "pulsegrid_custom_smart_nvme_percentage_used{SEL}",
+            "percent",
+            ["device"],
+        ),
+    ],
+    "ipmi": [
+        (
+            "Temperatures (°C)",
+            'pulsegrid_custom_ipmi_sensor{SEL,unit="celsius"}',
+            "count",
+            ["sensor"],
+        ),
+        ("Fans (RPM)", 'pulsegrid_custom_ipmi_sensor{SEL,unit="rpm"}', "count", ["sensor"]),
+        ("Voltages", 'pulsegrid_custom_ipmi_sensor{SEL,unit="volts"}', "count", ["sensor"]),
+        ("Power (W)", 'pulsegrid_custom_ipmi_sensor{SEL,unit="watts"}', "count", ["sensor"]),
+        (
+            "Sensors not OK",
+            "count(pulsegrid_custom_ipmi_sensor_ok{SEL} == 0) or vector(0)",
+            "count",
+            [],
+        ),
+    ],
+    "snmp": [
+        (
+            "Traffic in",
+            "rate(pulsegrid_custom_snmp_if_in_bytes_total{SEL}[2m])",
+            "bytes_per_second",
+            ["interface"],
+        ),
+        (
+            "Traffic out",
+            "rate(pulsegrid_custom_snmp_if_out_bytes_total{SEL}[2m])",
+            "bytes_per_second",
+            ["interface"],
+        ),
+        ("Interfaces up", "sum(pulsegrid_custom_snmp_if_up{SEL})", "count", []),
+        ("Uptime", "pulsegrid_custom_snmp_uptime_seconds{SEL} / 86400", "count", []),
+    ],
 }
 
 
