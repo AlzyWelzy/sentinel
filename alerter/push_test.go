@@ -72,3 +72,15 @@ func TestRenderHTML(t *testing.T) {
 		t.Fatal("plain messages have no html")
 	}
 }
+
+func TestPushCarriesAckLinkWhileOpen(t *testing.T) {
+	m := message{Text: "CPU high\nAcknowledge (stops escalation): https://api/v1/ack/tok\n",
+		Event: map[string]any{"type": "alert_firing", "summary": "CPU high", "incident_id": "i1"}}
+	if c := pushContent(m); c.AckURL != "https://api/v1/ack/tok" {
+		t.Fatalf("got %q", c.AckURL)
+	}
+	m.Event["type"] = "alert_resolved"
+	if c := pushContent(m); c.AckURL != "" {
+		t.Fatalf("resolved alerts have nothing to acknowledge, got %q", c.AckURL)
+	}
+}
