@@ -600,6 +600,9 @@ async def build_public(slug: str) -> PublicPage | None:
     ]
     down = sum(1 for i in out_items if i.status == "down")
     overall = "operational" if down == 0 else ("outage" if down == len(out_items) else "degraded")
+    # The owner's word counts: an open incident announcement means something's wrong.
+    if overall == "operational" and any(a.kind == "incident" for a in active):
+        overall = "degraded"
     if overall == "operational" and any(
         a.kind == "maintenance" and a.state == "in_progress" for a in active
     ):
@@ -694,7 +697,11 @@ async def public_status_html(slug: str) -> HTMLResponse:
         when = ""
         if u.starts_at and u.ends_at:
             when = f"<small>{u.starts_at:%d %b %H:%M} – {u.ends_at:%d %b %H:%M} UTC</small>"
-        tone = {"incident": "#dc2626", "maintenance": "#2563eb"}.get(u.kind, "#64748b")
+        tone = (
+            "#16a34a"
+            if u.state in CLOSED
+            else {"incident": "#dc2626", "maintenance": "#2563eb"}.get(u.kind, "#64748b")
+        )
         return (
             f'<div class="card" style="border-left:4px solid {tone}"><div class="row"><b>{e(u.title)}</b>'
             f'<span class="st">{e(STATE_LABEL.get(u.state, u.state))}</span></div>'

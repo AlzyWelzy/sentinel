@@ -32,6 +32,7 @@ async def test_announcements_lifecycle(alice: User, bob: User, client):
     upd = r.json()
     pub = (await client.get("/public/status/acme-announce")).json()
     assert [a["title"] for a in pub["active"]] == ["Checkout errors"] and pub["history"] == []
+    assert pub["status"] == "degraded"
     html = (await client.get("/status/acme-announce")).text
     assert "Checkout errors" in html and "Investigating" in html
     # Resolving moves it to history.
