@@ -118,5 +118,10 @@ async def test_check_slo_target(alice: User):
     assert r.json()["slo_target"] == 99.5
     r = await alice.request("POST", "/v1/checks", json={**body, "name": "x", "slo_target": 100})
     assert r.status_code == 422
-    slo = (await alice.request("GET", "/v1/insights")).json()["slos"][0]
+    log = {"name": "errors", "type": "log", "target": "/var/log/app.log", "tag": "web"}
+    r = await alice.request("POST", "/v1/checks", json={**log, "params": {"pattern": "ERROR"}})
+    assert r.status_code == 201, r.text
+    slos = (await alice.request("GET", "/v1/insights")).json()["slos"]
+    assert [x["name"] for x in slos] == ["site"]  # log checks aren't availability
+    slo = slos[0]
     assert slo["target"] == 99.5 and round(slo["budget_minutes"]) == 216

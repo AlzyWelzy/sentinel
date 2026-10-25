@@ -20,6 +20,7 @@ from app.models import Check, Host, Incident
 from app.services.metrics import MetricsUnavailable, query_instant
 
 QUICK_RESOLVE = timedelta(minutes=5)
+SLO_TYPES = ("http", "tcp", "tls", "dns", "ping")
 
 
 @dataclass
@@ -190,8 +191,13 @@ async def build(db: AsyncSession, tenant_id: uuid.UUID, days: int) -> Insights:
             .order_by(Host.hostname)
         )
     )
+    # SLOs are about availability: file and log checks answer other questions.
     checks = list(
-        await db.scalars(select(Check).where(Check.tenant_id == tenant_id).order_by(Check.name))
+        await db.scalars(
+            select(Check)
+            .where(Check.tenant_id == tenant_id, Check.type.in_(SLO_TYPES))
+            .order_by(Check.name)
+        )
     )
     metrics: dict[str, dict[str, float]] = {}
     up: dict[str, float] = {}
