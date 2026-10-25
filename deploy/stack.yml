@@ -195,8 +195,12 @@ services:
 
 configs:
   tempo:
+    # Swarm configs can't change in place: name each version by its content
+    # (set by the deploy, e.g. TEMPO_CONFIG=$(sha256sum tempo/tempo.yml | cut -c1-8)).
+    name: pulsegrid-tempo-${TEMPO_CONFIG:-v1}
     file: ./tempo/tempo.yml
   loki:
+    name: pulsegrid-loki-${LOKI_CONFIG:-v1}
     file: ./loki/loki.yml
   caddyfile:
     file: ./caddy/Caddyfile

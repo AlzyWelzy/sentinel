@@ -28,6 +28,20 @@ metrics_generator:
     path: /var/tempo/generator/wal
   traces_storage:
     path: /var/tempo/generator/traces
+  processor:
+    local_blocks:
+      # Keep consumer spans too (not just server spans), and write the blocks
+      # to storage so rate/latency queries reach back over the whole
+      # retention and survive a restart.
+      filter_server_spans: false
+      flush_to_storage: true
+
+# Metrics for the last few minutes come from the generators' memory;
+# anything older from the flushed blocks, so a restart loses at most that.
+query_frontend:
+  metrics:
+    max_duration: 169h
+    query_backend_after: 5m
 
 storage:
   trace:
