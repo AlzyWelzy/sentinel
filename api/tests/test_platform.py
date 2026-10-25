@@ -513,3 +513,18 @@ async def test_only_probe_accounts_can_be_probes(client):
         await customer.request("PUT", f"/admin/v1/hosts/{probe_host}/probe", json={"region": None})
     ).status_code in (401, 403)
     await client.put(f"/admin/v1/hosts/{probe_host}/probe", headers=staff, json={"region": None})
+
+
+async def test_jwks_outage_keeps_the_cached_keys():
+    from fastapi import HTTPException
+
+    from app.auth.console import JWKSVerifier
+
+    v = JWKSVerifier("http://console.invalid/jwks", "iss", "aud", ["RS512"])
+    with pytest.raises(HTTPException) as exc:  # nothing cached yet: 503, not 500
+        await v._key_set()
+    assert exc.value.status_code == 503
+    cached = object()
+    v._keys, v._expiry = cached, 0.0  # cached keys, now stale
+    assert await v._key_set() is cached
+    assert v._expiry > 0  # retried again later, not on every request

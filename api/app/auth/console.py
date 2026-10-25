@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass
 
 import httpx
+from fastapi import HTTPException, status
 from joserfc import jwt
 from joserfc.errors import JoseError
 from joserfc.jwk import KeySet
@@ -17,6 +18,7 @@ from joserfc.jwt import JWTClaimsRegistry
 from app.config import settings
 
 _JWKS_CACHE_TTL = 300  # seconds
+_JWKS_RETRY_AFTER = 60  # after a failed refresh, while serving the cached keys
 
 # A console super admin "viewing as" a customer carries this claim. Those
 # sessions are read-only, the same as in billing.
@@ -60,10 +62,21 @@ class JWKSVerifier:
         async with self._lock:
             if self._keys is not None and time.monotonic() < self._expiry:
                 return self._keys
-            async with httpx.AsyncClient() as client:
-                response = await client.get(self.jwks_uri, timeout=10)
-                response.raise_for_status()
-            self._keys = KeySet.import_key_set(response.json())
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(self.jwks_uri, timeout=10)
+                    response.raise_for_status()
+                keys = KeySet.import_key_set(response.json())
+            except (httpx.HTTPError, ValueError) as exc:
+                # The console is slow or restarting: keep using the keys we
+                # have (signing keys rotate rarely) and try again shortly.
+                if self._keys is None:
+                    raise HTTPException(
+                        status.HTTP_503_SERVICE_UNAVAILABLE, "Sign-in keys unavailable, try again"
+                    ) from exc
+                self._expiry = time.monotonic() + _JWKS_RETRY_AFTER
+                return self._keys
+            self._keys = keys
             self._expiry = time.monotonic() + _JWKS_CACHE_TTL
         return self._keys
 
