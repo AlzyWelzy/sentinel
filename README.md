@@ -74,6 +74,12 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 - One-line install from the dashboard; the agent never runs privileged. Its
   state (including the host token) is readable only by it and administrators.
 - Buffers every batch on disk until ingest accepts it; outages lose nothing.
+- In a container (Docker, LXC, Kubernetes) or a capped systemd unit it
+  reports the cgroup v2 limits as the server's size, CPU as a share of the
+  quota and memory against the limit, not the whole machine.
+- Ingest records the public address each agent connects from
+  (`hosts.public_ip`), so servers behind NAT or in a VPC still match uptime
+  checks and maintenance by their public IP.
 - Fetches its config from Pulsegrid every 2 minutes, falling back to the URL
   it registered with, so domains can move without reinstalls. The config
   also lists the processes and services to watch, taken from the host's
@@ -132,15 +138,21 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
   need N of the probe locations to agree). For every server, one server, or
   every server with a tag. Each rule has a severity, optional runbook text
   and an optional action to run on the host. "Add recommended rules" creates
-  a starter set.
+  a starter set. **Preview** (`POST /v1/alert-rules/preview`) replays a
+  metric or custom rule over the last 7 days before it's saved: how many
+  times it would have fired, on which servers, and whether it's noisy.
 - Incidents keep a timeline (opened, notified, escalated, acknowledged,
-  resolved, reopened, notes, actions). Customers add notes, resolve by hand
-  and reopen. An alert that opens 4 times in an hour is marked flapping and
+  resolved, reopened, notes, actions, snoozes). Customers add notes, resolve
+  by hand, reopen, **snooze** escalations for 30 minutes to a week without
+  resolving, and download a **postmortem draft** (Markdown: summary, timeline,
+  notes, related alerts on the same server, prompts for impact, cause and
+  action items). An alert that opens 4 times in an hour is marked flapping and
   stops notifying until it settles; a silent server holds back its other
   alerts (one problem, one alert).
 - Escalation: up to 5 steps per rule ("after 15 minutes, also notify …").
-  Steps stop when the incident is acknowledged (dashboard or the signed
-  one-click link in every alert, `ACK_SIGNING_SECRET`) or resolves.
+  Steps stop when the incident is acknowledged (dashboard, the signed
+  one-click link in every alert, `ACK_SIGNING_SECRET`, or the **Acknowledge
+  button on push notifications**) or resolves, and wait while it's snoozed.
 - Maintenance windows (one-off, or weekly in a timezone) for every server, one
   server or a tag: no incidents open and nothing is sent; a problem that
   outlasts the window fires when it ends.
@@ -168,7 +180,19 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 
 - Status pages (`/status/<slug>` HTML, `/public/status/<slug>` JSON): chosen
   servers and checks under the owner's labels, 90-day daily uptime, outages
-  of the last week. Never hostnames, addresses or targets.
+  of the last week. Never hostnames, addresses or targets. **Announcements**
+  (`/v1/status-pages/{id}/updates`): incident updates (investigating →
+  identified → monitoring → resolved), planned maintenance and notices; open
+  ones lead the page and set its banner, closed ones stay listed for two
+  weeks. One-off maintenance windows on the page's servers announce
+  themselves.
+- **Insights** (`/v1/insights?days=30`): noisy rules with a concrete fix
+  each (flapping → recovery level; clears itself within 5 minutes → longer
+  duration; several a day → higher threshold), time to acknowledge and
+  resolve, **server sizing** from 7 days of busy-hour CPU and peak memory
+  (oversized / undersized, with the plan size that would fit), and **SLOs**:
+  each uptime check's availability against its target (`slo_target`,
+  default 99.9%), error budget left and the current burn rate.
 - Reports (`/v1/reports/summary`, `.csv`): availability, incidents, time to
   acknowledge and resolve, noisiest rules, resource use, days until disks
   fill. Accounts get it by email on the 1st unless they turn it off.
@@ -346,4 +370,7 @@ console's view-as-client, which Pulsegrid treats as read-only. `ADMIN_JWT_TOKEN_
   same values as billing-ms in that environment.
 - **Console backend → `/internal/v1`** with `X-Internal-Api-Key`:
   `GET /usage` (active hosts per account, for per-host billing),
-  `POST /tenants/{uid}/suspend|resume`, `DELETE /tenants/{uid}` (purges data).
+  `POST /tenants/{uid}/suspend|resume`, `DELETE /tenants/{uid}` (purges data),
+  `POST /tenants/{uid}/notify` (an uptime alert to the user's push devices),
+  `GET /tenants/{uid}/maintenance?address=` (is the server at this IP or
+  hostname in a maintenance window: the console holds back uptime alerts).
