@@ -138,6 +138,11 @@ async def list_windows(t: Tenant) -> list[WindowOut]:
     return [_out(w) for w in rows]
 
 
+@router.get("/{window_id}")
+async def get_window(window_id: uuid.UUID, t: Tenant) -> WindowOut:
+    return _out(await _get(t, window_id))
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_window(body: WindowIn, t: Tenant) -> WindowOut:
     await _check_host(t, body.host_id)

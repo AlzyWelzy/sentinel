@@ -176,6 +176,11 @@ async def create_page(body: PageIn, t: Tenant) -> PageOut:
     return await _page_out(t, page)
 
 
+@router.get("/{page_id}")
+async def get_page(page_id: uuid.UUID, t: Tenant) -> PageOut:
+    return await _page_out(t, await _get(t, page_id))
+
+
 @router.put("/{page_id}")
 async def update_page(page_id: uuid.UUID, body: PageIn, t: Tenant) -> PageOut:
     page = await _get(t, page_id)
