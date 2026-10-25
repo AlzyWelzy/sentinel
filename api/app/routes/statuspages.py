@@ -1,6 +1,8 @@
 # ruff: noqa: E501 -- the public page is an inline HTML template
 """Status pages: a public page per account showing chosen servers and
-checks, their 90-day uptime and any current incidents.
+checks, their 90-day uptime, any current incidents, the owner's own
+announcements (incident updates, planned maintenance) and upcoming one-off
+maintenance windows for the servers on the page.
 
 The public view (/public/status/{slug} as JSON, /status/{slug} as HTML) is
 unauthenticated, so it shows only what the owner picked: labels, up/down,
@@ -10,17 +12,26 @@ uptime percentages and incident summaries; never hostnames, IPs or targets.
 import html
 import time
 import uuid
-from datetime import UTC, datetime
-from typing import Literal
+from datetime import UTC, datetime, timedelta
+from typing import Literal, cast
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from app.db import ServiceSession
-from app.models import AlertRule, Check, Host, Incident, StatusPage, StatusPageItem
+from app.models import (
+    AlertRule,
+    Check,
+    Host,
+    Incident,
+    MaintenanceWindow,
+    StatusPage,
+    StatusPageItem,
+    StatusPageUpdate,
+)
 from app.services import checkresults
 from app.services.heartbeats import is_online, last_seen
 from app.services.metrics import MetricsUnavailable, query_instant, query_series
@@ -202,6 +213,124 @@ async def delete_page(page_id: uuid.UUID, t: Tenant) -> None:
     await t.db.delete(page)
 
 
+# ── Announcements ────────────────────────────────────────────────────────────
+
+UpdateKind = Literal["incident", "maintenance", "info"]
+UpdateState = Literal[
+    "investigating",
+    "identified",
+    "monitoring",
+    "resolved",
+    "scheduled",
+    "in_progress",
+    "completed",
+    "posted",
+]
+STATES: dict[str, set[str]] = {
+    "incident": {"investigating", "identified", "monitoring", "resolved"},
+    "maintenance": {"scheduled", "in_progress", "completed"},
+    "info": {"posted"},
+}
+CLOSED = {"resolved", "completed"}
+MAX_UPDATES = 200
+
+
+class UpdateIn(BaseModel):
+    kind: UpdateKind
+    state: UpdateState
+    title: str = Field(min_length=1, max_length=200)
+    body: str = Field(default="", max_length=5000)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> "UpdateIn":
+        if self.state not in STATES[self.kind]:
+            raise ValueError(f"{self.kind} updates are {', '.join(sorted(STATES[self.kind]))}")
+        if self.kind == "maintenance" and (self.starts_at is None or self.ends_at is None):
+            raise ValueError("maintenance needs starts_at and ends_at")
+        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+            raise ValueError("ends_at must be after starts_at")
+        return self
+
+
+class UpdateOut(UpdateIn):
+    id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+def _update_out(u: StatusPageUpdate) -> UpdateOut:
+    return UpdateOut(
+        id=u.id,
+        kind=cast(UpdateKind, u.kind),
+        state=cast(UpdateState, u.state),
+        title=u.title,
+        body=u.body,
+        starts_at=u.starts_at,
+        ends_at=u.ends_at,
+        created_at=u.created_at,
+        updated_at=u.updated_at,
+    )
+
+
+async def _get_update(t: TenantContext, page: StatusPage, update_id: uuid.UUID) -> StatusPageUpdate:
+    u = await t.db.scalar(
+        select(StatusPageUpdate).where(
+            StatusPageUpdate.id == update_id,
+            StatusPageUpdate.page_id == page.id,
+            StatusPageUpdate.tenant_id == t.tenant_id,
+        )
+    )
+    if u is None:
+        raise HTTPException(status_code=404, detail="Update not found")
+    return u
+
+
+@router.get("/{page_id}/updates")
+async def list_updates(page_id: uuid.UUID, t: Tenant) -> list[UpdateOut]:
+    page = await _get(t, page_id)
+    rows = await t.db.scalars(
+        select(StatusPageUpdate)
+        .where(StatusPageUpdate.page_id == page.id, StatusPageUpdate.tenant_id == t.tenant_id)
+        .order_by(StatusPageUpdate.created_at.desc())
+        .limit(MAX_UPDATES)
+    )
+    return [_update_out(u) for u in rows]
+
+
+@router.post("/{page_id}/updates", status_code=status.HTTP_201_CREATED)
+async def create_update(page_id: uuid.UUID, body: UpdateIn, t: Tenant) -> UpdateOut:
+    page = await _get(t, page_id)
+    u = StatusPageUpdate(tenant_id=t.tenant_id, page_id=page.id, **body.model_dump())
+    t.db.add(u)
+    _cache.pop(page.slug, None)
+    await t.db.flush()
+    await t.db.refresh(u)
+    return _update_out(u)
+
+
+@router.put("/{page_id}/updates/{update_id}")
+async def edit_update(
+    page_id: uuid.UUID, update_id: uuid.UUID, body: UpdateIn, t: Tenant
+) -> UpdateOut:
+    page = await _get(t, page_id)
+    u = await _get_update(t, page, update_id)
+    for field, value in body.model_dump().items():
+        setattr(u, field, value)
+    u.updated_at = datetime.now(UTC)
+    _cache.pop(page.slug, None)
+    await t.db.flush()
+    return _update_out(u)
+
+
+@router.delete("/{page_id}/updates/{update_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_update(page_id: uuid.UUID, update_id: uuid.UUID, t: Tenant) -> None:
+    page = await _get(t, page_id)
+    await t.db.delete(await _get_update(t, page, update_id))
+    _cache.pop(page.slug, None)
+
+
 # ── Public view ──────────────────────────────────────────────────────────────
 
 ItemStatus = Literal["up", "down", "unknown"]
@@ -226,13 +355,27 @@ class PublicIncident(BaseModel):
     resolved_at: datetime | None
 
 
+class PublicUpdate(BaseModel):
+    kind: str
+    state: str
+    title: str
+    body: str
+    starts_at: datetime | None
+    ends_at: datetime | None
+    updated_at: datetime
+
+
 class PublicPage(BaseModel):
     title: str
     description: str | None
-    status: Literal["operational", "degraded", "outage"]
+    status: Literal["operational", "degraded", "outage", "maintenance"]
     items: list[PublicItem]
     incidents: list[PublicIncident]
     updated_at: datetime
+    # Open incident updates and maintenance that's coming or under way.
+    active: list[PublicUpdate] = []
+    # Closed ones from the last 14 days.
+    history: list[PublicUpdate] = []
 
 
 CACHE_SECONDS = 30
@@ -336,6 +479,34 @@ async def build_public(slug: str) -> PublicPage | None:
                 .limit(20)
             )
         )
+        now = datetime.now(UTC)
+        updates = list(
+            await db.scalars(
+                select(StatusPageUpdate)
+                .where(
+                    StatusPageUpdate.page_id == page.id,
+                    StatusPageUpdate.tenant_id == page.tenant_id,
+                    StatusPageUpdate.state.not_in(CLOSED)
+                    | (StatusPageUpdate.updated_at >= now - timedelta(days=14)),
+                )
+                .order_by(StatusPageUpdate.created_at.desc())
+                .limit(30)
+            )
+        )
+        # One-off maintenance windows on the page's servers, coming within a
+        # week or under way, announce themselves (weekly ones would be noise).
+        windows = list(
+            await db.scalars(
+                select(MaintenanceWindow).where(
+                    MaintenanceWindow.tenant_id == page.tenant_id,
+                    MaintenanceWindow.enabled,
+                    MaintenanceWindow.schedule == "once",
+                    MaintenanceWindow.host_id.in_(host_ids),
+                    MaintenanceWindow.ends_at > now,
+                    MaintenanceWindow.starts_at < now + timedelta(days=7),
+                )
+            )
+        )
     seen = await last_seen(host_ids)
     results = await checkresults.latest(check_ids)
     labels = {i.host_id or i.check_id: i.label for i in items}
@@ -385,8 +556,54 @@ async def build_public(slug: str) -> PublicPage | None:
                 else [PublicDay(date=d.date, uptime=None) for d in days],
             )
         )
+    labels_by_host = {i.host_id: i.label for i in items if i.host_id}
+    active = [
+        PublicUpdate(
+            kind=u.kind,
+            state=u.state,
+            title=u.title,
+            body=u.body,
+            starts_at=u.starts_at,
+            ends_at=u.ends_at,
+            updated_at=u.updated_at,
+        )
+        for u in updates
+        if u.state not in CLOSED
+    ]
+    for w in windows:
+        if w.starts_at is None or w.ends_at is None:
+            continue
+        under_way = w.starts_at <= now
+        active.append(
+            PublicUpdate(
+                kind="maintenance",
+                state="in_progress" if under_way else "scheduled",
+                title=f"Planned maintenance: {labels_by_host.get(w.host_id, 'Service')}",
+                body="Some services may be briefly unavailable during this window.",
+                starts_at=w.starts_at,
+                ends_at=w.ends_at,
+                updated_at=w.starts_at,
+            )
+        )
+    history = [
+        PublicUpdate(
+            kind=u.kind,
+            state=u.state,
+            title=u.title,
+            body=u.body,
+            starts_at=u.starts_at,
+            ends_at=u.ends_at,
+            updated_at=u.updated_at,
+        )
+        for u in updates
+        if u.state in CLOSED
+    ]
     down = sum(1 for i in out_items if i.status == "down")
     overall = "operational" if down == 0 else ("outage" if down == len(out_items) else "degraded")
+    if overall == "operational" and any(
+        a.kind == "maintenance" and a.state == "in_progress" for a in active
+    ):
+        overall = "maintenance"
     result = PublicPage(
         title=page.title,
         description=page.description,
@@ -403,6 +620,8 @@ async def build_public(slug: str) -> PublicPage | None:
             for inc in incidents
         ],
         updated_at=datetime.now(UTC),
+        active=active,
+        history=history,
     )
     _cache[slug] = (time.monotonic(), result)
     return result
@@ -421,6 +640,17 @@ BANNER = {
     "operational": ("#16a34a", "All systems operational"),
     "degraded": ("#d97706", "Some systems are having problems"),
     "outage": ("#dc2626", "Major outage"),
+    "maintenance": ("#2563eb", "Planned maintenance in progress"),
+}
+STATE_LABEL = {
+    "investigating": "Investigating",
+    "identified": "Identified",
+    "monitoring": "Monitoring",
+    "resolved": "Resolved",
+    "scheduled": "Scheduled",
+    "in_progress": "In progress",
+    "completed": "Completed",
+    "posted": "Update",
 }
 
 
@@ -459,6 +689,21 @@ async def public_status_html(slug: str) -> HTMLResponse:
             f'<span class="st">{e(i.status.title() if i.status != "unknown" else "No data")}</span></div>'
             f'<div class="bars">{bars}</div><small>{e(" · ".join(stats))}</small></section>'
         )
+
+    def update_html(u: PublicUpdate) -> str:
+        when = ""
+        if u.starts_at and u.ends_at:
+            when = f"<small>{u.starts_at:%d %b %H:%M} – {u.ends_at:%d %b %H:%M} UTC</small>"
+        tone = {"incident": "#dc2626", "maintenance": "#2563eb"}.get(u.kind, "#64748b")
+        return (
+            f'<div class="card" style="border-left:4px solid {tone}"><div class="row"><b>{e(u.title)}</b>'
+            f'<span class="st">{e(STATE_LABEL.get(u.state, u.state))}</span></div>'
+            + (f"<p>{e(u.body)}</p>" if u.body else "")
+            + f"{when}<br><small>Updated {u.updated_at:%d %b %Y %H:%M} UTC</small></div>"
+        )
+
+    active = "".join(update_html(u) for u in page.active)
+    history = "".join(update_html(u) for u in page.history)
     incidents = (
         "".join(
             f"<li><b>{e(inc.title)}</b> <small>{inc.started_at:%d %b %Y %H:%M} UTC"
@@ -482,7 +727,8 @@ section,.card{{background:var(--card);border:1px solid var(--line);border-radius
 .bars i{{flex:1;border-radius:2px}}small{{color:var(--muted)}}ul{{padding-left:18px;margin:0}}
 footer{{margin-top:24px;color:var(--muted);font-size:12px;text-align:center}}</style></head>
 <body><main><h1>{e(page.title)}</h1>{f"<p>{e(page.description)}</p>" if page.description else ""}
-<div class="banner">{text}</div>{"".join(rows)}
+<div class="banner">{text}</div>{active}{"".join(rows)}
 <div class="card"><b>Recent incidents</b><ul>{incidents}</ul></div>
+{f"<h3>Past updates</h3>{history}" if history else ""}
 <footer>Updated {page.updated_at:%d %b %Y %H:%M} UTC · Powered by Pulsegrid</footer></main></body></html>"""
     return HTMLResponse(body, headers={"Cache-Control": f"public, max-age={CACHE_SECONDS}"})

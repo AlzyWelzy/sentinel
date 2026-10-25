@@ -8,6 +8,7 @@ package collector
 
 import (
 	"context"
+	"math"
 	stdnet "net"
 	"os"
 	"os/exec"
@@ -69,6 +70,8 @@ type gopsutilCollector struct {
 	// Process and service names to report on, from the agent's config.
 	watchProcesses []string
 	watchServices  []string
+	// In a container or a capped unit: CPU against the quota, not the host.
+	cgCPU cgroupCPU
 }
 
 // cpuSnapshot is one read of the CPU counters: the machine total and, where
@@ -216,7 +219,29 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 
 	out = append(out, c.cpuSamples(ctx)...)
 
-	if vm, err := mem.VirtualMemoryWithContext(ctx); err == nil {
+	vm, vmErr := mem.VirtualMemoryWithContext(ctx)
+	var hostMem uint64
+	if vmErr == nil {
+		hostMem = vm.Total
+	}
+	lim := detectLimits(runtime.NumCPU(), hostMem)
+	if pct, ok := c.cgCPU.percent(lim, time.Now()); ok {
+		for i := range out {
+			if out[i].Name == "pulsegrid_cpu_usage_percent" {
+				out[i].Value = pct
+			}
+		}
+	}
+	if used, ok := memoryUsed(lim.memDir); ok && lim.memLimit > 0 {
+		if used > lim.memLimit {
+			used = lim.memLimit
+		}
+		out = append(out,
+			sample("pulsegrid_memory_used_percent", float64(used)/float64(lim.memLimit)*100),
+			sample("pulsegrid_memory_total_bytes", float64(lim.memLimit)),
+			sample("pulsegrid_memory_available_bytes", float64(lim.memLimit-used)),
+		)
+	} else if vmErr == nil {
 		out = append(out,
 			sample("pulsegrid_memory_used_percent", vm.UsedPercent),
 			sample("pulsegrid_memory_total_bytes", float64(vm.Total)),
@@ -356,6 +381,14 @@ func Meta(ctx context.Context) proto.HostMeta {
 	m.CPUCores = runtime.NumCPU()
 	if vm, err := mem.VirtualMemoryWithContext(ctx); err == nil {
 		m.MemoryBytes = vm.Total
+	}
+	// A container's size is its limits.
+	lim := detectLimits(m.CPUCores, m.MemoryBytes)
+	if lim.cores > 0 {
+		m.CPUCores = int(math.Ceil(lim.cores))
+	}
+	if lim.memLimit > 0 {
+		m.MemoryBytes = lim.memLimit
 	}
 	if ifaces, err := net.InterfacesWithContext(ctx); err == nil {
 		m.IPAddresses = interfaceIPs(ifaces)

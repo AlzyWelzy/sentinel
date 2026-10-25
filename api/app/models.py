@@ -311,6 +311,23 @@ class StatusPage(TenantScoped):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class StatusPageUpdate(TenantScoped):
+    __tablename__ = "status_page_updates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    page_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("status_pages.id", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text, default="")
+    starts_at: Mapped[datetime | None]
+    ends_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class StatusPageItem(TenantScoped):
     __tablename__ = "status_page_items"
 
