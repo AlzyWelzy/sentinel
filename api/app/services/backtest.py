@@ -12,6 +12,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+from app.services import logs as logstore
 from app.services.metrics import query_series
 
 STEP = 60
@@ -164,6 +165,10 @@ async def preview(
         h = simulate(s["points"], operator, threshold, duration_seconds, recovery_threshold)
         h.host_id = s["labels"].get("host_id", "")
         out.hosts.append(h)
+    return _summarise(out, days)
+
+
+def _summarise(out: Preview, days: int) -> Preview:
     out.hosts.sort(key=lambda h: (-h.fires, -h.firing_minutes))
     out.fires = sum(h.fires for h in out.hosts)
     out.firing_minutes = sum(h.firing_minutes for h in out.hosts)
@@ -177,4 +182,33 @@ async def preview(
         )
     elif out.fires:
         out.verdict = "occasional"
+    return out
+
+
+async def preview_logs(
+    account: int,
+    f: logstore.LogFilter,
+    *,
+    threshold: float,
+    duration_seconds: int,
+    window_seconds: int,
+    days: int,
+) -> Preview:
+    """Log rules: matching lines per window, per host, through the same walk.
+    Each point covers a whole window, so firing time counts in windows."""
+    end = int(time.time())
+    start = end - days * 86400
+    series = await logstore.hits_by_host(account, f, start, end, window_seconds)
+    out = Preview(days=days)
+    for host_id, points in series.items():
+        h = simulate(points, ">", threshold, duration_seconds, None)
+        h.host_id = host_id
+        h.firing_minutes = h.firing_minutes * window_seconds // 60
+        out.hosts.append(h)
+    out = _summarise(out, days)
+    if out.verdict == "noisy":
+        out.advice = (
+            f"About {out.fires / max(days, 1):.0f} alerts a day. Raise the line count, "
+            "narrow the text or levels, or lengthen the duration."
+        )
     return out

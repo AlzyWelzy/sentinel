@@ -28,6 +28,7 @@ from app.models import (
     NotificationChannel,
 )
 from app.services import backtest
+from app.services import logs as logstore
 from app.services.metrics import MetricsUnavailable
 from app.tenancy import Tenant, TenantContext
 from app.validation import normalize_tag, validate_target
@@ -63,6 +64,7 @@ Kind = Literal[
     "plugin_down",
     "container_down",
     "custom",
+    "logs",
 ]
 FORECAST_METRICS = ("disk", "inodes", "memory", "swap")
 # Metrics an anomaly rule can watch: ones with a meaningful "usual level".
@@ -90,6 +92,18 @@ class EscalationStepIn(BaseModel):
 
 class EscalationStepOut(EscalationStepIn):
     pass
+
+
+class LogFilterIn(BaseModel):
+    """kind logs: which lines count. Text matches anywhere in the line, in any
+    case, unless regex is set."""
+
+    q: str | None = Field(default=None, max_length=500)
+    regex: bool = False
+    source: str | None = Field(default=None, max_length=200)
+    levels: list[Literal["error", "warning", "info", "debug", "unknown"]] = Field(
+        default_factory=list, max_length=5
+    )
 
 
 class RuleIn(BaseModel):
@@ -128,6 +142,9 @@ class RuleIn(BaseModel):
     description: str | None = Field(
         default=None, max_length=2000, description="runbook text included in alerts"
     )
+    log_filter: LogFilterIn | None = Field(
+        default=None, description="logs: the lines to count over window_seconds"
+    )
 
     @field_validator("tag")
     @classmethod
@@ -153,6 +170,8 @@ class RuleIn(BaseModel):
             self.aggregation = "last"
         if k != "custom":
             self.labels = {}
+        if k != "logs":
+            self.log_filter = None
         if k == "metric":
             if self.metric is None or self.operator is None or self.threshold is None:
                 raise ValueError("metric rules need metric, operator and threshold")
@@ -203,6 +222,27 @@ class RuleIn(BaseModel):
             if self.threshold is None or not 1 <= self.threshold <= 720:
                 raise ValueError("forecast rules need threshold: the horizon in hours (1-720)")
             self.operator, self.target = ">", None
+        elif k == "logs":
+            f = self.log_filter
+            if f is None or not (f.q or f.source or f.levels):
+                raise ValueError("log rules need log_filter: text, a source or levels to count")
+            if self.threshold is None:
+                self.threshold = 0
+            if self.threshold < 0:
+                raise ValueError("log rules fire above a line count (threshold) of 0 or more")
+            try:
+                self.target = logstore.text_filter(
+                    logstore.LogFilter(
+                        host_ids=[],
+                        text=f.q or None,
+                        regex=f.regex,
+                        source=f.source or None,
+                        levels=tuple(f.levels),
+                    )
+                )
+            except logstore.BadQuery as exc:
+                raise ValueError(str(exc)) from None
+            self.metric, self.operator = None, ">"
         else:  # host_down
             self.metric = self.operator = self.threshold = self.target = None
             if self.duration_seconds < MIN_HOST_DOWN_SECONDS:
@@ -243,6 +283,7 @@ class RuleOut(BaseModel):
     action_name: str | None
     labels: dict[str, str]
     description: str | None
+    log_filter: dict | None = None
     firing_hosts: int
     created_at: datetime
     updated_at: datetime
@@ -369,6 +410,7 @@ async def _rule_out(t: TenantContext, r: AlertRule) -> RuleOut:
         action_name=r.action_name,
         labels=r.labels or {},
         description=r.description,
+        log_filter=r.log_filter,
         firing_hosts=firing or 0,
         created_at=r.created_at,
         updated_at=r.updated_at,
@@ -607,7 +649,9 @@ async def update_rule(rule_id: uuid.UUID, body: RuleIn, t: Tenant) -> RuleOut:
         "window_seconds",
         "labels",
     )
-    changed = any(getattr(rule, f) != getattr(body, f) for f in condition)
+    changed = any(getattr(rule, f) != getattr(body, f) for f in condition) or (
+        rule.log_filter != (body.log_filter.model_dump() if body.log_filter else None)
+    )
     if changed or (rule.enabled and not body.enabled):
         await _reset_rule(t, rule.id)
     for field, value in body.model_dump(exclude={"channel_ids", "escalations"}).items():
@@ -905,14 +949,56 @@ async def postmortem(incident_id: uuid.UUID, t: Tenant) -> str:
     return "\n".join(lines)
 
 
+async def _preview_logs(body: RuleIn, t: TenantContext, days: int) -> dict:
+    q = select(Host.id, Host.hostname).where(
+        Host.tenant_id == t.tenant_id, Host.revoked_at.is_(None)
+    )
+    if body.host_id is not None:
+        q = q.where(Host.id == body.host_id)
+    elif body.tag is not None:
+        q = q.where(literal(body.tag) == any_(Host.tags))
+    names = {str(r.id): r.hostname for r in await t.db.execute(q)}
+    if not names or body.log_filter is None:
+        return asdict(backtest.Preview(days=days))
+    f = body.log_filter
+    flt = logstore.LogFilter(
+        host_ids=[uuid.UUID(h) for h in names],
+        text=f.q or None,
+        regex=f.regex,
+        source=f.source or None,
+        levels=tuple(f.levels),
+    )
+    try:
+        result = await backtest.preview_logs(
+            await logstore.account_id(t.db, t.tenant_id),
+            flt,
+            threshold=body.threshold or 0,
+            duration_seconds=body.duration_seconds,
+            window_seconds=body.window_seconds,
+            days=days,
+        )
+    except logstore.BadQuery as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except logstore.LogsUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Log search is unavailable right now") from exc
+    out = asdict(result)
+    for h in out["hosts"]:
+        h["hostname"] = names.get(h["host_id"], h["host_id"])
+    return out
+
+
 @router.post("/alert-rules/preview")
 async def preview_rule(
     body: RuleIn, t: Tenant, days: Annotated[int, Query(ge=1, le=14)] = 7
 ) -> dict:
     """How often this rule would have fired over the last days, per host,
-    without saving it: metric and custom rules."""
+    without saving it: metric, custom and log rules."""
+    if body.kind == "logs":
+        return await _preview_logs(body, t, days)
     if body.kind not in ("metric", "custom") or body.operator is None or body.threshold is None:
-        raise HTTPException(status_code=422, detail="Preview works for metric and custom rules")
+        raise HTTPException(
+            status_code=422, detail="Preview works for metric, custom and log rules"
+        )
     host_ids = None
     if body.tag is not None:
         host_ids = [

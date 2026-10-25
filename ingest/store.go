@@ -100,6 +100,13 @@ func (s *store) register(
 	return id, oldTokenHash, tx.Commit(ctx)
 }
 
+// logsAccount is the tenant's VictoriaLogs AccountID.
+func (s *store) logsAccount(ctx context.Context, tenantID string) (int64, error) {
+	var id int64
+	err := s.pool.QueryRow(ctx, `SELECT logs_account_id FROM tenants WHERE id = $1`, tenantID).Scan(&id)
+	return id, err
+}
+
 func (s *store) lookupHost(ctx context.Context, tokenHash string) (hostIdentity, error) {
 	var id hostIdentity
 	var status string

@@ -38,6 +38,7 @@ type rule struct {
 	Labels            map[string]string
 	Description       string
 	Check             *checkInfo // kind check: the check, if it still exists
+	LogsAccount       int64      // the tenant's VictoriaLogs AccountID (kind logs)
 }
 
 type checkInfo struct {
@@ -99,7 +100,7 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 		       r.labels, coalesce(r.description, ''),
 		       c.id, coalesce(c.name, ''), coalesce(c.type, ''), coalesce(c.params->>'mode', ''),
 		       coalesce(c.on_probes, false), c.host_id, c.tag,
-		       coalesce(c.min_failing, 1), coalesce(c.created_at, now())
+		       coalesce(c.min_failing, 1), coalesce(c.created_at, now()), t.logs_account_id
 		  FROM alert_rules r
 		  JOIN tenants t ON t.id = r.tenant_id
 		  LEFT JOIN checks c ON r.kind = 'check' AND c.id::text = r.target
@@ -117,7 +118,8 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 			&r.Threshold, &r.DurationSeconds, &r.HostID, &r.Tag, &r.Target,
 			&r.Aggregation, &r.WindowSeconds, &r.RecoveryThreshold, &r.Severity, &r.ActionName,
 			&r.Labels, &r.Description,
-			&checkID, &c.Name, &c.Type, &c.Mode, &c.OnProbes, &c.HostID, &c.Tag, &c.MinFailing, &c.CreatedAt)
+			&checkID, &c.Name, &c.Type, &c.Mode, &c.OnProbes, &c.HostID, &c.Tag, &c.MinFailing, &c.CreatedAt,
+			&r.LogsAccount)
 		if checkID != nil {
 			c.ID = *checkID
 			r.Check = &c

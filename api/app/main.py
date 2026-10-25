@@ -21,6 +21,7 @@ from app.routes import (
     maintenance,
     members,
     reports,
+    saved_views,
     statuspages,
     tokens,
     v1,
@@ -44,6 +45,7 @@ app.include_router(apps.router)
 app.include_router(tokens.router)
 app.include_router(members.router)
 app.include_router(logs.router)
+app.include_router(saved_views.router)
 app.include_router(apm.router)
 app.include_router(statuspages.router)
 app.include_router(statuspages.public)

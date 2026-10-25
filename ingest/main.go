@@ -26,8 +26,8 @@ type config struct {
 	IntervalSeconds int
 	AgentVersion    string
 	DownloadURL     string
-	// Loki for log search; empty turns it off.
-	LokiURL           string
+	// VictoriaLogs for log search; empty turns it off.
+	VictoriaLogsURL   string
 	LogLinesPerMinute int
 	// Tempo for APM traces; empty turns it off.
 	TempoURL       string
@@ -44,7 +44,7 @@ func loadConfig() config {
 		IntervalSeconds:   envInt("AGENT_INTERVAL_SECONDS", 30),
 		AgentVersion:      os.Getenv("AGENT_VERSION"),
 		DownloadURL:       os.Getenv("PUBLIC_DOWNLOAD_URL"),
-		LokiURL:           os.Getenv("LOKI_URL"),
+		VictoriaLogsURL:   os.Getenv("VICTORIALOGS_URL"),
 		LogLinesPerMinute: envInt("LOG_LINES_PER_MINUTE", 6000),
 		TempoURL:          os.Getenv("TEMPO_URL"),
 		SpansPerMinute:    envInt("SPANS_PER_MINUTE", 30000),
@@ -84,8 +84,8 @@ func main() {
 	if cfg.TempoURL != "" {
 		srv.tempo = &tempo{baseURL: cfg.TempoURL, client: &http.Client{Timeout: 15 * time.Second}}
 	}
-	if cfg.LokiURL != "" {
-		srv.loki = &loki{baseURL: cfg.LokiURL, client: &http.Client{Timeout: 15 * time.Second}}
+	if cfg.VictoriaLogsURL != "" {
+		srv.vlogs = &vlogs{baseURL: cfg.VictoriaLogsURL, client: &http.Client{Timeout: 15 * time.Second}}
 	}
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,

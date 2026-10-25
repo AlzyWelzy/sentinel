@@ -60,7 +60,7 @@ services:
       DATABASE_SERVICE_URL: *service_db_py
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
-      LOKI_URL: http://loki:3100
+      VICTORIALOGS_URL: http://victorialogs:9428
       TEMPO_URL: http://tempo:3200
       PUBLIC_API_URL: https://${API_HOST}
       PUBLIC_INGEST_URL: https://${INGEST_HOST}
@@ -88,7 +88,7 @@ services:
       DATABASE_URL: *service_db_go
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
-      LOKI_URL: http://loki:3100
+      VICTORIALOGS_URL: http://victorialogs:9428
       TEMPO_URL: http://tempo:4318
       PUBLIC_INGEST_URL: https://${INGEST_HOST}
       PUBLIC_DOWNLOAD_URL: https://${DOWNLOAD_HOST}
@@ -104,6 +104,7 @@ services:
       DATABASE_URL: *service_db_go
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
+      VICTORIALOGS_URL: http://victorialogs:9428
       PUBLIC_DASHBOARD_URL: ${PUBLIC_DASHBOARD_URL:?}
       PUBLIC_API_URL: https://${API_HOST}
       ACK_SIGNING_SECRET: ${ACK_SIGNING_SECRET:-}
@@ -165,14 +166,15 @@ services:
       placement:
         constraints: [node.labels.pulsegrid.db == true]
 
-  loki:
-    image: grafana/loki:3.5.7
-    command: ["-config.file=/etc/loki/loki.yml"]
-    configs:
-      - source: loki
-        target: /etc/loki/loki.yml
+  # Log search: each account is its own VictoriaLogs AccountID.
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0
+    command:
+      - -storageDataPath=/vlogs
+      - -retentionPeriod=${LOG_RETENTION:-14d}
+      - -httpListenAddr=:9428
     volumes:
-      - loki-data:/loki
+      - vlogs-data:/vlogs
     networks: [backend]
     deploy:
       placement:
@@ -199,9 +201,6 @@ configs:
     # (set by the deploy, e.g. TEMPO_CONFIG=$(sha256sum tempo/tempo.yml | cut -c1-8)).
     name: pulsegrid-tempo-${TEMPO_CONFIG:-v1}
     file: ./tempo/tempo.yml
-  loki:
-    name: pulsegrid-loki-${LOKI_CONFIG:-v1}
-    file: ./loki/loki.yml
   caddyfile:
     file: ./caddy/Caddyfile
   init_roles:
@@ -213,7 +212,7 @@ volumes:
   postgres-data:
   redis-data:
   vm-data:
-  loki-data:
+  vlogs-data:
   tempo-data:
 
 networks:

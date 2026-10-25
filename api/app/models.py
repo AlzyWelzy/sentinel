@@ -1,7 +1,17 @@
 import uuid
 from datetime import date, datetime, time
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Numeric, Text, Time, func
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    FetchedValue,
+    ForeignKey,
+    Integer,
+    Numeric,
+    Text,
+    Time,
+    func,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -25,6 +35,7 @@ class Tenant(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
     monthly_report: Mapped[bool] = mapped_column(default=True)
     report_sent_for: Mapped[date | None]
+    logs_account_id: Mapped[int] = mapped_column(BigInteger, server_default=FetchedValue())
 
 
 class TenantMember(Base):
@@ -140,6 +151,7 @@ class AlertRule(TenantScoped):
     action_name: Mapped[str | None] = mapped_column(Text)
     labels: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     description: Mapped[str | None] = mapped_column(Text)
+    log_filter: Mapped[dict | None] = mapped_column(JSONB)
 
 
 class AlertEscalationStep(TenantScoped):
@@ -350,4 +362,17 @@ class OutboundMessage(TenantScoped):
     kind: Mapped[str] = mapped_column(Text)
     payload: Mapped[dict] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(Text, default="pending")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class SavedView(TenantScoped):
+    """A named search or set of list filters (logs, servers, incidents, checks)."""
+
+    __tablename__ = "saved_views"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    kind: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    params: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    created_by: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

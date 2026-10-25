@@ -33,9 +33,9 @@ class Settings(BaseSettings):
     # Raw samples are kept this long (VictoriaMetrics -retentionPeriod);
     # older ranges are read from the rollups.
     RAW_RETENTION_DAYS: int = 90
-    # Loki for log search (ingest writes, the API reads, one Loki tenant per
-    # account). Empty: log search is off.
-    LOKI_URL: str = ""
+    # VictoriaLogs for log search (ingest writes, the API and alerter read;
+    # each account is its own VictoriaLogs AccountID). Empty: log search is off.
+    VICTORIALOGS_URL: str = ""
     # Tempo's query API for APM (ingest writes OTLP to it). Empty: APM is off.
     TEMPO_URL: str = ""
 

@@ -30,6 +30,7 @@ const lastSeenKey = "pg:last_seen:" // shared with ingest/cache.go and api heart
 type evaluator struct {
 	store     *store
 	vmURL     string
+	vlogsURL  string // VICTORIALOGS_URL; empty: log rules don't evaluate
 	http      *http.Client
 	rdb       *redis.Client
 	log       *slog.Logger
@@ -94,6 +95,8 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 		duration = 0
 	case r.Kind == "check" && r.Check != nil && r.Check.OnProbes:
 		obs, err = e.probeCheckObservations(ctx, r)
+	case r.Kind == "logs":
+		obs, err = e.logObservations(ctx, r, hosts)
 	default:
 		obs, err = e.metricObservations(ctx, r)
 	}
@@ -520,6 +523,11 @@ func describe(r rule, h host, o observation, resolved bool) (subject, condition 
 		}
 		subject = pick(fmt.Sprintf("%s on %s will run out within %g hours", what, h.Hostname, r.Threshold),
 			fmt.Sprintf("%s on %s is no longer about to run out", what, h.Hostname))
+	case "logs":
+		window := time.Duration(r.WindowSeconds) * time.Second
+		condition = fmt.Sprintf("%d matching log lines in %s (threshold %g)", int(o.Value), window, r.Threshold)
+		subject = pick(fmt.Sprintf("%s on %s", r.Name, h.Hostname),
+			fmt.Sprintf("%s on %s is quiet again", r.Name, h.Hostname))
 	case "custom":
 		condition = fmt.Sprintf("%s is %g (threshold %s %g)", r.Target, o.Value, r.Operator, r.Threshold)
 		subject = pick(fmt.Sprintf("%s on %s", r.Name, h.Hostname), fmt.Sprintf("%s on %s", r.Name, h.Hostname))

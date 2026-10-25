@@ -29,7 +29,7 @@ type server struct {
 	store   *store
 	cache   *cache
 	vm      *victoriaMetrics
-	loki    *loki  // nil when log search is off
+	vlogs   *vlogs // nil when log search is off
 	tempo   *tempo // nil when APM is off
 	log     *slog.Logger
 	configs *configCache

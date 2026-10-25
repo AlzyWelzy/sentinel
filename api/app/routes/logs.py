@@ -1,4 +1,5 @@
-"""Log search: lines shipped by agents whose server lists them in logs.conf."""
+"""Log search: lines shipped by agents whose server lists them in logs.conf.
+Live tail is the same search with ``after`` (the newest line already shown)."""
 
 import time
 import uuid
@@ -88,16 +89,23 @@ async def search_logs(
     start: Annotated[int | None, Query(description="unix seconds; default an hour ago")] = None,
     end: Annotated[int | None, Query(description="unix seconds; default now")] = None,
     limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    after: Annotated[
+        int | None, Query(description="unix ns: only lines newer than this (live tail)")
+    ] = None,
 ) -> LogSearch:
-    if not settings.LOKI_URL:
+    if not settings.VICTORIALOGS_URL:
         return LogSearch(enabled=False, lines=[], limit=limit)
     hosts = await _hosts(t, host_id)
     if not hosts:
         return LogSearch(enabled=True, lines=[], limit=limit)
     s, e = _window(start, end)
+    start_ns, end_ns = s * 10**9, e * 10**9 + 10**9 - 1
+    if after is not None:
+        start_ns = max(after + 1, end_ns - MAX_RANGE_S * 10**9)
     try:
+        account = await logstore.account_id(t.db, t.tenant_id)
         found = await logstore.search(
-            t.tenant_id, _filter(hosts, q, regex, source, level), s * 10**9, e * 10**9, limit
+            account, _filter(hosts, q, regex, source, level), start_ns, end_ns, limit
         )
     except (logstore.BadQuery, logstore.LogsUnavailable) as exc:
         raise _errors(exc) from None
@@ -128,7 +136,7 @@ async def log_volume(
     start: int | None = None,
     end: int | None = None,
 ) -> list[VolumeSeries]:
-    if not settings.LOKI_URL:
+    if not settings.VICTORIALOGS_URL:
         return []
     hosts = await _hosts(t, host_id)
     if not hosts:
@@ -136,9 +144,8 @@ async def log_volume(
     s, e = _window(start, end)
     step = max(60, (e - s) // 60)
     try:
-        series = await logstore.volume(
-            t.tenant_id, _filter(hosts, q, regex, source, level), s, e, step
-        )
+        account = await logstore.account_id(t.db, t.tenant_id)
+        series = await logstore.volume(account, _filter(hosts, q, regex, source, level), s, e, step)
     except (logstore.BadQuery, logstore.LogsUnavailable) as exc:
         raise _errors(exc) from None
     return [VolumeSeries(**x) for x in series]
@@ -148,13 +155,14 @@ async def log_volume(
 async def log_sources(
     t: Tenant, host_id: uuid.UUID | None = None, start: int | None = None, end: int | None = None
 ) -> list[str]:
-    if not settings.LOKI_URL:
+    if not settings.VICTORIALOGS_URL:
         return []
     hosts = await _hosts(t, host_id)
     if not hosts:
         return []
     s, e = _window(start or int(time.time()) - 86400, end)
     try:
-        return await logstore.sources(t.tenant_id, list(hosts), s * 10**9, e * 10**9)
+        account = await logstore.account_id(t.db, t.tenant_id)
+        return await logstore.sources(account, list(hosts), s * 10**9, e * 10**9)
     except (logstore.BadQuery, logstore.LogsUnavailable) as exc:
         raise _errors(exc) from None

@@ -58,14 +58,16 @@ services:
     ports:
       - "127.0.0.1:${VM_LONG_PORT:-8429}:8428"
 
-  loki:
-    image: grafana/loki:3.5.7
-    command: ["-config.file=/etc/loki/loki.yml"]
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0
+    command:
+      - -storageDataPath=/vlogs
+      - -retentionPeriod=14d
+      - -httpListenAddr=:9428
     volumes:
-      - ./loki/loki.yml:/etc/loki/loki.yml:ro
-      - loki-data:/loki
+      - vlogs-data:/vlogs
     ports:
-      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+      - "127.0.0.1:${VLOGS_PORT:-9428}:9428"
 
   tempo:
     image: grafana/tempo:2.8.2
@@ -107,7 +109,7 @@ services:
       INTERNAL_API_KEY: change-me-pulsegrid-internal-key
       ACK_SIGNING_SECRET: change-me-ack-secret
       VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
-      LOKI_URL: http://loki:3100
+      VICTORIALOGS_URL: http://victorialogs:9428
       TEMPO_URL: http://tempo:3200
       PUBLIC_DASHBOARD_URL: ${PUBLIC_DASHBOARD_URL:-http://localhost:5173/monitoring?tab=servers}
       ENABLED_CHANNEL_TYPES: ${ENABLED_CHANNEL_TYPES:-email,push,webhook}
@@ -137,7 +139,7 @@ services:
       DATABASE_URL: postgres://pulsegrid_service:pulsegrid_service@postgres:5432/pulsegrid
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
-      LOKI_URL: http://loki:3100
+      VICTORIALOGS_URL: http://victorialogs:9428
       TEMPO_URL: http://tempo:4318
       PUBLIC_INGEST_URL: ${PUBLIC_INGEST_URL:-http://localhost:8080}
       PUBLIC_DOWNLOAD_URL: ${PUBLIC_DOWNLOAD_URL:-http://localhost:8000}
@@ -158,6 +160,7 @@ services:
       DATABASE_URL: postgres://pulsegrid_service:pulsegrid_service@postgres:5432/pulsegrid
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
+      VICTORIALOGS_URL: http://victorialogs:9428
       PUBLIC_DASHBOARD_URL: ${PUBLIC_DASHBOARD_URL:-http://localhost:5173/monitoring}
       EVALUATION_INTERVAL_SECONDS: ${EVALUATION_INTERVAL_SECONDS:-30}
       # Local mail goes to Mailpit (UI on MAILPIT_PORT); set real SMTP in production.
@@ -205,5 +208,5 @@ volumes:
   postgres-data:
   vm-data:
   vm-long-data:
-  loki-data:
+  vlogs-data:
   tempo-data:

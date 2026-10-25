@@ -41,7 +41,7 @@ ROLES = ("viewer", "operator", "admin", "owner")
 # What a team member may change, by route. Viewers only read; everyone may
 # register their own browser for push; owners alone manage members and
 # API tokens (see OWNER_ONLY).
-ANY_MEMBER_WRITES = frozenset({"/v1/channels/push"})
+ANY_MEMBER_WRITES = frozenset({"/v1/channels/push", "/v1/saved-views", "/v1/saved-views/{view_id}"})
 OPERATOR_WRITES = frozenset(
     {
         "/v1/incidents/{incident_id}/acknowledge",

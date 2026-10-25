@@ -63,6 +63,7 @@ func main() {
 	ev := &evaluator{
 		store:     st,
 		vmURL:     env("VICTORIAMETRICS_URL", "http://localhost:8428"),
+		vlogsURL:  os.Getenv("VICTORIALOGS_URL"),
 		http:      &http.Client{Timeout: 15 * time.Second},
 		rdb:       rdb,
 		log:       log,

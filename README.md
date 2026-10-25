@@ -214,11 +214,16 @@ that verified email and pinned to it.
 
 Opt-in per server: a root-owned `/etc/pulsegrid/logs.conf` (`file = <glob>`,
 `journal = true`). The agent ships new lines (rotation-aware, offsets kept
-across restarts, no backfill) to ingest `/v1/logs`, which writes them to Loki
-as the tenant (`X-Scope-OrgID`), labelled with the host from the token, at
+across restarts, no backfill) to ingest `/v1/logs`, which writes them to
+VictoriaLogs in the tenant's own account (`AccountID` =
+`tenants.logs_account_id`), with the host from the token as a stream field, at
 most `LOG_LINES_PER_MINUTE` per host. The API searches (`/v1/logs`, text or
-RE2, server, file, level), counts (`/v1/logs/volume`) and lists sources;
-14 days kept. Off unless `LOKI_URL` is set.
+RE2, server, file, level; `after=<ns>` for live tail), counts
+(`/v1/logs/volume`) and lists sources; searches can be saved
+(`/v1/saved-views`). Log rules (`kind: logs`) fire when more than `threshold`
+lines match within `window_seconds`; the alerter counts them with a LogsQL
+stats query in the same account. 14 days kept (`LOG_RETENTION`). Off unless
+`VICTORIALOGS_URL` is set.
 
 ## APM
 
