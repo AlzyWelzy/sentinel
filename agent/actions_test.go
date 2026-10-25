@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -12,6 +13,9 @@ import (
 )
 
 func TestActions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix commands and file modes; Windows relies on the installer's folder ACLs")
+	}
 	plugins.AllowUserOwnedForTests()
 	dir := t.TempDir()
 	ctx := context.Background()

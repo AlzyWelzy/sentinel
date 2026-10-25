@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -69,6 +70,9 @@ bad line here
 }
 
 func TestLoadAndScript(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix commands and file modes; Windows relies on the installer's folder ACLs")
+	}
 	dir := t.TempDir()
 	script := filepath.Join(dir, "m.sh")
 	os.WriteFile(script, []byte("#!/bin/sh\necho 'jobs_waiting{queue=\"mail\"} 4'\n"), 0o755)
