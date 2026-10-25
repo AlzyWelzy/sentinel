@@ -125,3 +125,50 @@ async def test_check_slo_target(alice: User):
     assert [x["name"] for x in slos] == ["site"]  # log checks aren't availability
     slo = slos[0]
     assert slo["target"] == 99.5 and round(slo["budget_minutes"]) == 216
+
+
+def test_backtest_query_matches_the_alerter():
+    from app.services.backtest import build_query
+
+    q = build_query("metric", "cpu", None, {}, "last", 300, None, None)
+    assert q == "max by (host_id) (last_over_time(pulsegrid_cpu_usage_percent{}[3m]))"
+    q = build_query("metric", "cpu", None, {}, "avg", 600, None, ["a", "b"])
+    assert (
+        q == 'max by (host_id) (avg_over_time(pulsegrid_cpu_usage_percent{host_id=~"a|b"}[600s]))'
+    )
+    q = build_query("metric", "network_in", None, {}, "last", 300, None, None)
+    assert q.startswith(
+        '(sum by (host_id) (rate(pulsegrid_network_bytes_total{direction="rx"}[3m])))'
+    )
+    q = build_query("custom", None, "jobs_waiting", {"queue": "mail"}, "max", 300, None, None)
+    assert (
+        q == 'max by (host_id) (max_over_time(pulsegrid_custom_jobs_waiting{queue="mail"}[300s]))'
+    )
+
+
+def test_backtest_simulation():
+    from app.services.backtest import simulate
+
+    # Two spikes: 3 minutes over (too short for a 5-minute duration), then 10 minutes over.
+    values = [10] * 5 + [95] * 3 + [10] * 5 + [95] * 10 + [10] * 5
+    points = [[i * 60, v] for i, v in enumerate(values)]
+    h = simulate(points, ">", 90, 300, None)
+    assert h.fires == 1 and h.peak == 95 and h.firing_minutes == 5
+    assert simulate(points, ">", 90, 0, None).fires == 2
+    # With a recovery threshold of 50 it stays firing through a dip to 80.
+    wobble = [[i * 60, v] for i, v in enumerate([95, 95, 80, 95, 40])]
+    assert simulate(wobble, ">", 90, 0, 50).fires == 1
+    assert simulate(wobble, ">", 90, 0, None).fires == 2
+
+
+async def test_rule_preview_endpoint(alice: User):
+    body = {"name": "cpu", "kind": "metric", "metric": "cpu", "operator": ">", "threshold": 90}
+    r = await alice.request("POST", "/v1/alert-rules/preview", json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["fires"] == 0 and r.json()["verdict"] == "quiet"
+    r = await alice.request("POST", "/v1/alert-rules/preview", json={**body, "tag": "nothing"})
+    assert r.json()["hosts"] == []
+    r = await alice.request(
+        "POST", "/v1/alert-rules/preview", json={"name": "x", "kind": "host_down"}
+    )
+    assert r.status_code == 422

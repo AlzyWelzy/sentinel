@@ -7,13 +7,14 @@ timeline, add notes, acknowledge, resolve by hand, and reopen them.
 
 import re
 import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import any_, delete, func, literal, select, update
 
 from app.models import (
     AlertEscalationStep,
@@ -26,6 +27,8 @@ from app.models import (
     IncidentEvent,
     NotificationChannel,
 )
+from app.services import backtest
+from app.services.metrics import MetricsUnavailable
 from app.tenancy import Tenant, TenantContext
 from app.validation import normalize_tag, validate_target
 
@@ -900,3 +903,54 @@ async def postmortem(incident_id: uuid.UUID, t: Tenant) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+@router.post("/alert-rules/preview")
+async def preview_rule(
+    body: RuleIn, t: Tenant, days: Annotated[int, Query(ge=1, le=14)] = 7
+) -> dict:
+    """How often this rule would have fired over the last days, per host,
+    without saving it: metric and custom rules."""
+    if body.kind not in ("metric", "custom") or body.operator is None or body.threshold is None:
+        raise HTTPException(status_code=422, detail="Preview works for metric and custom rules")
+    host_ids = None
+    if body.tag is not None:
+        host_ids = [
+            str(h)
+            for h in await t.db.scalars(
+                select(Host.id).where(
+                    Host.tenant_id == t.tenant_id,
+                    Host.revoked_at.is_(None),
+                    literal(body.tag) == any_(Host.tags),
+                )
+            )
+        ]
+        if not host_ids:
+            return asdict(backtest.Preview(days=days))
+    try:
+        result = await backtest.preview(
+            t.tenant_id,
+            kind=body.kind,
+            metric=body.metric,
+            target=body.target,
+            labels=body.labels,
+            operator=body.operator,
+            threshold=body.threshold,
+            duration_seconds=body.duration_seconds,
+            recovery_threshold=body.recovery_threshold,
+            aggregation=body.aggregation,
+            window_seconds=body.window_seconds,
+            host_id=body.host_id,
+            host_ids=host_ids,
+            days=days,
+        )
+    except MetricsUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Metrics are unavailable right now") from exc
+    names = {
+        str(h.id): h.hostname
+        for h in await t.db.scalars(select(Host).where(Host.tenant_id == t.tenant_id))
+    }
+    out = asdict(result)
+    for h in out["hosts"]:
+        h["hostname"] = names.get(h["host_id"], h["host_id"])
+    return out
