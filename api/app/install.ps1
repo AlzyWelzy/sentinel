@@ -82,4 +82,12 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit
 Register-ScheduledTask -TaskName 'Pulsegrid agent update' -Action $action -Trigger $trigger -Settings $settings `
     -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
 
+# Watchdog: the service manager restarts the agent after a crash, not after
+# Stop-Service; this starts it again within 5 minutes. To stop the agent for
+# good, disable the 'Pulsegrid agent watchdog' task too.
+$wdAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -Command `"if ((Get-Service $ServiceName).Status -ne 'Running') { Start-Service $ServiceName }`""
+$wdTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5)
+Register-ScheduledTask -TaskName 'Pulsegrid agent watchdog' -Action $wdAction -Trigger $wdTrigger -Settings $settings `
+    -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
+
 Write-Host 'Pulsegrid agent installed and running.'

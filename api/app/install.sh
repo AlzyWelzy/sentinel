@@ -102,7 +102,7 @@ schedule_updates_with_cron() {
     { crontab -l 2>/dev/null | grep -v "pulsegrid" || true
       echo "$minute * * * * $BIN update --state-dir $STATE_DIR --restart $SERVICE >/dev/null 2>&1 # pulsegrid"
       if [ $# -gt 0 ]; then
-          echo "*/5 * * * * ($1) >/dev/null 2>&1 # pulsegrid watchdog"
+          echo "* * * * * ($1) >/dev/null 2>&1 # pulsegrid watchdog"
       fi
     } | crontab -
 }
@@ -184,6 +184,31 @@ EOF
     systemctl enable "$SERVICE" >/dev/null 2>&1
     systemctl restart "$SERVICE"
     systemctl enable --now "$SERVICE-update.timer" >/dev/null 2>&1
+    # Watchdog: Restart=always covers crashes, not `systemctl stop`; this
+    # starts the agent again within a minute (a no-op while it runs). To
+    # stop it for good: systemctl disable --now $SERVICE-watchdog.timer
+    cat >/etc/systemd/system/$SERVICE-watchdog.service <<EOF
+[Unit]
+Description=Keep the Pulsegrid agent running
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl start $SERVICE.service
+EOF
+    cat >/etc/systemd/system/$SERVICE-watchdog.timer <<EOF
+[Unit]
+Description=Start the Pulsegrid agent if it was stopped
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now "$SERVICE-watchdog.timer" >/dev/null 2>&1
 }
 
 install_openrc() {
@@ -200,7 +225,7 @@ EOF
     chmod 0755 /etc/init.d/$SERVICE
     rc-update add "$SERVICE" default >/dev/null
     rc-service "$SERVICE" restart
-    schedule_updates_with_cron
+    schedule_updates_with_cron "rc-service $SERVICE status || rc-service $SERVICE start"
 }
 
 install_freebsd() {
@@ -228,7 +253,7 @@ EOF
     chmod 0555 /usr/local/etc/rc.d/$RC_SERVICE
     sysrc -q ${RC_SERVICE}_enable=YES >/dev/null
     service "$RC_SERVICE" restart >/dev/null 2>&1 || service "$RC_SERVICE" start
-    schedule_updates_with_cron
+    schedule_updates_with_cron "/usr/sbin/service $RC_SERVICE status || /usr/sbin/service $RC_SERVICE start"
 }
 
 install_openbsd() {
