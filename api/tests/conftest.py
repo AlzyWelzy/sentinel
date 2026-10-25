@@ -13,6 +13,11 @@ os.environ.update(
     JWT_TOKEN_ISSUER="test-issuer",
     JWT_TOKEN_AUDIENCE="test-audience",
     JWT_ALGORITHMS="RS256",
+    # Every contact type stays under test; the default enabled set is tested
+    # by patching settings.
+    ENABLED_CHANNEL_TYPES="email,sms,voice,webhook,slack,teams,discord,telegram,pagerduty,push",
+    VAPID_PUBLIC_KEY="BPtest-public-key",
+    PROBE_ACCOUNT_IDS="probe-owner",
 )
 
 import httpx  # noqa: E402

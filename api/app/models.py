@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, time
+from datetime import date, datetime, time
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Text, Time, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
@@ -23,6 +23,25 @@ class Tenant(Base):
     status: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    monthly_report: Mapped[bool] = mapped_column(default=True)
+    report_sent_for: Mapped[date | None]
+
+
+class TenantMember(Base):
+    __tablename__ = "tenant_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID, primary_key=True, server_default=func.gen_random_uuid()
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID)
+    email: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(Text)
+    source: Mapped[str | None] = mapped_column(Text)
+    external_account_id: Mapped[str | None] = mapped_column(Text)
+    display_name: Mapped[str | None] = mapped_column(Text)
+    invited_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    joined_at: Mapped[datetime | None]
+    last_seen_at: Mapped[datetime | None]
 
 
 class TenantScoped(Base):
@@ -73,6 +92,8 @@ class Host(TenantScoped):
     ip_addresses: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
     cpu_cores: Mapped[int | None]
     memory_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    probe_region: Mapped[str | None] = mapped_column(Text)
+    allowed_actions: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
 
 
 class NotificationChannel(TenantScoped):
@@ -89,6 +110,8 @@ class NotificationChannel(TenantScoped):
     verification_sent_at: Mapped[datetime | None]
     verification_attempts: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    config: Mapped[dict] = mapped_column(JSONB, server_default="{}", default=dict)
+    min_severity: Mapped[str] = mapped_column(Text, default="info")
 
 
 class AlertRule(TenantScoped):
@@ -109,6 +132,13 @@ class AlertRule(TenantScoped):
     enabled: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    aggregation: Mapped[str] = mapped_column(Text, default="last")
+    window_seconds: Mapped[int] = mapped_column(default=300)
+    recovery_threshold: Mapped[float | None]
+    severity: Mapped[str] = mapped_column(Text, default="critical")
+    action_name: Mapped[str | None] = mapped_column(Text)
+    labels: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    description: Mapped[str | None] = mapped_column(Text)
 
 
 class AlertEscalationStep(TenantScoped):
@@ -158,7 +188,9 @@ class AlertState(TenantScoped):
     __tablename__ = "alert_states"
 
     rule_id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
-    host_id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
+    subject_id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
+    host_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    check_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
     state: Mapped[str] = mapped_column(Text)
     since: Mapped[datetime]
     last_value: Mapped[float | None]
@@ -182,6 +214,110 @@ class Incident(TenantScoped):
     acknowledged_by: Mapped[str | None] = mapped_column(Text)
     resolved_at: Mapped[datetime | None]
     escalation_level: Mapped[int] = mapped_column(default=0)
+    severity: Mapped[str] = mapped_column(Text, default="critical")
+    detail: Mapped[str | None] = mapped_column(Text)
+    flapping: Mapped[bool] = mapped_column(default=False)
+    reopened_count: Mapped[int] = mapped_column(default=0)
+    resolved_by: Mapped[str | None] = mapped_column(Text)
+    check_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+
+
+class IncidentEvent(TenantScoped):
+    __tablename__ = "incident_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("incidents.id", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(Text)
+    message: Mapped[str] = mapped_column(Text)
+    actor: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Check(TenantScoped):
+    __tablename__ = "checks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(Text)
+    type: Mapped[str] = mapped_column(Text)
+    target: Mapped[str] = mapped_column(Text)
+    params: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    interval_seconds: Mapped[int] = mapped_column(default=60)
+    host_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("hosts.id", ondelete="CASCADE")
+    )
+    tag: Mapped[str | None] = mapped_column(Text)
+    on_probes: Mapped[bool] = mapped_column(default=False)
+    probe_regions: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
+    min_failing: Mapped[int] = mapped_column(default=1)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class HostAction(TenantScoped):
+    __tablename__ = "host_actions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    host_id: Mapped[uuid.UUID] = mapped_column(UUID, ForeignKey("hosts.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, default="pending")
+    requested_by: Mapped[str] = mapped_column(Text)
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    exit_code: Mapped[int | None]
+    output: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    finished_at: Mapped[datetime | None]
+
+
+class HostInventory(TenantScoped):
+    __tablename__ = "host_inventory"
+
+    host_id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
+    data: Mapped[dict] = mapped_column(JSONB)
+    changes: Mapped[list] = mapped_column(JSONB)
+    updated_at: Mapped[datetime]
+
+
+class ApiToken(TenantScoped):
+    __tablename__ = "api_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(Text)
+    token_prefix: Mapped[str] = mapped_column(Text)
+    token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    read_only: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    last_used_at: Mapped[datetime | None]
+    expires_at: Mapped[datetime | None]
+    revoked_at: Mapped[datetime | None]
+
+
+class StatusPage(TenantScoped):
+    __tablename__ = "status_pages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(Text, unique=True)
+    title: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    show_values: Mapped[bool] = mapped_column(default=True)
+    published: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class StatusPageItem(TenantScoped):
+    __tablename__ = "status_page_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    page_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("status_pages.id", ondelete="CASCADE")
+    )
+    host_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    check_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    label: Mapped[str] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(default=0)
 
 
 class OutboundMessage(TenantScoped):

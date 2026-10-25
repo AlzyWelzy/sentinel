@@ -68,6 +68,7 @@ class MeOut(BaseModel):
     display_name: str | None
     status: str
     created_at: datetime
+    role: str = Field(default="owner", description="owner, admin, operator or viewer")
 
 
 @router.get("/me")
@@ -79,6 +80,7 @@ async def me(t: Tenant) -> MeOut:
         display_name=row.display_name,
         status=row.status,
         created_at=row.created_at,
+        role=t.role,
     )
 
 

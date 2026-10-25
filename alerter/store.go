@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -16,36 +19,70 @@ import (
 // one tenant's rule can never reach another tenant's hosts or contacts.
 
 type rule struct {
-	ID              string
-	TenantID        string
-	Name            string
-	Kind            string
-	Metric          string
-	Operator        string
-	Threshold       float64
-	DurationSeconds int
-	HostID          *string
-	Tag             *string
-	Target          string // process or service name, for process_down / service_down
+	ID                string
+	TenantID          string
+	Name              string
+	Kind              string
+	Metric            string
+	Operator          string
+	Threshold         float64
+	DurationSeconds   int
+	HostID            *string
+	Tag               *string
+	Target            string // process, service, plugin, container, check id or custom metric
+	Aggregation       string
+	WindowSeconds     int
+	RecoveryThreshold *float64
+	Severity          string
+	ActionName        *string
+	Labels            map[string]string
+	Description       string
+	Check             *checkInfo // kind check: the check, if it still exists
 }
 
+type checkInfo struct {
+	ID         string
+	Name       string
+	Type       string
+	Mode       string // file checks: params.mode
+	OnProbes   bool
+	HostID     *string
+	Tag        *string
+	MinFailing int
+	CreatedAt  time.Time
+}
+
+// host is what a rule is evaluated for. For a probe-run uptime check it's
+// the check itself (IsCheck): ID and Hostname are the check's id and name.
 type host struct {
 	ID        string
 	Hostname  string
 	CreatedAt time.Time
 	Tags      []string
 	DependsOn *string
+	IsCheck   bool
+	Allowed   []string // actions the host's allow-list permits
 }
 
 type channel struct {
-	ID     string
-	Type   string
-	Target string
+	ID          string
+	Type        string
+	Target      string
+	Config      map[string]string
+	MinSeverity string
+}
+
+var severityRank = map[string]int{"info": 0, "warning": 1, "critical": 2}
+
+// wants reports whether a contact receives alerts of this severity.
+func (c channel) wants(severity string) bool {
+	return severityRank[severity] >= severityRank[c.MinSeverity]
 }
 
 type storedState struct {
 	alertState
 	IncidentID *string
+	Flips      []time.Time // recent openings, for flapping detection
 }
 
 type store struct {
@@ -57,8 +94,16 @@ type store struct {
 func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id, r.tenant_id, r.name, r.kind, coalesce(r.metric, ''), coalesce(r.operator, ''),
-		       coalesce(r.threshold, 0), r.duration_seconds, r.host_id, r.tag, coalesce(r.target, '')
-		  FROM alert_rules r JOIN tenants t ON t.id = r.tenant_id
+		       coalesce(r.threshold, 0), r.duration_seconds, r.host_id, r.tag, coalesce(r.target, ''),
+		       r.aggregation, r.window_seconds, r.recovery_threshold, r.severity, r.action_name,
+		       r.labels, coalesce(r.description, ''),
+		       c.id, coalesce(c.name, ''), coalesce(c.type, ''), coalesce(c.params->>'mode', ''),
+		       coalesce(c.on_probes, false), c.host_id, c.tag,
+		       coalesce(c.min_failing, 1), coalesce(c.created_at, now())
+		  FROM alert_rules r
+		  JOIN tenants t ON t.id = r.tenant_id
+		  LEFT JOIN checks c ON r.kind = 'check' AND c.id::text = r.target
+		                    AND c.tenant_id = r.tenant_id AND c.enabled
 		 WHERE r.enabled AND t.status = 'active'
 		   AND abs(hashtext(r.tenant_id::text)) % $2 = $1`, partition, partitions)
 	if err != nil {
@@ -66,8 +111,17 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (rule, error) {
 		var r rule
+		var c checkInfo
+		var checkID *string
 		err := row.Scan(&r.ID, &r.TenantID, &r.Name, &r.Kind, &r.Metric, &r.Operator,
-			&r.Threshold, &r.DurationSeconds, &r.HostID, &r.Tag, &r.Target)
+			&r.Threshold, &r.DurationSeconds, &r.HostID, &r.Tag, &r.Target,
+			&r.Aggregation, &r.WindowSeconds, &r.RecoveryThreshold, &r.Severity, &r.ActionName,
+			&r.Labels, &r.Description,
+			&checkID, &c.Name, &c.Type, &c.Mode, &c.OnProbes, &c.HostID, &c.Tag, &c.MinFailing, &c.CreatedAt)
+		if checkID != nil {
+			c.ID = *checkID
+			r.Check = &c
+		}
 		return r, err
 	})
 }
@@ -76,7 +130,7 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 // with the rule's tag.
 func (s *store) hosts(ctx context.Context, r rule) ([]host, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, hostname, created_at, tags, depends_on_host_id FROM hosts
+		SELECT id, hostname, created_at, tags, depends_on_host_id, allowed_actions FROM hosts
 		 WHERE tenant_id = $1 AND revoked_at IS NULL AND ($2::uuid IS NULL OR id = $2)
 		   AND ($3::text IS NULL OR $3 = ANY (tags))`,
 		r.TenantID, r.HostID, r.Tag)
@@ -88,13 +142,13 @@ func (s *store) hosts(ctx context.Context, r rule) ([]host, error) {
 
 func scanHost(row pgx.CollectableRow) (host, error) {
 	var h host
-	err := row.Scan(&h.ID, &h.Hostname, &h.CreatedAt, &h.Tags, &h.DependsOn)
+	err := row.Scan(&h.ID, &h.Hostname, &h.CreatedAt, &h.Tags, &h.DependsOn, &h.Allowed)
 	return h, err
 }
 
 func (s *store) host(ctx context.Context, tenantID, hostID string) (host, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, hostname, created_at, tags, depends_on_host_id FROM hosts
+		SELECT id, hostname, created_at, tags, depends_on_host_id, allowed_actions FROM hosts
 		 WHERE tenant_id = $1 AND id = $2`, tenantID, hostID)
 	if err != nil {
 		return host{}, err
@@ -121,7 +175,7 @@ func (s *store) maintenance(ctx context.Context, tenantID string) ([]window, err
 
 func (s *store) states(ctx context.Context, ruleID string) (map[string]storedState, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT host_id, state, since, incident_id FROM alert_states WHERE rule_id = $1`, ruleID)
+		`SELECT subject_id, state, since, incident_id, flips FROM alert_states WHERE rule_id = $1`, ruleID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +184,7 @@ func (s *store) states(ctx context.Context, ruleID string) (map[string]storedSta
 	for rows.Next() {
 		var hostID string
 		var st storedState
-		if err := rows.Scan(&hostID, &st.State, &st.Since, &st.IncidentID); err != nil {
+		if err := rows.Scan(&hostID, &st.State, &st.Since, &st.IncidentID, &st.Flips); err != nil {
 			return nil, err
 		}
 		out[hostID] = st
@@ -142,7 +196,7 @@ func (s *store) states(ctx context.Context, ruleID string) (map[string]storedSta
 // default channel when the rule names none.
 func (s *store) channels(ctx context.Context, tx pgx.Tx, r rule) ([]channel, error) {
 	rows, err := tx.Query(ctx, `
-		SELECT c.id, c.type, c.target
+		SELECT c.id, c.type, c.target, c.config, c.min_severity
 		  FROM alert_rule_channels rc JOIN notification_channels c ON c.id = rc.channel_id
 		 WHERE rc.rule_id = $1 AND c.tenant_id = $2 AND c.verified_at IS NOT NULL`, r.ID, r.TenantID)
 	if err != nil {
@@ -161,7 +215,7 @@ func (s *store) channels(ctx context.Context, tx pgx.Tx, r rule) ([]channel, err
 		return nil, nil // channels chosen but none verified yet: send nothing
 	}
 	rows, err = tx.Query(ctx, `
-		SELECT id, type, target FROM notification_channels
+		SELECT id, type, target, config, min_severity FROM notification_channels
 		 WHERE tenant_id = $1 AND is_default AND verified_at IS NOT NULL`, r.TenantID)
 	if err != nil {
 		return nil, err
@@ -171,18 +225,25 @@ func (s *store) channels(ctx context.Context, tx pgx.Tx, r rule) ([]channel, err
 
 func scanChannel(row pgx.CollectableRow) (channel, error) {
 	var c channel
-	err := row.Scan(&c.ID, &c.Type, &c.Target)
+	err := row.Scan(&c.ID, &c.Type, &c.Target, &c.Config, &c.MinSeverity)
 	return c, err
 }
 
+// Flapping: an alert that opened this many times within flapWindow keeps
+// its incidents but stops notifying until it settles.
+const (
+	flapWindow    = time.Hour
+	flapThreshold = 4
+)
+
 // apply persists one transition, and opens or resolves the incident (plus
-// its notifications) in the same transaction, so state and incidents can't
-// disagree after a crash.
+// its notifications, timeline and any automatic action) in the same
+// transaction, so state and incidents can't disagree after a crash.
 //
 // quiet resolves without notifying: the host is in maintenance or behind a
 // host that's down, and nobody wants a "recovered" for an alert they never got.
 func (s *store) apply(
-	ctx context.Context, r rule, h host, prev storedState, next alertState, act action, value float64,
+	ctx context.Context, r rule, h host, prev storedState, next alertState, act action, o observation,
 	quiet bool, msg func(kind string, incidentID string) message,
 ) error {
 	tx, err := s.pool.Begin(ctx)
@@ -191,44 +252,106 @@ func (s *store) apply(
 	}
 	defer tx.Rollback(ctx)
 
+	var hostID, checkID *string
+	if h.IsCheck {
+		checkID = &h.ID
+	} else {
+		hostID = &h.ID
+		if r.Check != nil {
+			checkID = &r.Check.ID
+		}
+	}
 	incidentID := prev.IncidentID
+	flips := recentFlips(prev.Flips, time.Now())
 	var kind string
+	flapping := false
 	switch act {
 	case actionOpen:
+		flips = append(flips, time.Now())
+		flapping = len(flips) >= flapThreshold
 		var id string
 		m := msg("alert_firing", "")
 		err = tx.QueryRow(ctx, `
-			INSERT INTO incidents (tenant_id, rule_id, host_id, summary, rule_name, hostname, value)
-			VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-			r.TenantID, r.ID, h.ID, m.Event["summary"], r.Name, h.Hostname, value).Scan(&id)
+			INSERT INTO incidents (tenant_id, rule_id, host_id, check_id, summary, rule_name, hostname,
+			                       value, severity, detail, flapping)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, nullif($10, ''), $11) RETURNING id`,
+			r.TenantID, r.ID, hostID, checkID, m.Event["summary"], r.Name, h.Hostname, o.Value,
+			r.Severity, o.Detail, flapping).Scan(&id)
 		if err != nil {
 			return err
 		}
 		incidentID, kind = &id, "alert_firing"
+		text := fmt.Sprint(m.Event["condition"])
+		if o.Detail != "" {
+			text += " — " + o.Detail
+		}
+		if err := addEvent(ctx, tx, r.TenantID, id, "opened", text, "alerter"); err != nil {
+			return err
+		}
+		if flapping {
+			if err := addEvent(ctx, tx, r.TenantID, id, "flapping",
+				fmt.Sprintf("Opened %d times in the last hour: notifications are paused until it settles", len(flips)),
+				"alerter"); err != nil {
+				return err
+			}
+		}
+		if err := s.queueRuleAction(ctx, tx, r, h, id); err != nil {
+			return err
+		}
 	case actionResolve:
 		if incidentID != nil {
 			_, err = tx.Exec(ctx, `
-				UPDATE incidents SET status = 'resolved', resolved_at = now()
-				 WHERE id = $1 AND tenant_id = $2`, *incidentID, r.TenantID)
+				UPDATE incidents SET status = 'resolved', resolved_at = now(), resolved_by = 'alerter'
+				 WHERE id = $1 AND tenant_id = $2 AND status = 'open'`, *incidentID, r.TenantID)
 			if err != nil {
 				return err
 			}
+			text := "Recovered"
+			if quiet {
+				text = "Recovered during maintenance or while a dependency was down (not notified)"
+			}
+			if err := addEvent(ctx, tx, r.TenantID, *incidentID, "resolved", text, "alerter"); err != nil {
+				return err
+			}
+			// A flapping incident never notified that it opened, so it
+			// doesn't notify that it closed either.
+			var wasFlapping bool
+			tx.QueryRow(ctx, `SELECT flapping FROM incidents WHERE id = $1`, *incidentID).Scan(&wasFlapping)
+			quiet = quiet || (wasFlapping && len(flips) > flapThreshold)
 		}
 		kind = "alert_resolved"
 	}
 
+	// While flapping, only the opening that crossed the threshold notifies.
+	if flapping && len(flips) > flapThreshold {
+		quiet = true
+	}
 	if kind != "" && incidentID != nil && !quiet {
 		chans, err := s.channels(ctx, tx, r)
 		if err != nil {
 			return err
 		}
+		var wanted []channel
+		for _, c := range chans {
+			if c.wants(r.Severity) {
+				wanted = append(wanted, c)
+			}
+		}
 		m := msg(kind, *incidentID)
+		if flapping {
+			m.Subject += " (flapping: further alerts paused)"
+		}
 		payload, err := json.Marshal(m)
 		if err != nil {
 			return err
 		}
-		if err := enqueue(ctx, tx, r.TenantID, chans, *incidentID, kind, payload); err != nil {
+		if err := enqueue(ctx, tx, r.TenantID, wanted, *incidentID, kind, payload); err != nil {
 			return err
+		}
+		if len(wanted) > 0 {
+			if err := addEvent(ctx, tx, r.TenantID, *incidentID, "notified", "Notified "+describeChannels(wanted), "alerter"); err != nil {
+				return err
+			}
 		}
 	}
 	if act == actionResolve {
@@ -236,16 +359,93 @@ func (s *store) apply(
 	}
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO alert_states (rule_id, host_id, tenant_id, state, since, last_value, incident_id, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, now())
-		ON CONFLICT (rule_id, host_id) DO UPDATE SET
+		INSERT INTO alert_states (rule_id, subject_id, host_id, check_id, tenant_id, state, since,
+		                          last_value, incident_id, flips, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+		ON CONFLICT (rule_id, subject_id) DO UPDATE SET
 		    state = EXCLUDED.state, since = EXCLUDED.since, last_value = EXCLUDED.last_value,
-		    incident_id = EXCLUDED.incident_id, updated_at = now()`,
-		r.ID, h.ID, r.TenantID, next.State, next.Since, value, incidentID)
+		    incident_id = EXCLUDED.incident_id, flips = EXCLUDED.flips, updated_at = now()`,
+		r.ID, h.ID, hostID, checkIDIfSubject(h), r.TenantID, next.State, next.Since, o.Value, incidentID, flips)
 	if err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func checkIDIfSubject(h host) *string {
+	if h.IsCheck {
+		return &h.ID
+	}
+	return nil
+}
+
+// recentFlips keeps the openings inside flapWindow. Never nil: pgx sends a
+// nil slice as NULL, and the column is NOT NULL.
+func recentFlips(flips []time.Time, now time.Time) []time.Time {
+	out := []time.Time{}
+	for _, f := range flips {
+		if now.Sub(f) < flapWindow {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// queueRuleAction asks the host to run the rule's action, if the host's own
+// allow-list permits it; otherwise it notes on the incident why it didn't.
+func (s *store) queueRuleAction(ctx context.Context, tx pgx.Tx, r rule, h host, incidentID string) error {
+	if r.ActionName == nil || h.IsCheck {
+		return nil
+	}
+	if !slices.Contains(h.Allowed, *r.ActionName) {
+		return addEvent(ctx, tx, r.TenantID, incidentID, "action",
+			fmt.Sprintf("Action %s not run: this server doesn't allow it (pulsegrid-agent allow-action %s -- <command>)",
+				*r.ActionName, *r.ActionName), "alerter")
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO host_actions (tenant_id, host_id, name, requested_by, incident_id)
+		VALUES ($1, $2, $3, $4, $5)`, r.TenantID, h.ID, *r.ActionName, "rule: "+r.Name, incidentID); err != nil {
+		return err
+	}
+	return addEvent(ctx, tx, r.TenantID, incidentID, "action", "Requested action "+*r.ActionName+" on "+h.Hostname, "alerter")
+}
+
+func addEvent(ctx context.Context, tx pgx.Tx, tenantID, incidentID, kind, message, actor string) error {
+	if len(message) > 5000 {
+		message = message[:5000]
+	}
+	_, err := tx.Exec(ctx, `
+		INSERT INTO incident_events (tenant_id, incident_id, kind, message, actor, created_at)
+		VALUES ($1, $2, $3, $4, $5, clock_timestamp())`, tenantID, incidentID, kind, message, actor)
+	return err
+}
+
+// describeChannels summarises contacts without exposing their addresses.
+func describeChannels(chans []channel) string {
+	if len(chans) == 0 {
+		return "nobody (no verified contacts)"
+	}
+	count := map[string]int{}
+	var order []string
+	for _, c := range chans {
+		if count[c.Type] == 0 {
+			order = append(order, c.Type)
+		}
+		count[c.Type]++
+	}
+	var parts []string
+	for _, t := range order {
+		name := map[string]string{"email": "email", "push": "push notification", "webhook": "webhook"}[t]
+		if name == "" {
+			name = t
+		}
+		if count[t] > 1 {
+			parts = append(parts, fmt.Sprintf("%d × %s", count[t], name))
+		} else {
+			parts = append(parts, name)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 func enqueue(ctx context.Context, tx pgx.Tx, tenantID string, chans []channel, incidentID, kind string, payload []byte) error {
@@ -322,7 +522,7 @@ func (s *store) escalate(ctx context.Context, e escalation, payload []byte) (boo
 		return false, err
 	}
 	rows, err := tx.Query(ctx, `
-		SELECT id, type, target FROM notification_channels
+		SELECT id, type, target, config, min_severity FROM notification_channels
 		 WHERE tenant_id = $1 AND id = ANY ($2::uuid[]) AND verified_at IS NOT NULL`, e.TenantID, e.ChannelIDs)
 	if err != nil {
 		return false, err
@@ -332,6 +532,10 @@ func (s *store) escalate(ctx context.Context, e escalation, payload []byte) (boo
 		return false, err
 	}
 	if err := enqueue(ctx, tx, e.TenantID, chans, e.IncidentID, "alert_escalation", payload); err != nil {
+		return false, err
+	}
+	if err := addEvent(ctx, tx, e.TenantID, e.IncidentID, "escalated",
+		fmt.Sprintf("Escalated to step %d of %d: notified %s", e.Level+1, e.Steps, describeChannels(chans)), "alerter"); err != nil {
 		return false, err
 	}
 	return true, tx.Commit(ctx)
@@ -363,7 +567,7 @@ func (s *store) claim(ctx context.Context, limit int) ([]outboxItem, error) {
 		        ORDER BY next_attempt_at
 		        LIMIT $1
 		          FOR UPDATE SKIP LOCKED)
-		RETURNING m.id, m.kind, m.payload, m.attempts, c.id, c.type, c.target`,
+		RETURNING m.id, m.kind, m.payload, m.attempts, c.id, c.type, c.target, c.config`,
 		limit, leaseDuration.Seconds())
 	if err != nil {
 		return nil, err
@@ -371,7 +575,8 @@ func (s *store) claim(ctx context.Context, limit int) ([]outboxItem, error) {
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (outboxItem, error) {
 		var it outboxItem
 		var payload []byte
-		err := row.Scan(&it.ID, &it.Kind, &payload, &it.Attempts, &it.Channel.ID, &it.Channel.Type, &it.Channel.Target)
+		err := row.Scan(&it.ID, &it.Kind, &payload, &it.Attempts, &it.Channel.ID, &it.Channel.Type,
+			&it.Channel.Target, &it.Channel.Config)
 		if err == nil {
 			err = json.Unmarshal(payload, &it.Payload)
 		}
@@ -400,5 +605,11 @@ func (s *store) markFailed(ctx context.Context, id string, sendErr error, retryI
 		   SET status = $2, attempts = attempts + 1, last_error = left($3, 500),
 		       next_attempt_at = now() + make_interval(secs => $4)
 		 WHERE id = $1`, id, status, sendErr.Error(), retryIn.Seconds())
+	return err
+}
+
+// deleteChannel removes a contact the provider says no longer exists.
+func (s *store) deleteChannel(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM notification_channels WHERE id = $1 AND type = 'push'`, id)
 	return err
 }

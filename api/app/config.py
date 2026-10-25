@@ -27,6 +27,20 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = "redis://localhost:6379/0"
     VICTORIAMETRICS_URL: str = "http://localhost:8428"
+    # Long-term store of hourly rollups (written by the jobs worker). Empty:
+    # no rollups, and charts only reach back as far as raw retention.
+    VICTORIAMETRICS_LONG_URL: str = ""
+    # Raw samples are kept this long (VictoriaMetrics -retentionPeriod);
+    # older ranges are read from the rollups.
+    RAW_RETENTION_DAYS: int = 90
+    # Loki for log search (ingest writes, the API reads, one Loki tenant per
+    # account). Empty: log search is off.
+    LOKI_URL: str = ""
+    # Tempo's query API for APM (ingest writes OTLP to it). Empty: APM is off.
+    TEMPO_URL: str = ""
+
+    # Where links in report emails point (the console's Monitoring page).
+    PUBLIC_DASHBOARD_URL: str = ""
 
     # ── Public URLs ──────────────────────────────────────────────────────────
     # Never hardcode these anywhere else: moving domains is a config change.
@@ -61,10 +75,24 @@ class Settings(BaseSettings):
     # same value. Empty: alerts carry no acknowledge link.
     ACK_SIGNING_SECRET: str = ""
 
+    # Console accounts (uids) whose agents staff may turn into public probes.
+    # Probes receive every account's uptime check targets, so only our own
+    # infrastructure may run them.
+    PROBE_ACCOUNT_IDS: Annotated[list[str], NoDecode] = []
+
+    # Contact types customers can add. Others already saved keep working.
+    ENABLED_CHANNEL_TYPES: Annotated[list[str], NoDecode] = ["email", "push"]
+
+    # Web Push (VAPID). The alerter holds the private key; browsers need the
+    # public one to subscribe.
+    VAPID_PUBLIC_KEY: str = ""
+
     # A host is shown offline once its last push is older than this.
     HOST_OFFLINE_AFTER_SECONDS: int = 120
 
-    @field_validator("JWT_ALGORITHMS", "STAFF_ROLES", mode="before")
+    @field_validator(
+        "JWT_ALGORITHMS", "STAFF_ROLES", "ENABLED_CHANNEL_TYPES", "PROBE_ACCOUNT_IDS", mode="before"
+    )
     @classmethod
     def _split_algorithms(cls, v: object) -> object:
         if isinstance(v, str):

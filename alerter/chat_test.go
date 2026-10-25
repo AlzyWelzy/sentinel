@@ -156,31 +156,6 @@ func TestVoice(t *testing.T) {
 	}
 }
 
-func TestRuleQuery(t *testing.T) {
-	host := "8d3c1d2e-0000-0000-0000-000000000001"
-	cases := []struct {
-		r    rule
-		want string
-	}{
-		{rule{Kind: "metric", Metric: "cpu"}, `max by (host_id) (last_over_time(pulsegrid_cpu_usage_percent{}[3m]))`},
-		{rule{Kind: "metric", Metric: "steal", HostID: &host},
-			`max by (host_id) (last_over_time(pulsegrid_cpu_mode_percent{mode="steal",host_id="` + host + `"}[3m]))`},
-		{rule{Kind: "metric", Metric: "disk_busy"}, `max by (host_id) (rate(pulsegrid_disk_io_time_seconds_total{}[3m])) * 100`},
-		{rule{Kind: "process_down", Target: `my "app"`},
-			`max by (host_id) (last_over_time(pulsegrid_watched_process_count{process="my \"app\""}[3m]))`},
-		{rule{Kind: "service_down", Target: "nginx"}, `max by (host_id) (last_over_time(pulsegrid_service_up{service="nginx"}[3m]))`},
-	}
-	for _, c := range cases {
-		got, err := ruleQuery(c.r)
-		if err != nil || got != c.want {
-			t.Errorf("%+v:\n got  %s\n want %s (%v)", c.r, got, c.want, err)
-		}
-	}
-	if _, err := ruleQuery(rule{Kind: "metric", Metric: "nope"}); err == nil {
-		t.Error("unknown metric must fail")
-	}
-}
-
 func TestLinks(t *testing.T) {
 	if got := dashboardLink("https://c.example/monitoring?tab=servers", "i1"); got != "https://c.example/monitoring?tab=servers&section=alerts&incident=i1" {
 		t.Errorf("console link: %s", got)

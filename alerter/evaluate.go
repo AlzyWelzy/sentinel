@@ -4,48 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
-
-// metricDef describes how a rule's metric is read. Gauges use
-// last_over_time to bridge the gap between pushes; counters (disk busy time)
-// use rate. max by (host_id) folds per-disk, per-mount and per-core series
-// into "the worst one on this host".
-type metricDef struct {
-	name    string
-	matcher string // extra fixed label matcher, if any
-	rate    bool   // a counter of seconds, shown as percent busy
-	label   string // human name for messages
-	unit    string
-}
-
-var alertMetrics = map[string]metricDef{
-	"cpu":       {name: "pulsegrid_cpu_usage_percent", label: "CPU usage", unit: "%"},
-	"memory":    {name: "pulsegrid_memory_used_percent", label: "Memory usage", unit: "%"},
-	"swap":      {name: "pulsegrid_swap_used_percent", label: "Swap usage", unit: "%"},
-	"disk":      {name: "pulsegrid_disk_used_percent", label: "Disk usage", unit: "%"},
-	"load1":     {name: "pulsegrid_load", matcher: `period="1m"`, label: "Load (1m)"},
-	"load5":     {name: "pulsegrid_load", matcher: `period="5m"`, label: "Load (5m)"},
-	"iowait":    {name: "pulsegrid_cpu_mode_percent", matcher: `mode="iowait"`, label: "CPU iowait", unit: "%"},
-	"steal":     {name: "pulsegrid_cpu_mode_percent", matcher: `mode="steal"`, label: "CPU steal", unit: "%"},
-	"inodes":    {name: "pulsegrid_disk_inodes_used_percent", label: "Inode usage", unit: "%"},
-	"disk_busy": {name: "pulsegrid_disk_io_time_seconds_total", rate: true, label: "Disk busy time", unit: "%"},
-}
-
-// Process and service rules read what the agent reports for the names it
-// was told to watch (via its config): a count of matching processes, and 1
-// or 0 for a service. Both breach below 1.
-var targetMetrics = map[string]struct{ name, label string }{
-	"process_down": {"pulsegrid_watched_process_count", "process"},
-	"service_down": {"pulsegrid_service_up", "service"},
-}
 
 // A host whose dependency has been silent this long has its alerts held
 // back: with the gateway or hypervisor down, its own silence says nothing.
@@ -105,7 +75,7 @@ func (e *evaluator) evaluateAll(ctx context.Context, partition, partitions int) 
 }
 
 func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
-	hosts, err := e.store.hosts(ctx, r)
+	hosts, err := e.subjects(ctx, r)
 	if err != nil || len(hosts) == 0 {
 		return err
 	}
@@ -116,16 +86,16 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 
 	var obs map[string]observation
 	duration := time.Duration(r.DurationSeconds) * time.Second
-	switch r.Kind {
-	case "metric", "process_down", "service_down":
-		obs, err = e.metricObservations(ctx, r)
-	case "host_down":
+	switch {
+	case r.Kind == "host_down":
 		obs, err = e.hostDownObservations(ctx, r, hosts)
 		// Silence for duration_seconds is itself the condition, already
 		// measured, so fire as soon as it's observed.
 		duration = 0
+	case r.Kind == "check" && r.Check != nil && r.Check.OnProbes:
+		obs, err = e.probeCheckObservations(ctx, r)
 	default:
-		return fmt.Errorf("unknown rule kind %q", r.Kind)
+		obs, err = e.metricObservations(ctx, r)
 	}
 	if err != nil {
 		return err
@@ -135,13 +105,28 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 	if err != nil {
 		return err
 	}
+	// One problem, one alert: while a host is silent, its other rules hold
+	// back (the "not reporting" alert covers it). Uptime checks run by the
+	// probes don't depend on any host.
+	var silent map[string]bool
+	if r.Kind != "host_down" && !(r.Check != nil && r.Check.OnProbes) {
+		if silent, err = e.silentHosts(ctx, hosts); err != nil {
+			return err
+		}
+	}
 	windows := e.maintenanceFor(ctx, c, r.TenantID)
 	now := time.Now()
 	for _, h := range hosts {
 		prev := states[h.ID]
 		o := obs[h.ID]
+		// Hysteresis: once firing, stay firing until the value is back past
+		// the recovery threshold, not merely back under the alert threshold.
+		if prev.State == stateFiring && o.HasData && r.RecoveryThreshold != nil {
+			o.Breached = breached(r.Operator, o.Value, *r.RecoveryThreshold)
+		}
 		next, act := transition(prev.alertState, o, duration, now)
-		suppressed := inMaintenance(windows, h, now) || (h.DependsOn != nil && parentDown[*h.DependsOn])
+		suppressed := (!h.IsCheck && inMaintenance(windows, h, now)) ||
+			(h.DependsOn != nil && parentDown[*h.DependsOn]) || silent[h.ID]
 		if suppressed && act == actionOpen {
 			// Hold at pending, keeping when the breach began, so it fires
 			// right after the window if it's still going on.
@@ -154,55 +139,172 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 		if next == prev.alertState && act == actionNone {
 			continue
 		}
+		if act != actionNone {
+			o.Detail = e.checkDetail(ctx, r, h)
+		}
 		msg := func(kind, incidentID string) message { return e.message(r, h, o, kind, incidentID) }
 		quiet := suppressed && act == actionResolve
-		if err := e.store.apply(ctx, r, h, prev, next, act, o.Value, quiet, msg); err != nil {
+		if err := e.store.apply(ctx, r, h, prev, next, act, o, quiet, msg); err != nil {
 			return err
 		}
 		if act != actionNone {
-			e.log.Info("alert transition", "rule_id", r.ID, "host", h.Hostname,
+			e.log.Info("alert transition", "rule_id", r.ID, "subject", h.Hostname,
 				"state", next.State, "value", o.Value, "tenant_id", r.TenantID)
 		}
 	}
 	return nil
 }
 
-// ruleQuery builds the MetricsQL for a metric, process or service rule.
-func ruleQuery(r rule) (string, error) {
-	var matchers []string
-	if r.HostID != nil {
-		matchers = append(matchers, fmt.Sprintf("host_id=%q", *r.HostID))
+// subjects are what a rule is evaluated for: its hosts, the hosts a
+// host-run check covers, or for a probe-run uptime check, the check itself.
+func (e *evaluator) subjects(ctx context.Context, r rule) ([]host, error) {
+	if r.Kind != "check" {
+		return e.store.hosts(ctx, r)
 	}
-	if t, ok := targetMetrics[r.Kind]; ok {
-		// strconv.Quote escapes like PromQL's double-quoted strings.
-		matchers = append([]string{t.label + "=" + strconv.Quote(r.Target)}, matchers...)
-		return fmt.Sprintf("max by (host_id) (last_over_time(%s{%s}[3m]))", t.name, strings.Join(matchers, ",")), nil
+	if r.Check == nil {
+		return nil, nil // the check was deleted; the rule goes with it
 	}
-	def, ok := alertMetrics[r.Metric]
-	if !ok {
-		return "", fmt.Errorf("unknown metric %q", r.Metric)
+	if r.Check.OnProbes {
+		return []host{{ID: r.Check.ID, Hostname: r.Check.Name, IsCheck: true, CreatedAt: r.Check.CreatedAt}}, nil
 	}
-	if def.matcher != "" {
-		matchers = append([]string{def.matcher}, matchers...)
-	}
-	sel := def.name + "{" + strings.Join(matchers, ",") + "}"
-	if def.rate {
-		return fmt.Sprintf("max by (host_id) (rate(%s[3m])) * 100", sel), nil
-	}
-	return fmt.Sprintf("max by (host_id) (last_over_time(%s[3m]))", sel), nil
+	scoped := r
+	scoped.HostID, scoped.Tag = r.Check.HostID, r.Check.Tag
+	return e.store.hosts(ctx, scoped)
 }
+
+// silentHosts reports hosts that haven't pushed for parentSilentAfter.
+func (e *evaluator) silentHosts(ctx context.Context, hosts []host) (map[string]bool, error) {
+	keys := make([]string, len(hosts))
+	for i, h := range hosts {
+		keys[i] = lastSeenKey + h.ID
+	}
+	vals, err := e.rdb.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for i, h := range hosts {
+		if s, ok := vals[i].(string); ok {
+			if ts, err := strconv.ParseInt(s, 10, 64); err == nil {
+				out[h.ID] = time.Since(time.Unix(ts, 0)) >= parentSilentAfter
+			}
+		}
+	}
+	return out, nil
+}
+
+// probeCheckObservations: an uptime check is down when at least
+// min_failing probe locations (capped at how many report) see it failing.
+func (e *evaluator) probeCheckObservations(ctx context.Context, r rule) (map[string]observation, error) {
+	fq, tq := probeCheckQuery(r.Check.ID)
+	failing, err := e.queryScalar(ctx, r.TenantID, fq)
+	if err != nil {
+		return nil, err
+	}
+	total, err := e.queryScalar(ctx, r.TenantID, tq)
+	if err != nil {
+		return nil, err
+	}
+	if total == nil {
+		return map[string]observation{}, nil // no probe has reported yet
+	}
+	need := float64(r.Check.MinFailing)
+	if need > *total {
+		need = *total
+	}
+	if need < 1 {
+		need = 1
+	}
+	f := 0.0
+	if failing != nil {
+		f = *failing
+	}
+	return map[string]observation{r.Check.ID: {HasData: true, Breached: f >= need, Value: f, Total: *total}}, nil
+}
+
+// checkDetail is the result text for a check rule's subject, from what
+// ingest stored: the host's latest failure (kept apart because a passing
+// run may already have replaced the current result), or for an uptime
+// check, every failing probe's.
+func (e *evaluator) checkDetail(ctx context.Context, r rule, h host) string {
+	if r.Kind != "check" || r.Check == nil {
+		return ""
+	}
+	vals, err := e.rdb.HGetAll(ctx, checkResultKey+r.Check.ID).Result()
+	if err != nil {
+		return ""
+	}
+	type result struct {
+		OK     bool   `json:"ok"`
+		Detail string `json:"detail"`
+		Region string `json:"region"`
+		Ts     int64  `json:"ts"`
+	}
+	recent := func(res result) bool { return time.Since(time.UnixMilli(res.Ts)) < 10*time.Minute }
+	if !r.Check.OnProbes {
+		var cur, fail result
+		json.Unmarshal([]byte(vals[h.ID]), &cur)
+		if json.Unmarshal([]byte(vals["fail:"+h.ID]), &fail) == nil && recent(fail) && (cur.OK || fail.Ts >= cur.Ts) {
+			return fail.Detail
+		}
+		return cur.Detail
+	}
+	var parts []string
+	for field, v := range vals {
+		if strings.HasPrefix(field, "fail:") {
+			continue
+		}
+		var res result
+		if json.Unmarshal([]byte(v), &res) == nil && !res.OK {
+			parts = append(parts, res.Region+": "+res.Detail)
+		}
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "; ")
+}
+
+const checkResultKey = "pg:check:" // shared with ingest/cache.go
 
 func (e *evaluator) metricObservations(ctx context.Context, r rule) (map[string]observation, error) {
 	query, err := ruleQuery(r)
 	if err != nil {
 		return nil, err
 	}
-
-	params := url.Values{
-		"query": {query},
-		// Same guard as the API: VictoriaMetrics adds this to every selector.
-		"extra_label": {"tenant_id=" + r.TenantID},
+	results, err := e.queryVector(ctx, r.TenantID, query)
+	if err != nil {
+		return nil, err
 	}
+	out := map[string]observation{}
+	for hostID, v := range results {
+		var hit bool
+		switch r.Kind {
+		case "anomaly":
+			hit = v > r.Threshold
+		case "forecast":
+			// Predicted to reach 100% (95% for memory, where the OOM killer
+			// steps in first) within the horizon.
+			limit := 100.0
+			if r.Metric == "memory" {
+				limit = 95
+			}
+			hit = v >= limit
+		default:
+			if _, ok := targetMetrics[r.Kind]; ok {
+				hit = v < 1
+			} else {
+				hit = breached(r.Operator, v, r.Threshold)
+			}
+		}
+		out[hostID] = observation{HasData: true, Breached: hit, Value: v}
+	}
+	return out, nil
+}
+
+// queryVector runs an instant query for one tenant and returns the value per
+// host_id. extra_label is the same guard as the API's: VictoriaMetrics adds
+// it to every selector, so a rule only ever sees its own tenant's series.
+func (e *evaluator) queryVector(ctx context.Context, tenantID, query string) (map[string]float64, error) {
+	params := url.Values{"query": {query}, "extra_label": {"tenant_id=" + tenantID}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.vmURL+"/api/v1/query?"+params.Encode(), nil)
 	if err != nil {
 		return nil, err
@@ -213,7 +315,8 @@ func (e *evaluator) metricObservations(ctx context.Context, r rule) (map[string]
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("victoriametrics query: %s", resp.Status)
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return nil, fmt.Errorf("victoriametrics query: %s: %s", resp.Status, b)
 	}
 	var body struct {
 		Data struct {
@@ -226,20 +329,28 @@ func (e *evaluator) metricObservations(ctx context.Context, r rule) (map[string]
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return nil, err
 	}
-	out := map[string]observation{}
+	out := map[string]float64{}
 	for _, res := range body.Data.Result {
 		s, _ := res.Value[1].(string)
 		v, err := strconv.ParseFloat(s, 64)
-		if err != nil {
+		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
 			continue
 		}
-		hit := breached(r.Operator, v, r.Threshold)
-		if _, ok := targetMetrics[r.Kind]; ok {
-			hit = v < 1
-		}
-		out[res.Metric["host_id"]] = observation{HasData: true, Breached: hit, Value: v}
+		out[res.Metric["host_id"]] = v
 	}
 	return out, nil
+}
+
+// queryScalar runs a query that yields a single series without labels.
+func (e *evaluator) queryScalar(ctx context.Context, tenantID, query string) (*float64, error) {
+	res, err := e.queryVector(ctx, tenantID, query)
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := res[""]; ok {
+		return &v, nil
+	}
+	return nil, nil
 }
 
 // silentParents reports, for each host that others depend on, whether it has
@@ -307,42 +418,25 @@ func (e *evaluator) hostDownObservations(ctx context.Context, r rule, hosts []ho
 }
 
 func (e *evaluator) message(r rule, h host, o observation, kind, incidentID string) message {
-	var condition, subject string
 	resolved := kind == "alert_resolved"
-	switch r.Kind {
-	case "host_down":
-		condition = fmt.Sprintf("no data for %s", time.Duration(o.Value*float64(time.Second)).Round(time.Second))
-		subject = fmt.Sprintf("%s is not reporting", h.Hostname)
-		if resolved {
-			subject = fmt.Sprintf("%s is reporting again", h.Hostname)
-		}
-	case "process_down":
-		condition = fmt.Sprintf("%s: %d processes running", r.Target, int(o.Value))
-		subject = fmt.Sprintf("Process %s is not running on %s", r.Target, h.Hostname)
-		if resolved {
-			subject = fmt.Sprintf("Process %s is running again on %s", r.Target, h.Hostname)
-		}
-	case "service_down":
-		state := "stopped"
-		if o.Value >= 1 {
-			state = "running"
-		}
-		condition = fmt.Sprintf("Service %s is %s", r.Target, state)
-		subject = fmt.Sprintf("Service %s is down on %s", r.Target, h.Hostname)
-		if resolved {
-			subject = fmt.Sprintf("Service %s is running again on %s", r.Target, h.Hostname)
-		}
-	default:
-		def := alertMetrics[r.Metric]
-		condition = fmt.Sprintf("%s is %.1f%s (threshold %s %g%s)", def.label, o.Value, def.unit, r.Operator, r.Threshold, def.unit)
-		subject = fmt.Sprintf("%s on %s", r.Name, h.Hostname)
-	}
+	subject, condition := describe(r, h, o, resolved)
 	state := "FIRING"
 	if resolved {
 		state = "RESOLVED"
 	}
-	text := fmt.Sprintf("%s: %s\n\nHost: %s\nRule: %s\n%s\nTime: %s\n",
-		state, subject, h.Hostname, r.Name, condition, time.Now().UTC().Format(time.RFC1123))
+	where := "Host"
+	if h.IsCheck {
+		where = "Check"
+	}
+	text := fmt.Sprintf("%s: %s\n\n%s: %s\nRule: %s\nSeverity: %s\n%s\n",
+		state, subject, where, h.Hostname, r.Name, r.Severity, condition)
+	if o.Detail != "" {
+		text += "Detail: " + o.Detail + "\n"
+	}
+	if r.Description != "" && !resolved {
+		text += "\n" + r.Description + "\n"
+	}
+	text += fmt.Sprintf("Time: %s\n", time.Now().UTC().Format(time.RFC1123))
 	text += e.links(incidentID, !resolved)
 	return message{
 		Subject: fmt.Sprintf("[Pulsegrid] %s: %s", state, subject),
@@ -350,6 +444,9 @@ func (e *evaluator) message(r rule, h host, o observation, kind, incidentID stri
 		Event: map[string]any{
 			"type":        kind,
 			"summary":     subject,
+			"condition":   condition,
+			"detail":      o.Detail,
+			"severity":    r.Severity,
 			"incident_id": incidentID,
 			"rule_id":     r.ID,
 			"rule_name":   r.Name,
@@ -359,8 +456,83 @@ func (e *evaluator) message(r rule, h host, o observation, kind, incidentID stri
 			"metric":      r.Metric,
 			"kind":        r.Kind,
 			"target":      r.Target,
+			"url":         dashboardLink(e.baseURL, incidentID),
 		},
 	}
+}
+
+// describe returns a message's subject line and the condition it reports.
+func describe(r rule, h host, o observation, resolved bool) (subject, condition string) {
+	pick := func(firing, ok string) string {
+		if resolved {
+			return ok
+		}
+		return firing
+	}
+	switch r.Kind {
+	case "host_down":
+		condition = fmt.Sprintf("No data for %s", time.Duration(o.Value*float64(time.Second)).Round(time.Second))
+		subject = pick(h.Hostname+" is not reporting", h.Hostname+" is reporting again")
+	case "process_down":
+		condition = fmt.Sprintf("%s: %d processes running", r.Target, int(o.Value))
+		subject = pick(fmt.Sprintf("Process %s is not running on %s", r.Target, h.Hostname),
+			fmt.Sprintf("Process %s is running again on %s", r.Target, h.Hostname))
+	case "service_down":
+		condition = fmt.Sprintf("Service %s is %s", r.Target, map[bool]string{true: "running", false: "stopped"}[o.Value >= 1])
+		subject = pick(fmt.Sprintf("Service %s is down on %s", r.Target, h.Hostname),
+			fmt.Sprintf("Service %s is running again on %s", r.Target, h.Hostname))
+	case "plugin_down":
+		name := r.Target
+		if name == "" {
+			name = "A plugin"
+		}
+		condition = fmt.Sprintf("%s can't collect metrics", name)
+		subject = pick(fmt.Sprintf("%s is failing on %s", name, h.Hostname),
+			fmt.Sprintf("%s is working again on %s", name, h.Hostname))
+	case "container_down":
+		condition = fmt.Sprintf("Container %s is %s", r.Target, map[bool]string{true: "running", false: "not running"}[o.Value >= 1])
+		subject = pick(fmt.Sprintf("Container %s is down on %s", r.Target, h.Hostname),
+			fmt.Sprintf("Container %s is running again on %s", r.Target, h.Hostname))
+	case "check":
+		name := r.Name
+		if r.Check != nil {
+			name = r.Check.Name
+		}
+		if h.IsCheck {
+			condition = fmt.Sprintf("Failing from %d of %d locations", int(o.Value), int(o.Total))
+			subject = pick(name+" is down", name+" is up again")
+		} else {
+			condition = "Check " + pick("failing", "passing")
+			subject = pick(fmt.Sprintf("%s is failing on %s", name, h.Hostname),
+				fmt.Sprintf("%s is passing again on %s", name, h.Hostname))
+		}
+	case "anomaly":
+		def := alertMetrics[r.Metric]
+		condition = fmt.Sprintf("%s is %.1f standard deviations above its usual level for the past week", def.label, o.Value)
+		subject = pick(fmt.Sprintf("Unusual %s on %s", strings.ToLower(def.label), h.Hostname),
+			fmt.Sprintf("%s is back to normal on %s", def.label, h.Hostname))
+	case "forecast":
+		def := alertMetrics[r.Metric]
+		condition = fmt.Sprintf("At the current rate, %s reaches %.0f%s within %g hours", strings.ToLower(def.label), o.Value, def.unit, r.Threshold)
+		what := map[string]string{"disk": "Disk", "inodes": "Inodes", "memory": "Memory", "swap": "Swap"}[r.Metric]
+		if what == "" {
+			what = def.label
+		}
+		subject = pick(fmt.Sprintf("%s on %s will run out within %g hours", what, h.Hostname, r.Threshold),
+			fmt.Sprintf("%s on %s is no longer about to run out", what, h.Hostname))
+	case "custom":
+		condition = fmt.Sprintf("%s is %g (threshold %s %g)", r.Target, o.Value, r.Operator, r.Threshold)
+		subject = pick(fmt.Sprintf("%s on %s", r.Name, h.Hostname), fmt.Sprintf("%s on %s", r.Name, h.Hostname))
+	default:
+		def := alertMetrics[r.Metric]
+		agg := ""
+		if r.Aggregation == "avg" {
+			agg = fmt.Sprintf(" (average over %s)", time.Duration(r.WindowSeconds)*time.Second)
+		}
+		condition = fmt.Sprintf("%s is %.1f%s%s (threshold %s %g%s)", def.label, o.Value, def.unit, agg, r.Operator, r.Threshold, def.unit)
+		subject = fmt.Sprintf("%s on %s", r.Name, h.Hostname)
+	}
+	return subject, condition
 }
 
 // links adds the incident's dashboard link and, while it's open, the

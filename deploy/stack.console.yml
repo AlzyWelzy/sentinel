@@ -50,6 +50,8 @@ services:
       DATABASE_SERVICE_URL: *service_db_py
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
+      LOKI_URL: http://loki:3100
+      TEMPO_URL: http://tempo:3200
       PUBLIC_API_URL: https://${CONSOLE_HOST:?}/api/pulsegrid
       PUBLIC_DOWNLOAD_URL: https://${CONSOLE_HOST}/api/pulsegrid
       PUBLIC_INGEST_URL: https://${CONSOLE_HOST}/pulsegrid/ingest
@@ -60,6 +62,14 @@ services:
       JWT_TOKEN_AUDIENCE: ${JWT_TOKEN_AUDIENCE:?}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
       ACK_SIGNING_SECRET: ${ACK_SIGNING_SECRET:-}
+      VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
+      RAW_RETENTION_DAYS: ${METRICS_RETENTION_DAYS:-90}
+      PUBLIC_DASHBOARD_URL: https://${CONSOLE_HOST}/monitoring?tab=servers
+      # Contact types customers can add (others already saved keep working).
+      ENABLED_CHANNEL_TYPES: ${ENABLED_CHANNEL_TYPES:-email,push}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      # Console uids whose agents staff may make public probes.
+      PROBE_ACCOUNT_IDS: ${PROBE_ACCOUNT_IDS:-}
     networks:
       backend: {}
       console:
@@ -80,6 +90,8 @@ services:
       DATABASE_URL: *service_db_go
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
+      LOKI_URL: http://loki:3100
+      TEMPO_URL: http://tempo:4318
       PUBLIC_INGEST_URL: https://${CONSOLE_HOST}/pulsegrid/ingest
       PUBLIC_DOWNLOAD_URL: https://${CONSOLE_HOST}/api/pulsegrid
       AGENT_VERSION: ${PULSEGRID_VERSION}
@@ -109,10 +121,35 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_FROM: ${TWILIO_FROM:-}
+      # Web Push: generate once with `pulsegrid-alerter vapid` (or any VAPID tool).
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:support@Example.com}
     networks: [backend, console]
     deploy:
       <<: *rolling
       replicas: 2   # one evaluates, one stands by on the advisory lock
+
+  # Monthly reports, hourly metric rollups, cleanup (python -m app.jobs).
+  jobs:
+    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-api:${PULSEGRID_VERSION:?}
+    command: ["python", "-m", "app.jobs"]
+    environment:
+      ENVIRONMENT: production
+      DATABASE_APP_URL: *app_db
+      DATABASE_SERVICE_URL: *service_db_py
+      REDIS_URL: redis://redis:6379/0
+      VICTORIAMETRICS_URL: http://victoriametrics:8428
+      VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
+      PUBLIC_DASHBOARD_URL: https://${CONSOLE_HOST}/monitoring?tab=servers
+      JWKS_URI: ${JWKS_URI:-http://console-backend:8000/api/.well-known/jwks.json/}
+      JWT_TOKEN_ISSUER: ${JWT_TOKEN_ISSUER:?}
+      JWT_TOKEN_AUDIENCE: ${JWT_TOKEN_AUDIENCE:?}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
+    networks: [backend]
+    deploy:
+      <<: *rolling
+      replicas: 1
 
   postgres:
     image: postgres:18-alpine
@@ -154,7 +191,48 @@ services:
     networks: [backend]
     deploy: *placement
 
+  # Hourly rollups of everything, kept for years (written by jobs).
+  victoriametrics-long:
+    image: victoriametrics/victoria-metrics:v1.106.1
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=${LONG_METRICS_RETENTION:-2y}
+      - -httpListenAddr=:8428
+    volumes:
+      - vm-long-data:/storage
+    networks: [backend]
+    deploy: *placement
+
+  # Log search: one Loki tenant per account (auth_enabled).
+  loki:
+    image: grafana/loki:3.5.7
+    command: ["-config.file=/etc/loki/loki.yml"]
+    configs:
+      - source: loki
+        target: /etc/loki/loki.yml
+    volumes:
+      - loki-data:/loki
+    networks: [backend]
+    deploy: *placement
+
+  # APM traces: one Tempo tenant per account (multitenancy_enabled).
+  tempo:
+    image: grafana/tempo:2.8.2
+    user: "0"
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    configs:
+      - source: tempo
+        target: /etc/tempo/tempo.yml
+    volumes:
+      - tempo-data:/var/tempo
+    networks: [backend]
+    deploy: *placement
+
 configs:
+  tempo:
+    file: ./tempo/tempo.yml
+  loki:
+    file: ./loki/loki.yml
   init_roles:
     file: ./postgres/init-roles.sh
 
@@ -162,6 +240,9 @@ volumes:
   postgres-data:
   redis-data:
   vm-data:
+  vm-long-data:
+  loki-data:
+  tempo-data:
 
 networks:
   backend:

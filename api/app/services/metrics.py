@@ -7,6 +7,7 @@ VictoriaMetrics add that label to every series selector in the query. So even
 a wrong host id can't reach another tenant's series.
 """
 
+import time
 import uuid
 from dataclasses import dataclass
 
@@ -66,13 +67,26 @@ class MetricsUnavailable(Exception):
     pass
 
 
+def _source(query: str, start: int, end: int, step: int) -> tuple[str, str, int]:
+    """Where to read a range from: the raw store, or for ranges older than
+    raw retention or longer than a month, the hourly rollups (with rate
+    windows widened to cover hourly samples)."""
+    long_url = settings.VICTORIAMETRICS_LONG_URL
+    raw_from = time.time() - (settings.RAW_RETENTION_DAYS - 1) * 86400
+    if long_url and (start < raw_from or end - start > 31 * 86400):
+        return long_url, query.replace("[2m]", "[2h]").replace("[3m]", "[2h]"), max(step, 3600)
+    return settings.VICTORIAMETRICS_URL, query, step
+
+
 async def query_range(
     tenant_id: uuid.UUID, host_id: uuid.UUID, metric: str, start: int, end: int, step: int
 ) -> list[dict]:
     definition = CATALOG[metric]
-    query = definition.query.replace("SEL", _host_matcher(host_id))
+    base, query, step = _source(
+        definition.query.replace("SEL", _host_matcher(host_id)), start, end, step
+    )
     try:
-        async with httpx.AsyncClient(base_url=settings.VICTORIAMETRICS_URL) as client:
+        async with httpx.AsyncClient(base_url=base) as client:
             response = await client.get(
                 "/api/v1/query_range",
                 params={
@@ -137,3 +151,63 @@ async def delete_host_series(tenant_id: uuid.UUID, host_id: uuid.UUID) -> None:
             response.raise_for_status()
     except httpx.HTTPError as exc:
         raise MetricsUnavailable(str(exc)) from exc
+
+
+async def query_instant(tenant_id: uuid.UUID, query: str) -> list[tuple[dict[str, str], float]]:
+    """Run a query built in code (never from a request) for one tenant."""
+    try:
+        async with httpx.AsyncClient(base_url=settings.VICTORIAMETRICS_URL) as client:
+            response = await client.get(
+                "/api/v1/query",
+                params={"query": query, "extra_label": f"tenant_id={tenant_id}"},
+                timeout=20,
+            )
+            response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise MetricsUnavailable(str(exc)) from exc
+    out = []
+    for r in response.json()["data"]["result"]:
+        try:
+            out.append((r["metric"], float(r["value"][1])))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+async def query_series(
+    tenant_id: uuid.UUID, query: str, start: int, end: int, step: int, legend: list[str]
+) -> list[dict]:
+    """A range query built in code, for one tenant, as chart series."""
+    base, query, step = _source(query, start, end, step)
+    try:
+        async with httpx.AsyncClient(base_url=base) as client:
+            response = await client.get(
+                "/api/v1/query_range",
+                params={
+                    "query": query,
+                    "start": start,
+                    "end": end,
+                    "step": step,
+                    "extra_label": f"tenant_id={tenant_id}",
+                },
+                timeout=20,
+            )
+            response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise MetricsUnavailable(str(exc)) from exc
+
+    def labels(metric: dict[str, str]) -> dict[str, str]:
+        # "*" in legend: every label except the ones the platform sets.
+        if "*" in legend:
+            return {
+                k: v for k, v in metric.items() if k not in ("__name__", "tenant_id", "host_id")
+            }
+        return {k: metric[k] for k in legend if k in metric}
+
+    return [
+        {
+            "labels": labels(r["metric"]),
+            "points": [[int(ts), float(v)] for ts, v in r["values"]],
+        }
+        for r in response.json()["data"]["result"]
+    ]

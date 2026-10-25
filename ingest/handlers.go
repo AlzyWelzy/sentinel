@@ -25,11 +25,14 @@ const (
 )
 
 type server struct {
-	cfg   config
-	store *store
-	cache *cache
-	vm    *victoriaMetrics
-	log   *slog.Logger
+	cfg     config
+	store   *store
+	cache   *cache
+	vm      *victoriaMetrics
+	loki    *loki  // nil when log search is off
+	tempo   *tempo // nil when APM is off
+	log     *slog.Logger
+	configs *configCache
 }
 
 func (s *server) routes() http.Handler {
@@ -37,25 +40,21 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /v1/register", s.handleRegister)
 	mux.HandleFunc("POST /v1/metrics", s.handleMetrics)
 	mux.HandleFunc("GET /v1/agent/config", s.handleAgentConfig)
+	mux.HandleFunc("POST /v1/logs", s.handleLogs)
+	mux.HandleFunc("POST /v1/traces", s.handleTraces)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("ok"))
 	})
 	return mux
 }
 
-// agentConfig is the host's config: endpoints and interval for everyone, and
-// the processes and services its alert rules watch. If those can't be read
-// the agent keeps the lists it has (an empty list here would clear them).
+// agentConfig is the host's config: endpoints and interval for everyone,
+// the processes and services its alert rules watch, its checks and pending
+// actions. If those can't be read the agent keeps what it has (an empty
+// list here would clear them).
 func (s *server) agentConfig(ctx context.Context, id hostIdentity) (proto.AgentConfig, error) {
-	cfg := proto.AgentConfig{
-		IngestURL:       s.cfg.PublicIngestURL,
-		IntervalSeconds: s.cfg.IntervalSeconds,
-		LatestVersion:   s.cfg.AgentVersion,
-		DownloadURL:     s.cfg.DownloadURL,
-	}
-	var err error
-	cfg.WatchProcesses, cfg.WatchServices, err = s.store.watches(ctx, id)
-	return cfg, err
+	e, err := s.loadHostConfig(ctx, id)
+	return e.cfg, err
 }
 
 func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -117,9 +116,15 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, kept, dropped := toPrometheusText(req, id.HostID)
-	if kept > 0 {
-		if err := s.vm.write(r.Context(), id.TenantID, body); err != nil {
+	hc, err := s.loadHostConfig(r.Context(), id)
+	if err != nil {
+		// Without the check list, check samples can't be attributed; the
+		// rest still go in.
+		s.log.Warn("host config not loaded", "err", err, "host_id", id.HostID)
+	}
+	bodies, kept, dropped := toPrometheusText(req, id, hc)
+	for tenantID, body := range bodies {
+		if err := s.vm.write(r.Context(), tenantID, body); err != nil {
 			s.log.Error("metrics write failed", "err", err, "host_id", id.HostID)
 			// 503 tells the agent to keep the batch and retry later.
 			httpError(w, http.StatusServiceUnavailable, "metrics store unavailable")
@@ -129,6 +134,23 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if dropped > 0 {
 		s.log.Warn("dropped invalid samples", "host_id", id.HostID, "dropped", dropped)
 	}
+	if len(req.CheckResults) > 0 {
+		if err := s.cache.storeCheckResults(r.Context(), id, hc, req.CheckResults); err != nil {
+			s.log.Warn("check results not stored", "err", err, "host_id", id.HostID)
+		}
+	}
+	if len(req.ActionResults) > 0 {
+		if err := s.store.finishActions(r.Context(), id.HostID, req.ActionResults); err != nil {
+			s.log.Warn("action results not stored", "err", err, "host_id", id.HostID)
+		} else {
+			s.configs.forget(id.HostID)
+		}
+	}
+	if req.Inventory != nil {
+		if err := s.store.saveInventory(r.Context(), id, req.Inventory); err != nil {
+			s.log.Warn("inventory not stored", "err", err, "host_id", id.HostID)
+		}
+	}
 
 	now := time.Now()
 	if err := s.cache.markSeen(r.Context(), id.HostID, now); err != nil {
@@ -137,7 +159,7 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.touchHost(r.Context(), id.HostID, req.AgentVersion, req.Host); err != nil {
 		s.log.Warn("last_seen_at not updated", "err", err, "host_id", id.HostID)
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"accepted": kept, "dropped": dropped})
+	writeJSON(w, http.StatusOK, proto.MetricsResponse{Accepted: kept, Dropped: dropped, ConfigVersion: hc.cfg.Version})
 }
 
 func (s *server) handleAgentConfig(w http.ResponseWriter, r *http.Request) {
@@ -184,6 +206,27 @@ func (s *server) authenticate(w http.ResponseWriter, r *http.Request) (hostIdent
 		return hostIdentity{}, false
 	}
 	return id, true
+}
+
+// readBody returns the request body, inflated if gzipped, up to maxBodyBytes.
+func readBody(r *http.Request) ([]byte, error) {
+	var reader io.Reader = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			return nil, errors.New("invalid gzip body")
+		}
+		defer gz.Close()
+		reader = gz
+	}
+	body, err := io.ReadAll(io.LimitReader(reader, maxBodyBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxBodyBytes {
+		return nil, errors.New("body too large")
+	}
+	return body, nil
 }
 
 func decodeBody(r *http.Request, v any) error {

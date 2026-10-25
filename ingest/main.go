@@ -26,18 +26,28 @@ type config struct {
 	IntervalSeconds int
 	AgentVersion    string
 	DownloadURL     string
+	// Loki for log search; empty turns it off.
+	LokiURL           string
+	LogLinesPerMinute int
+	// Tempo for APM traces; empty turns it off.
+	TempoURL       string
+	SpansPerMinute int
 }
 
 func loadConfig() config {
 	return config{
-		ListenAddr:      env("LISTEN_ADDR", ":8080"),
-		DatabaseURL:     env("DATABASE_URL", "postgres://pulsegrid_service:pulsegrid_service@localhost:5432/pulsegrid"),
-		RedisURL:        env("REDIS_URL", "redis://localhost:6379/0"),
-		VictoriaMetrics: env("VICTORIAMETRICS_URL", "http://localhost:8428"),
-		PublicIngestURL: env("PUBLIC_INGEST_URL", "http://localhost:8080"),
-		IntervalSeconds: envInt("AGENT_INTERVAL_SECONDS", 30),
-		AgentVersion:    os.Getenv("AGENT_VERSION"),
-		DownloadURL:     os.Getenv("PUBLIC_DOWNLOAD_URL"),
+		ListenAddr:        env("LISTEN_ADDR", ":8080"),
+		DatabaseURL:       env("DATABASE_URL", "postgres://pulsegrid_service:pulsegrid_service@localhost:5432/pulsegrid"),
+		RedisURL:          env("REDIS_URL", "redis://localhost:6379/0"),
+		VictoriaMetrics:   env("VICTORIAMETRICS_URL", "http://localhost:8428"),
+		PublicIngestURL:   env("PUBLIC_INGEST_URL", "http://localhost:8080"),
+		IntervalSeconds:   envInt("AGENT_INTERVAL_SECONDS", 30),
+		AgentVersion:      os.Getenv("AGENT_VERSION"),
+		DownloadURL:       os.Getenv("PUBLIC_DOWNLOAD_URL"),
+		LokiURL:           os.Getenv("LOKI_URL"),
+		LogLinesPerMinute: envInt("LOG_LINES_PER_MINUTE", 6000),
+		TempoURL:          os.Getenv("TEMPO_URL"),
+		SpansPerMinute:    envInt("SPANS_PER_MINUTE", 30000),
 	}
 }
 
@@ -64,11 +74,18 @@ func main() {
 	defer rdb.Close()
 
 	srv := &server{
-		cfg:   cfg,
-		store: &store{pool: pool},
-		cache: &cache{rdb: rdb},
-		vm:    &victoriaMetrics{baseURL: cfg.VictoriaMetrics, client: &http.Client{Timeout: 15 * time.Second}},
-		log:   log,
+		cfg:     cfg,
+		store:   &store{pool: pool},
+		cache:   &cache{rdb: rdb},
+		vm:      &victoriaMetrics{baseURL: cfg.VictoriaMetrics, client: &http.Client{Timeout: 15 * time.Second}},
+		log:     log,
+		configs: newConfigCache(),
+	}
+	if cfg.TempoURL != "" {
+		srv.tempo = &tempo{baseURL: cfg.TempoURL, client: &http.Client{Timeout: 15 * time.Second}}
+	}
+	if cfg.LokiURL != "" {
+		srv.loki = &loki{baseURL: cfg.LokiURL, client: &http.Client{Timeout: 15 * time.Second}}
 	}
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,

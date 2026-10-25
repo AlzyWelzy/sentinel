@@ -36,6 +36,12 @@ class Principal:
     impersonated: bool = False
     # Present only on console staff tokens (admin, super_admin, ...).
     role: str | None = None
+    # Set when the caller used a Pulsegrid API token instead of a console login.
+    api_token_id: str | None = None
+    read_only: bool = False
+    # For API tokens: the tenant, already looked up, and its status.
+    token_tenant_id: str | None = None
+    token_tenant_status: str | None = None
 
 
 class JWKSVerifier:

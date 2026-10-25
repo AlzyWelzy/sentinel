@@ -17,6 +17,8 @@ VERSION="__AGENT_VERSION__"
 
 BIN=/usr/local/bin/pulsegrid-agent
 STATE_DIR=/var/lib/pulsegrid
+# Plugin and action files: written by root only, read by the agent.
+CONFIG_DIR=/etc/pulsegrid
 SERVICE=pulsegrid-agent
 RC_SERVICE=pulsegrid_agent # rc.subr names can't contain dashes
 
@@ -96,13 +98,57 @@ create_user() {
 # every 5 minutes, for init systems that don't restart a crashed service.
 schedule_updates_with_cron() {
     minute=$(awk 'BEGIN { srand(); print int(rand() * 60) }')
-    hour=$(awk 'BEGIN { srand(); print int(rand() * 24) }')
+    # Hourly: the updater only downloads when a new version is advertised.
     { crontab -l 2>/dev/null | grep -v "pulsegrid" || true
-      echo "$minute $hour * * * $BIN update --state-dir $STATE_DIR --restart $SERVICE >/dev/null 2>&1 # pulsegrid"
+      echo "$minute * * * * $BIN update --state-dir $STATE_DIR --restart $SERVICE >/dev/null 2>&1 # pulsegrid"
       if [ $# -gt 0 ]; then
-          echo "*/5 * * * * ($1) >/dev/null 2>&1 # pulsegrid watchdog"
+          echo "* * * * * ($1) >/dev/null 2>&1 # pulsegrid watchdog"
       fi
     } | crontab -
+}
+
+# The config directory holds plugin files (database passwords) and the list
+# of actions the dashboard may run, so the agent can read but never write it.
+setup_config_dir() {
+    mkdir -p "$CONFIG_DIR/plugins.d" "$CONFIG_DIR/scripts"
+    chown root "$CONFIG_DIR" "$CONFIG_DIR/plugins.d" "$CONFIG_DIR/scripts"
+    chmod 0755 "$CONFIG_DIR" "$CONFIG_DIR/plugins.d" "$CONFIG_DIR/scripts"
+    # Ours, so rewritten on every install to describe this version.
+    cat >"$CONFIG_DIR/README" <<'PULSEGRID_README'
+Pulsegrid agent configuration (root-owned; the agent only reads it).
+
+plugins.d/<name>.conf   one plugin per file, "key = value" lines:
+    type = mysql        dsn = monitor:secret@tcp(127.0.0.1:3306)/
+    type = postgres     dsn = postgres://monitor:secret@127.0.0.1:5432/postgres
+    type = redis        address = 127.0.0.1:6379   (password = ...)
+    type = nginx        url = http://127.0.0.1/nginx_status
+    type = apache       url = http://127.0.0.1/server-status?auto
+    type = docker       socket = /var/run/docker.sock  (add the agent's user to the docker group)
+    type = prometheus   url = http://127.0.0.1:9100/metrics   (include = regexp)
+    type = script       command = /etc/pulsegrid/scripts/my-metrics.sh  (prints "name value" lines)
+    type = snmp         address = 10.0.0.2   community = public   (or version = 3, user, auth_*, priv_*)
+                        interfaces = true    oids = ups_load=1.3.6.1.2.1.33.1.4.4.1.5.1
+  Disk health (SMART) and board sensors (IPMI): sudo pulsegrid-agent enable-hardware
+  Files holding passwords: chmod 0640 and chgrp them to the agent's group.
+  Test them with: pulsegrid-agent plugins
+
+actions.conf            actions the dashboard may run on this server. Manage with:
+    sudo pulsegrid-agent allow-action restart-nginx -- /usr/bin/systemctl restart nginx
+    sudo pulsegrid-agent allow-action --remove restart-nginx
+
+logs.conf               log files to ship for log search (nothing is shipped without it):
+    file = /var/log/nginx/*.log
+    file = /var/log/myapp/app.log
+    journal = true      (systemd journal; the agent's user is in systemd-journal)
+  New lines only, from when a file is first seen. The agent's user must be able
+  to read the files (it's in the adm group, which covers most of /var/log).
+
+apm.conf                receive OpenTelemetry traces from apps on this server:
+    listen = 127.0.0.1:4318
+  Then run your apps with OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+  (and OTEL_SERVICE_NAME=<name>); traces appear under APM in the dashboard.
+PULSEGRID_README
+    chmod 0644 "$CONFIG_DIR/README"
 }
 
 install_systemd() {
@@ -137,12 +183,12 @@ ExecStart=$BIN update --state-dir $STATE_DIR --restart $SERVICE
 EOF
     cat >/etc/systemd/system/$SERVICE-update.timer <<EOF
 [Unit]
-Description=Check for Pulsegrid agent updates daily
+Description=Check for Pulsegrid agent updates hourly
 
 [Timer]
-OnBootSec=15min
-OnUnitActiveSec=1d
-RandomizedDelaySec=1h
+OnBootSec=10min
+OnUnitActiveSec=1h
+RandomizedDelaySec=10min
 Persistent=true
 
 [Install]
@@ -152,6 +198,31 @@ EOF
     systemctl enable "$SERVICE" >/dev/null 2>&1
     systemctl restart "$SERVICE"
     systemctl enable --now "$SERVICE-update.timer" >/dev/null 2>&1
+    # Watchdog: Restart=always covers crashes, not `systemctl stop`; this
+    # starts the agent again within a minute (a no-op while it runs). To
+    # stop it for good: systemctl disable --now $SERVICE-watchdog.timer
+    cat >/etc/systemd/system/$SERVICE-watchdog.service <<EOF
+[Unit]
+Description=Keep the Pulsegrid agent running
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl start $SERVICE.service
+EOF
+    cat >/etc/systemd/system/$SERVICE-watchdog.timer <<EOF
+[Unit]
+Description=Start the Pulsegrid agent if it was stopped
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now "$SERVICE-watchdog.timer" >/dev/null 2>&1
 }
 
 install_openrc() {
@@ -168,7 +239,7 @@ EOF
     chmod 0755 /etc/init.d/$SERVICE
     rc-update add "$SERVICE" default >/dev/null
     rc-service "$SERVICE" restart
-    schedule_updates_with_cron
+    schedule_updates_with_cron "rc-service $SERVICE status || rc-service $SERVICE start"
 }
 
 install_freebsd() {
@@ -196,7 +267,7 @@ EOF
     chmod 0555 /usr/local/etc/rc.d/$RC_SERVICE
     sysrc -q ${RC_SERVICE}_enable=YES >/dev/null
     service "$RC_SERVICE" restart >/dev/null 2>&1 || service "$RC_SERVICE" start
-    schedule_updates_with_cron
+    schedule_updates_with_cron "/usr/sbin/service $RC_SERVICE status || /usr/sbin/service $RC_SERVICE start"
 }
 
 install_openbsd() {
@@ -267,6 +338,16 @@ mkdir -p "$(dirname "$BIN")"
 install -m 0755 "$tmp/$asset" "$BIN"
 create_user
 mkdir -p "$STATE_DIR"
+setup_config_dir
+# Read-only access to system logs, for log checks: on Debian/Ubuntu they
+# belong to the adm group, the journal to systemd-journal.
+for g in adm systemd-journal; do
+    if getent group "$g" >/dev/null 2>&1; then
+        if have usermod; then usermod -aG "$g" "$SERVICE_USER" 2>/dev/null || true
+        elif have adduser; then adduser "$SERVICE_USER" "$g" 2>/dev/null || true
+        fi
+    fi
+done
 
 "$BIN" register --url "$INGEST_URL" --key "$KEY" --tags "$TAGS" --state-dir "$STATE_DIR"
 chown -R "$SERVICE_USER" "$STATE_DIR"

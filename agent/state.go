@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/example-org/pulsegrid/proto"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,8 +22,13 @@ type state struct {
 	HostToken       string `json:"host_token"`
 	// From the last config fetch, so watches apply even if ingest is
 	// unreachable when the agent starts.
-	WatchProcesses []string `json:"watch_processes,omitempty"`
-	WatchServices  []string `json:"watch_services,omitempty"`
+	WatchProcesses []string      `json:"watch_processes,omitempty"`
+	WatchServices  []string      `json:"watch_services,omitempty"`
+	Checks         []proto.Check `json:"checks,omitempty"`
+	ConfigVersion  string        `json:"config_version,omitempty"`
+	// Recently run action ids, so a restart doesn't run one twice.
+	DoneActions              []string `json:"done_actions,omitempty"`
+	InventoryIntervalSeconds int      `json:"inventory_interval_seconds,omitempty"`
 }
 
 func statePath(dir string) string { return filepath.Join(dir, "state.json") }

@@ -84,8 +84,44 @@ func (c *client) register(ctx context.Context, baseURL string, req proto.Registe
 	return resp, err
 }
 
-func (c *client) push(ctx context.Context, baseURL, token string, req proto.MetricsRequest) error {
-	return c.do(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/v1/metrics", token, req, nil)
+func (c *client) push(ctx context.Context, baseURL, token string, req proto.MetricsRequest) (proto.MetricsResponse, error) {
+	var resp proto.MetricsResponse
+	err := c.do(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/v1/metrics", token, req, &resp)
+	return resp, err
+}
+
+func (c *client) logs(ctx context.Context, baseURL, token string, req proto.LogsRequest) (proto.LogsResponse, error) {
+	var resp proto.LogsResponse
+	err := c.do(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/v1/logs", token, req, &resp)
+	return resp, err
+}
+
+// traces forwards an OTLP body as received, gzipped on the way.
+func (c *client) traces(ctx context.Context, baseURL, token, contentType string, body []byte) error {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	gz.Write(body)
+	if err := gz.Close(); err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/v1/traces", &buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "pulsegrid-agent/"+version)
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return &statusError{Code: resp.StatusCode, Body: strings.TrimSpace(string(msg))}
+	}
+	return nil
 }
 
 func (c *client) config(ctx context.Context, baseURL, token string) (proto.AgentConfig, error) {

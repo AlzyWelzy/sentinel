@@ -2,7 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -172,4 +177,206 @@ func (s *store) watches(ctx context.Context, id hostIdentity) (processes, servic
 		}
 	}
 	return processes, services, rows.Err()
+}
+
+// checkDef is a check as handed to one host, with the tenant whose check it
+// is: the host's own tenant, or for public probe checks, the check owner's.
+type checkDef struct {
+	proto.Check
+	TenantID string
+	OnProbes bool
+}
+
+// hostChecks returns the checks this host runs: its own tenant's checks for
+// it or its tags, and, if it's a probe, every active tenant's probe checks
+// for its region. Also returns the host's probe region ("" if not a probe).
+func (s *store) hostChecks(ctx context.Context, id hostIdentity) ([]checkDef, string, error) {
+	var region *string
+	if err := s.pool.QueryRow(ctx, `SELECT probe_region FROM hosts WHERE id = $1`, id.HostID).Scan(&region); err != nil {
+		return nil, "", err
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT c.id, c.tenant_id, c.type, c.target, c.params, c.interval_seconds, c.on_probes
+		  FROM checks c
+		  JOIN hosts h ON h.id = $1
+		  JOIN tenants t ON t.id = c.tenant_id AND t.status = 'active'
+		 WHERE c.enabled
+		   AND ((NOT c.on_probes AND c.tenant_id = h.tenant_id
+		         AND (c.host_id = h.id OR c.tag = ANY (h.tags)))
+		        OR (c.on_probes AND h.probe_region IS NOT NULL
+		            AND (cardinality(c.probe_regions) = 0 OR h.probe_region = ANY (c.probe_regions))))
+		 ORDER BY c.id`, id.HostID)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+	var out []checkDef
+	for rows.Next() {
+		var c checkDef
+		var params map[string]any
+		if err := rows.Scan(&c.ID, &c.TenantID, &c.Type, &c.Target, &params, &c.IntervalSeconds, &c.OnProbes); err != nil {
+			return nil, "", err
+		}
+		c.Params = map[string]string{}
+		for k, v := range params {
+			c.Params[k] = fmt.Sprint(v)
+		}
+		if c.OnProbes {
+			// Probes run on our network: they must never reach private
+			// addresses on a customer's behalf. The agent enforces this
+			// when it connects, so DNS can't be used to slip past it.
+			c.Params["public_only"] = "true"
+		}
+		out = append(out, c)
+	}
+	r := ""
+	if region != nil {
+		r = *region
+	}
+	return out, r, rows.Err()
+}
+
+// pendingActions returns actions waiting for this host. Older than an hour
+// they're expired instead: a restart nobody saw happen shouldn't run later.
+func (s *store) pendingActions(ctx context.Context, hostID string) ([]proto.ActionRequest, error) {
+	if _, err := s.pool.Exec(ctx, `
+		UPDATE host_actions SET status = 'expired', finished_at = now()
+		 WHERE host_id = $1 AND status = 'pending' AND created_at < now() - interval '1 hour'`, hostID); err != nil {
+		return nil, err
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, name FROM host_actions
+		 WHERE host_id = $1 AND status = 'pending' ORDER BY created_at LIMIT 20`, hostID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []proto.ActionRequest
+	for rows.Next() {
+		var a proto.ActionRequest
+		if err := rows.Scan(&a.ID, &a.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+var actionStatuses = map[string]bool{"succeeded": true, "failed": true, "refused": true}
+
+// finishActions records results the host reports for its own actions, and
+// notes them on the incident that triggered them, if any.
+func (s *store) finishActions(ctx context.Context, hostID string, results []proto.ActionResult) error {
+	for _, r := range results {
+		if !actionStatuses[r.Status] {
+			continue
+		}
+		out := r.Output
+		if len(out) > 4096 {
+			out = out[:4096]
+		}
+		_, err := s.pool.Exec(ctx, `
+			WITH a AS (
+				UPDATE host_actions SET status = $3, exit_code = $4, output = $5, finished_at = now()
+				 WHERE id = $1::uuid AND host_id = $2 AND status = 'pending'
+				RETURNING tenant_id, incident_id, name
+			)
+			INSERT INTO incident_events (tenant_id, incident_id, kind, message, actor)
+			SELECT tenant_id, incident_id, 'action',
+			       'Action ' || name || ' ' || $3 || CASE WHEN $5 <> '' THEN ': ' || left($5, 500) ELSE '' END,
+			       'agent'
+			  FROM a WHERE incident_id IS NOT NULL`,
+			r.ID, hostID, r.Status, r.ExitCode, out)
+		if err != nil && !strings.Contains(err.Error(), "invalid input syntax for type uuid") {
+			return err
+		}
+	}
+	return nil
+}
+
+// saveInventory stores the latest inventory and remembers which packages
+// changed since the previous one (the last 200 changes are kept).
+func (s *store) saveInventory(ctx context.Context, id hostIdentity, inv *proto.Inventory) error {
+	data, err := json.Marshal(inv)
+	if err != nil {
+		return err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var prevData []byte
+	var prevChanges []byte
+	err = tx.QueryRow(ctx, `SELECT data, changes FROM host_inventory WHERE host_id = $1 FOR UPDATE`, id.HostID).
+		Scan(&prevData, &prevChanges)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	var changes []packageChange
+	if len(prevChanges) > 0 {
+		json.Unmarshal(prevChanges, &changes)
+	}
+	if len(prevData) > 0 {
+		var prev proto.Inventory
+		if json.Unmarshal(prevData, &prev) == nil && len(inv.Packages) > 0 {
+			changes = append(diffPackages(prev.Packages, inv.Packages, time.Now()), changes...)
+			if len(changes) > 200 {
+				changes = changes[:200]
+			}
+		}
+	}
+	if changes == nil {
+		changes = []packageChange{}
+	}
+	ch, _ := json.Marshal(changes)
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO host_inventory (host_id, tenant_id, data, changes, updated_at)
+		VALUES ($1, $2, $3, $4, now())
+		ON CONFLICT (host_id) DO UPDATE SET data = EXCLUDED.data, changes = EXCLUDED.changes, updated_at = now()`,
+		id.HostID, id.TenantID, data, ch); err != nil {
+		return err
+	}
+	allowed := inv.AllowedActions
+	if allowed == nil {
+		allowed = []string{}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE hosts SET allowed_actions = $2 WHERE id = $1`, id.HostID, allowed); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+type packageChange struct {
+	Name   string `json:"name"`
+	From   string `json:"from,omitempty"`
+	To     string `json:"to,omitempty"`
+	Change string `json:"change"` // installed | removed | upgraded
+	At     int64  `json:"at"`
+}
+
+func diffPackages(prev, cur []proto.Package, now time.Time) []packageChange {
+	old := map[string]string{}
+	for _, p := range prev {
+		old[p.Name] = p.Version
+	}
+	var out []packageChange
+	seen := map[string]bool{}
+	for _, p := range cur {
+		seen[p.Name] = true
+		v, ok := old[p.Name]
+		switch {
+		case !ok:
+			out = append(out, packageChange{Name: p.Name, To: p.Version, Change: "installed", At: now.Unix()})
+		case v != p.Version:
+			out = append(out, packageChange{Name: p.Name, From: v, To: p.Version, Change: "upgraded", At: now.Unix()})
+		}
+	}
+	for _, p := range prev {
+		if !seen[p.Name] {
+			out = append(out, packageChange{Name: p.Name, From: p.Version, Change: "removed", At: now.Unix()})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }

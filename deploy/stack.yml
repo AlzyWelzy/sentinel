@@ -60,6 +60,8 @@ services:
       DATABASE_SERVICE_URL: *service_db_py
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
+      LOKI_URL: http://loki:3100
+      TEMPO_URL: http://tempo:3200
       PUBLIC_API_URL: https://${API_HOST}
       PUBLIC_INGEST_URL: https://${INGEST_HOST}
       PUBLIC_DOWNLOAD_URL: https://${DOWNLOAD_HOST}
@@ -86,6 +88,8 @@ services:
       DATABASE_URL: *service_db_go
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
+      LOKI_URL: http://loki:3100
+      TEMPO_URL: http://tempo:4318
       PUBLIC_INGEST_URL: https://${INGEST_HOST}
       PUBLIC_DOWNLOAD_URL: https://${DOWNLOAD_HOST}
       AGENT_VERSION: ${AGENT_VERSION:?}
@@ -161,7 +165,39 @@ services:
       placement:
         constraints: [node.labels.pulsegrid.db == true]
 
+  loki:
+    image: grafana/loki:3.5.7
+    command: ["-config.file=/etc/loki/loki.yml"]
+    configs:
+      - source: loki
+        target: /etc/loki/loki.yml
+    volumes:
+      - loki-data:/loki
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: [node.labels.pulsegrid.db == true]
+
+  # APM traces: one Tempo tenant per account (multitenancy_enabled).
+  tempo:
+    image: grafana/tempo:2.8.2
+    user: "0"
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    configs:
+      - source: tempo
+        target: /etc/tempo/tempo.yml
+    volumes:
+      - tempo-data:/var/tempo
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: [node.labels.pulsegrid.db == true]
+
 configs:
+  tempo:
+    file: ./tempo/tempo.yml
+  loki:
+    file: ./loki/loki.yml
   caddyfile:
     file: ./caddy/Caddyfile
   init_roles:
@@ -173,6 +209,8 @@ volumes:
   postgres-data:
   redis-data:
   vm-data:
+  loki-data:
+  tempo-data:
 
 networks:
   edge:
