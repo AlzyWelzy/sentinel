@@ -211,6 +211,7 @@ type agent struct {
 	pluginsAt        time.Time
 	lastPluginStatus []proto.PluginStatus
 	logStatus        *proto.LogsStatus
+	inventoryDue     bool // under mu
 	inventoryAt      time.Time
 	// Waiting to go out with the next successful push.
 	mu            sync.Mutex
@@ -351,9 +352,15 @@ func (a *agent) logLoop(ctx context.Context) {
 	}
 }
 
+// setLogStatus records what's shipped; a change sends the inventory again
+// soon, so the dashboard shows it without waiting hours.
 func (a *agent) setLogStatus(st *proto.LogsStatus) {
 	a.mu.Lock()
+	changed := !reflect.DeepEqual(a.logStatus, st)
 	a.logStatus = st
+	if changed {
+		a.inventoryDue = true
+	}
 	a.mu.Unlock()
 }
 
@@ -426,7 +433,11 @@ func (a *agent) maybeInventory(ctx context.Context) {
 	if a.st.InventoryIntervalSeconds > 0 {
 		every = time.Duration(a.st.InventoryIntervalSeconds) * time.Second
 	}
-	if !a.inventoryAt.IsZero() && time.Since(a.inventoryAt) < every {
+	a.mu.Lock()
+	due := a.inventoryDue
+	a.inventoryDue = false
+	a.mu.Unlock()
+	if !due && !a.inventoryAt.IsZero() && time.Since(a.inventoryAt) < every {
 		return
 	}
 	a.inventoryAt = time.Now()
