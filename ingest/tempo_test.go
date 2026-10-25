@@ -17,7 +17,7 @@ func str(k, v string) *commonpb.KeyValue {
 func TestStampHost(t *testing.T) {
 	req := &collectortrace.ExportTraceServiceRequest{ResourceSpans: []*tracepb.ResourceSpans{
 		{
-			Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{str("service.name", "shop"), str(hostAttr, "someone-elses-host")}},
+			Resource:   &resourcepb.Resource{Attributes: []*commonpb.KeyValue{str("service.name", "shop"), str(hostAttr, "someone-elses-host")}},
 			ScopeSpans: []*tracepb.ScopeSpans{{Spans: []*tracepb.Span{{Name: "GET /"}, {Name: "db"}}}},
 		},
 		{ScopeSpans: []*tracepb.ScopeSpans{{Spans: []*tracepb.Span{{Name: "job"}}}}}, // no resource

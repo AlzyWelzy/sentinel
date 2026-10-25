@@ -3,6 +3,7 @@
 import asyncio
 import time
 import uuid
+from typing import cast
 
 import httpx
 import pytest
@@ -32,7 +33,7 @@ def test_build_query():
     with pytest.raises(BadQuery):
         build_query(LogFilter(host_ids=[H], levels=('error"}',)))
     with pytest.raises(ValueError):
-        build_query(LogFilter(host_ids=['x"} or {a=~".+'], text="x"))  # type: ignore[list-item]
+        build_query(LogFilter(host_ids=cast(list[uuid.UUID], ['x"} or {a=~".+']), text="x"))
 
 
 async def test_disabled_without_loki(alice: User, monkeypatch):

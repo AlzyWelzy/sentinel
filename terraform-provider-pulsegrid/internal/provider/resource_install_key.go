@@ -29,13 +29,13 @@ type installKeyModel struct {
 }
 
 type installKeyJSON struct {
-	ID                    string   `json:"id"`
-	Name                  string   `json:"name"`
-	Key                   string   `json:"key"`
-	InstallCommand        string   `json:"install_command"`
-	InstallCommandWindows string   `json:"install_command_windows"`
-	CloudInit             string   `json:"cloud_init"`
-	RevokedAt             *string  `json:"revoked_at"`
+	ID                    string  `json:"id"`
+	Name                  string  `json:"name"`
+	Key                   string  `json:"key"`
+	InstallCommand        string  `json:"install_command"`
+	InstallCommandWindows string  `json:"install_command_windows"`
+	CloudInit             string  `json:"cloud_init"`
+	RevokedAt             *string `json:"revoked_at"`
 }
 
 func (r *installKeyResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
