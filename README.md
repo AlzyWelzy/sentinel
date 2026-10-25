@@ -175,6 +175,55 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 - API tokens (`pgt_…`, read-only by default) act as the account; managing
   tokens needs a console login. OpenAPI at `/docs`.
 
+## Teams
+
+The account owner invites other console users by email as **viewer** (reads
+everything), **operator** (also acknowledges and resolves incidents,
+schedules maintenance, runs allowed actions) or **admin** (changes anything
+but members and API tokens). A member opens the shared account by sending
+`X-Pulsegrid-Account: <tenant id>`; `tenancy.py` checks the membership
+(`pulsegrid_member_tenant()`, SECURITY DEFINER) and the role per route, then
+RLS applies as usual. Invitations are claimed by the first console login with
+that verified email and pinned to it.
+
+## Logs
+
+Opt-in per server: a root-owned `/etc/pulsegrid/logs.conf` (`file = <glob>`,
+`journal = true`). The agent ships new lines (rotation-aware, offsets kept
+across restarts, no backfill) to ingest `/v1/logs`, which writes them to Loki
+as the tenant (`X-Scope-OrgID`), labelled with the host from the token, at
+most `LOG_LINES_PER_MINUTE` per host. The API searches (`/v1/logs`, text or
+RE2, server, file, level), counts (`/v1/logs/volume`) and lists sources;
+14 days kept. Off unless `LOKI_URL` is set.
+
+## APM
+
+Opt-in per server: `/etc/pulsegrid/apm.conf` (`listen = 127.0.0.1:4318`)
+makes the agent an OTLP/HTTP receiver; apps use
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` and need no key. Ingest
+decodes each batch, sets `pulsegrid.host_id` from the token (replacing any
+the app sent), caps `SPANS_PER_MINUTE` per host and writes to Tempo as the
+tenant. The API reports services (requests, error rate, p50/p95/p99 from
+TraceQL metrics over entry spans), searches traces and returns one trace's
+spans; 7 days kept. Off unless `TEMPO_URL` is set.
+
+## Hardware and network devices
+
+- `sudo pulsegrid-agent enable-hardware` finds smartctl disks and an IPMI
+  BMC, writes `plugins.d/smart.conf` / `ipmi.conf`, and a sudoers file
+  allowing exactly those read-only command lines (`--remove` undoes it).
+  Metrics: `pulsegrid_custom_smart_*` (healthy, temperature, reallocated and
+  pending sectors, NVMe wear) and `pulsegrid_custom_ipmi_sensor{sensor,unit}`.
+- `type = snmp` plugins poll a device from the server (v1/v2c/v3): uptime,
+  per-interface traffic and status, and named custom OIDs
+  (`pulsegrid_custom_snmp_*`).
+- Alert with custom rules (e.g. `smart_healthy < 1`).
+
+## Terraform
+
+`terraform-provider-pulsegrid/`: alert rules, checks, maintenance windows,
+status pages, install keys and a hosts data source, with an API token.
+
 ## Jobs
 
 `python -m app.jobs` (the `jobs` service; replicas stand by on an advisory
