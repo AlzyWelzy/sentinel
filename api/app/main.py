@@ -14,6 +14,7 @@ from app.routes import (
     channels,
     checks,
     hostops,
+    insights,
     install,
     internal,
     logs,
@@ -47,6 +48,7 @@ app.include_router(apm.router)
 app.include_router(statuspages.router)
 app.include_router(statuspages.public)
 app.include_router(reports.router)
+app.include_router(insights.router)
 app.include_router(maintenance.router)
 app.include_router(ack.router)
 app.include_router(install.router)

@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, time
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Text, Time, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Numeric, Text, Time, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -221,6 +221,8 @@ class Incident(TenantScoped):
     reopened_count: Mapped[int] = mapped_column(default=0)
     resolved_by: Mapped[str | None] = mapped_column(Text)
     check_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    snoozed_until: Mapped[datetime | None]
+    snoozed_by: Mapped[str | None] = mapped_column(Text)
 
 
 class IncidentEvent(TenantScoped):
@@ -253,6 +255,7 @@ class Check(TenantScoped):
     probe_regions: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
     min_failing: Mapped[int] = mapped_column(default=1)
     enabled: Mapped[bool] = mapped_column(default=True)
+    slo_target: Mapped[float] = mapped_column(Numeric(6, 3), default=99.9)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
