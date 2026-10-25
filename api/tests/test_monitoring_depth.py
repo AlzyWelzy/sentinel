@@ -517,7 +517,11 @@ async def test_console_asks_whether_an_address_is_in_maintenance(client, alice: 
     host = await insert_host(tid, "Web-1.example.com")
     async with ServiceSession() as db, db.begin():
         await db.execute(
-            text("UPDATE hosts SET ip_addresses = '{203.0.113.7}' WHERE id = :h"), {"h": host}
+            text(
+                "UPDATE hosts SET ip_addresses = '{203.0.113.7}', public_ip = '192.0.2.44' "
+                "WHERE id = :h"
+            ),
+            {"h": host},
         )
     url = f"/internal/v1/tenants/{alice.uid}/maintenance"
 
@@ -538,6 +542,7 @@ async def test_console_asks_whether_an_address_is_in_maintenance(client, alice: 
     assert (await alice.request("POST", "/v1/maintenance", json=window)).status_code == 201
     assert await ask("203.0.113.7") == {"in_maintenance": True, "hosts": ["Web-1.example.com"]}
     assert (await ask("web-1.example.com"))["in_maintenance"] is True
+    assert (await ask("192.0.2.44"))["in_maintenance"] is True  # behind NAT
     assert (await ask("198.51.100.1"))["in_maintenance"] is False
     r = await client.get(url, params={"address": "203.0.113.7"})
     assert r.status_code == 401

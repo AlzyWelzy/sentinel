@@ -254,7 +254,8 @@ async def maintenance_for_address(
                 Host.tenant_id == tenant.id,
                 Host.revoked_at.is_(None),
                 (func.lower(Host.hostname) == address)
-                | (literal(address) == any_(Host.ip_addresses)),
+                | (literal(address) == any_(Host.ip_addresses))
+                | (Host.public_ip == address),
             )
         )
     )

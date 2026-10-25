@@ -175,6 +175,7 @@ class HostOut(BaseModel):
     tags: list[str]
     depends_on_host_id: uuid.UUID | None
     ip_addresses: list[str]
+    public_ip: str | None = None
     cpu_cores: int | None
     memory_bytes: int | None
     in_maintenance: bool
@@ -195,6 +196,7 @@ def _host_out(h: Host, last_seen: int | None, maintenance: bool = False) -> Host
         tags=list(h.tags or []),
         depends_on_host_id=h.depends_on_host_id,
         ip_addresses=list(h.ip_addresses or []),
+        public_ip=h.public_ip,
         cpu_cores=h.cpu_cores,
         memory_bytes=h.memory_bytes,
         in_maintenance=maintenance,

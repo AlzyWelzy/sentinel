@@ -90,6 +90,7 @@ class Host(TenantScoped):
         UUID, ForeignKey("hosts.id", ondelete="SET NULL")
     )
     ip_addresses: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    public_ip: Mapped[str | None] = mapped_column(Text)
     cpu_cores: Mapped[int | None]
     memory_bytes: Mapped[int | None] = mapped_column(BigInteger)
     probe_region: Mapped[str | None] = mapped_column(Text)
