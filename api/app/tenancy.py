@@ -65,6 +65,7 @@ class TenantContext:
     principal: Principal
     db: AsyncSession
     # "owner" for the account's own console user and its API tokens;
+    # "staff" for console staff working in a customer's account;
     # otherwise the team member's role.
     role: str = "owner"
 
@@ -181,6 +182,32 @@ async def bind_member_tenant(
     return tenant_id, row.out_status, row.out_role
 
 
+def is_staff(principal: Principal) -> bool:
+    """Console staff (admin, super_admin, ...) signed in as themselves."""
+    return (
+        principal.role in settings.STAFF_ROLES
+        and not principal.impersonated
+        and principal.api_token_id is None
+    )
+
+
+async def bind_staff_tenant(db: AsyncSession, shared: str) -> tuple[uuid.UUID, str]:
+    """Scope this transaction to any account, for staff working on a
+    customer's behalf. The account must already exist."""
+    try:
+        tenant_id = uuid.UUID(shared)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Bad {ACCOUNT_HEADER}") from None
+    async with ServiceSession() as sdb:
+        tenant_status = await sdb.scalar(
+            text("SELECT status FROM tenants WHERE id = :t"), {"t": tenant_id}
+        )
+    if tenant_status is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    await db.execute(text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant_id)})
+    return tenant_id, str(tenant_status)
+
+
 def check_member_write(request: Request, role: str) -> None:
     route = request.scope.get("route")
     path = getattr(route, "path", request.url.path)
@@ -213,7 +240,11 @@ async def tenant_context(
     shared = request.headers.get(ACCOUNT_HEADER)
     async with AppSession() as db, db.begin():
         role = "owner"
-        if shared and principal.api_token_id is None:
+        if shared and is_staff(principal):
+            # Staff may do anything an owner can; every change is audited as staff.
+            tenant_id, tenant_status = await bind_staff_tenant(db, shared)
+            role = "staff"
+        elif shared and principal.api_token_id is None:
             tenant_id, tenant_status, role = await bind_member_tenant(db, principal, shared)
             check_member_write(request, role)
         else:
@@ -244,6 +275,8 @@ def actor_of(principal: Principal) -> str:
 def actor_kind(principal: Principal, role: str) -> str:
     if principal.api_token_id:
         return "api_token"
+    if role == "staff":
+        return "staff"
     return "owner" if role == "owner" else "member"
 
 

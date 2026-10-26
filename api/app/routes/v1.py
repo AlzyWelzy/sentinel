@@ -82,7 +82,7 @@ class MeOut(BaseModel):
     display_name: str | None
     status: str
     created_at: datetime
-    role: str = Field(default="owner", description="owner, admin, operator or viewer")
+    role: str = Field(default="owner", description="owner, admin, operator, viewer or staff")
 
 
 @router.get("/me")
