@@ -63,6 +63,31 @@ CATALOG: dict[str, MetricDef] = {
 }
 
 
+# One line per server, for comparing servers: each metric folded to a single
+# value per host (the fullest disk, total network, CPU busy time...).
+COMPARE: dict[str, str] = {
+    "cpu": "max by (host_id) (pulsegrid_cpu_usage_percent{SEL})",
+    "cpu_modes": 'sum by (host_id) (pulsegrid_cpu_mode_percent{SEL,mode!="idle"})',
+    "cpu_cores": "max by (host_id) (pulsegrid_cpu_core_usage_percent{SEL})",
+    "memory": "max by (host_id) (pulsegrid_memory_used_percent{SEL})",
+    "swap": "max by (host_id) (pulsegrid_swap_used_percent{SEL})",
+    "disk": "max by (host_id) (pulsegrid_disk_used_percent{SEL})",
+    "inodes": "max by (host_id) (pulsegrid_disk_inodes_used_percent{SEL})",
+    "disk_io": (
+        "sum by (host_id) (rate(pulsegrid_disk_read_bytes_total{SEL}[2m])) + "
+        "sum by (host_id) (rate(pulsegrid_disk_written_bytes_total{SEL}[2m]))"
+    ),
+    "disk_iops": (
+        "sum by (host_id) (rate(pulsegrid_disk_reads_total{SEL}[2m])) + "
+        "sum by (host_id) (rate(pulsegrid_disk_writes_total{SEL}[2m]))"
+    ),
+    "disk_busy": "max by (host_id) (rate(pulsegrid_disk_io_time_seconds_total{SEL}[2m]) * 100)",
+    "load": 'max by (host_id) (pulsegrid_load{SEL,period="1m"})',
+    "network": "sum by (host_id) (rate(pulsegrid_network_bytes_total{SEL}[2m]))",
+    "processes": "max by (host_id) (pulsegrid_processes_total{SEL})",
+}
+
+
 class MetricsUnavailable(Exception):
     pass
 
@@ -207,6 +232,39 @@ async def query_series(
     return [
         {
             "labels": labels(r["metric"]),
+            "points": [[int(ts), float(v)] for ts, v in r["values"]],
+        }
+        for r in response.json()["data"]["result"]
+    ]
+
+
+async def query_compare(
+    tenant_id: uuid.UUID, host_ids: list[uuid.UUID], metric: str, start: int, end: int, step: int
+) -> list[dict]:
+    """One series per host: {host_id, points}."""
+    ids = "|".join(str(uuid.UUID(str(h))) for h in host_ids)
+    base, query, step = _source(
+        COMPARE[metric].replace("SEL", f'host_id=~"{ids}"'), start, end, step
+    )
+    try:
+        async with httpx.AsyncClient(base_url=base) as client:
+            response = await client.get(
+                "/api/v1/query_range",
+                params={
+                    "query": query,
+                    "start": start,
+                    "end": end,
+                    "step": step,
+                    "extra_label": f"tenant_id={tenant_id}",
+                },
+                timeout=15,
+            )
+            response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise MetricsUnavailable(str(exc)) from exc
+    return [
+        {
+            "host_id": r["metric"].get("host_id", ""),
             "points": [[int(ts), float(v)] for ts, v in r["values"]],
         }
         for r in response.json()["data"]["result"]

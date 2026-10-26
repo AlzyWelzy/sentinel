@@ -14,6 +14,7 @@ from app.routes import (
     audit,
     channels,
     checks,
+    dashboards,
     deliveries,
     hostops,
     insights,
@@ -52,6 +53,7 @@ app.include_router(saved_views.router)
 app.include_router(audit.router)
 app.include_router(oncall.router)
 app.include_router(deliveries.router)
+app.include_router(dashboards.router)
 app.include_router(apm.router)
 app.include_router(statuspages.router)
 app.include_router(statuspages.public)

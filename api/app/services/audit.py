@@ -76,6 +76,9 @@ PUT /v1/oncall/schedules/{schedule_id} oncall.update Changed on-call schedule {n
 DELETE /v1/oncall/schedules/{schedule_id} oncall.delete Deleted an on-call schedule
 POST /v1/oncall/schedules/{schedule_id}/overrides oncall.override Added an on-call override
 DELETE /v1/oncall/overrides/{override_id} oncall.override_delete Removed an on-call override
+POST /v1/dashboards dashboard.create Created dashboard {name}
+PUT /v1/dashboards/{dashboard_id} dashboard.update Changed dashboard {name}
+DELETE /v1/dashboards/{dashboard_id} dashboard.delete Deleted a dashboard
 PUT /admin/v1/agent-rollout rollout.update Changed the agent rollout
 POST /admin/v1/agent-rollout/promote rollout.promote Promoted the agent candidate
 POST /admin/v1/agent-rollout/rollback rollout.rollback Rolled back the agent candidate
