@@ -87,7 +87,9 @@ async def test_staff_rollout_api(clean_rollout, client, alice: User):
     assert r.status_code == 200, r.text
     assert r.json()["updated_by"] == "ops@example.com"
     bad = await client.put(
-        "/admin/v1/agent-rollout", headers=h, json={"stable_version": "1.0.0", "candidate_percent": 5}
+        "/admin/v1/agent-rollout",
+        headers=h,
+        json={"stable_version": "1.0.0", "candidate_percent": 5},
     )
     assert bad.status_code == 422
     promoted = (await client.post("/admin/v1/agent-rollout/promote", headers=h)).json()
@@ -95,7 +97,9 @@ async def test_staff_rollout_api(clean_rollout, client, alice: User):
     assert (await client.post("/admin/v1/agent-rollout/rollback", headers=h)).status_code == 409
 
     tid = await alice.tenant_id()
-    pin = await client.put(f"/admin/v1/tenants/{tid}/agent-pin", headers=h, json={"version": "1.0.0"})
+    pin = await client.put(
+        f"/admin/v1/tenants/{tid}/agent-pin", headers=h, json={"version": "1.0.0"}
+    )
     assert pin.json()["version"] == "1.0.0"
     pins = (await client.get("/admin/v1/agent-rollout", headers=h)).json()["pins"]
     assert [p["tenant_id"] for p in pins] == [str(tid)]

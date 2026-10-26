@@ -52,7 +52,7 @@ def _actor(t: TenantContext) -> str:
 
 def _check_size(params: dict) -> None:
     if len(params) > 30 or len(repr(params)) > 4000:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Too many filters to save")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Too many filters to save")
 
 
 @router.get("")
@@ -77,7 +77,7 @@ async def create_view(body: ViewIn, t: Tenant) -> ViewOut:
         )
     )
     if count >= MAX_PER_KIND:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "At most 100 saved views here")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "At most 100 saved views here")
     view = SavedView(
         tenant_id=t.tenant_id,
         kind=body.kind,

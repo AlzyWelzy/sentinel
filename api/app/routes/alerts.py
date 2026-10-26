@@ -26,6 +26,7 @@ from app.models import (
     Incident,
     IncidentEvent,
     NotificationChannel,
+    OncallSchedule,
 )
 from app.services import backtest
 from app.services import logs as logstore
@@ -87,7 +88,16 @@ ACTION_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,62}$")
 
 class EscalationStepIn(BaseModel):
     delay_minutes: int = Field(ge=1, le=10080, description="after the incident opened")
-    channel_ids: list[uuid.UUID] = Field(min_length=1, max_length=10)
+    channel_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
+    schedule_ids: list[uuid.UUID] = Field(
+        default_factory=list, max_length=5, description="page whoever is on call"
+    )
+
+    @model_validator(mode="after")
+    def _someone(self) -> "EscalationStepIn":
+        if not self.channel_ids and not self.schedule_ids:
+            raise ValueError("an escalation step notifies contacts, an on-call schedule, or both")
+        return self
 
 
 class EscalationStepOut(EscalationStepIn):
@@ -119,7 +129,10 @@ class RuleIn(BaseModel):
     host_id: uuid.UUID | None = Field(default=None, description="omit (and tag) for every host")
     tag: str | None = Field(default=None, description="every host with this tag")
     channel_ids: list[uuid.UUID] = Field(
-        default_factory=list, description="omit to use the default channel"
+        default_factory=list, description="omit (with schedule_ids) to use the default channel"
+    )
+    schedule_ids: list[uuid.UUID] = Field(
+        default_factory=list, max_length=5, description="on-call schedules to page"
     )
     escalations: list[EscalationStepIn] = Field(
         default_factory=list,
@@ -274,6 +287,7 @@ class RuleOut(BaseModel):
     host_id: uuid.UUID | None
     tag: str | None
     channel_ids: list[uuid.UUID]
+    schedule_ids: list[uuid.UUID] = []
     escalations: list[EscalationStepOut]
     enabled: bool
     aggregation: str
@@ -398,8 +412,13 @@ async def _rule_out(t: TenantContext, r: AlertRule) -> RuleOut:
         host_id=r.host_id,
         tag=r.tag,
         channel_ids=channel_ids,
+        schedule_ids=list(r.schedule_ids or []),
         escalations=[
-            EscalationStepOut(delay_minutes=s.delay_seconds // 60, channel_ids=list(s.channel_ids))
+            EscalationStepOut(
+                delay_minutes=s.delay_seconds // 60,
+                channel_ids=list(s.channel_ids),
+                schedule_ids=list(s.schedule_ids or []),
+            )
             for s in steps
         ],
         enabled=r.enabled,
@@ -455,6 +474,17 @@ async def _check_refs(t: TenantContext, body: RuleIn) -> None:
         )
         if found != wanted:
             raise HTTPException(status_code=422, detail="unknown notification channels")
+    schedules = set(body.schedule_ids) | {c for e in body.escalations for c in e.schedule_ids}
+    if schedules:
+        found = set(
+            await t.db.scalars(
+                select(OncallSchedule.id).where(
+                    OncallSchedule.id.in_(schedules), OncallSchedule.tenant_id == t.tenant_id
+                )
+            )
+        )
+        if found != schedules:
+            raise HTTPException(status_code=422, detail="unknown on-call schedule")
 
 
 async def _set_channels(t: TenantContext, rule_id: uuid.UUID, channel_ids: list[uuid.UUID]) -> None:
@@ -483,6 +513,7 @@ async def _set_escalations(
                 position=position,
                 delay_seconds=step.delay_minutes * 60,
                 channel_ids=list(dict.fromkeys(step.channel_ids)),
+                schedule_ids=list(dict.fromkeys(step.schedule_ids)),
             )
         )
 

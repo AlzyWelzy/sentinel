@@ -71,6 +71,7 @@ type channel struct {
 	Target      string
 	Config      map[string]string
 	MinSeverity string
+	Quiet       *quietHours // nil: no quiet hours
 }
 
 var severityRank = map[string]int{"info": 0, "warning": 1, "critical": 2}
@@ -194,11 +195,39 @@ func (s *store) states(ctx context.Context, ruleID string) (map[string]storedSta
 	return out, rows.Err()
 }
 
-// channels: the rule's own verified channels, or the tenant's verified
-// default channel when the rule names none.
-func (s *store) channels(ctx context.Context, tx pgx.Tx, r rule) ([]channel, error) {
+// channels: the rule's own verified channels plus whoever is on call in its
+// schedules, or the tenant's verified default channel when it names neither.
+// Also returns who was on call, for the incident timeline.
+func (s *store) channels(ctx context.Context, tx pgx.Tx, r rule) ([]channel, []string, error) {
+	var scheduleIDs []string
+	if err := tx.QueryRow(ctx, `SELECT schedule_ids::text[] FROM alert_rules WHERE id = $1`, r.ID).Scan(&scheduleIDs); err != nil {
+		return nil, nil, err
+	}
+	if len(scheduleIDs) == 0 {
+		chans, err := s.ruleChannels(ctx, tx, r)
+		return chans, nil, err
+	}
+	onCall, who, err := onCallChannels(ctx, tx, r.TenantID, scheduleIDs, time.Now())
+	if err != nil {
+		return nil, nil, err
+	}
 	rows, err := tx.Query(ctx, `
-		SELECT c.id, c.type, c.target, c.config, c.min_severity
+		SELECT c.id, c.type, c.target, c.config, c.min_severity, c.quiet_hours
+		  FROM alert_rule_channels rc JOIN notification_channels c ON c.id = rc.channel_id
+		 WHERE rc.rule_id = $1 AND c.tenant_id = $2 AND c.verified_at IS NOT NULL`, r.ID, r.TenantID)
+	if err != nil {
+		return nil, nil, err
+	}
+	own, err := pgx.CollectRows(rows, scanChannel)
+	if err != nil {
+		return nil, nil, err
+	}
+	return mergeChannels(own, onCall), who, nil
+}
+
+func (s *store) ruleChannels(ctx context.Context, tx pgx.Tx, r rule) ([]channel, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT c.id, c.type, c.target, c.config, c.min_severity, c.quiet_hours
 		  FROM alert_rule_channels rc JOIN notification_channels c ON c.id = rc.channel_id
 		 WHERE rc.rule_id = $1 AND c.tenant_id = $2 AND c.verified_at IS NOT NULL`, r.ID, r.TenantID)
 	if err != nil {
@@ -217,7 +246,7 @@ func (s *store) channels(ctx context.Context, tx pgx.Tx, r rule) ([]channel, err
 		return nil, nil // channels chosen but none verified yet: send nothing
 	}
 	rows, err = tx.Query(ctx, `
-		SELECT id, type, target, config, min_severity FROM notification_channels
+		SELECT id, type, target, config, min_severity, quiet_hours FROM notification_channels
 		 WHERE tenant_id = $1 AND is_default AND verified_at IS NOT NULL`, r.TenantID)
 	if err != nil {
 		return nil, err
@@ -227,7 +256,7 @@ func (s *store) channels(ctx context.Context, tx pgx.Tx, r rule) ([]channel, err
 
 func scanChannel(row pgx.CollectableRow) (channel, error) {
 	var c channel
-	err := row.Scan(&c.ID, &c.Type, &c.Target, &c.Config, &c.MinSeverity)
+	err := row.Scan(&c.ID, &c.Type, &c.Target, &c.Config, &c.MinSeverity, &c.Quiet)
 	return c, err
 }
 
@@ -329,7 +358,7 @@ func (s *store) apply(
 		quiet = true
 	}
 	if kind != "" && incidentID != nil && !quiet {
-		chans, err := s.channels(ctx, tx, r)
+		chans, onCallNames, err := s.channels(ctx, tx, r)
 		if err != nil {
 			return err
 		}
@@ -347,11 +376,23 @@ func (s *store) apply(
 		if err != nil {
 			return err
 		}
-		if err := enqueue(ctx, tx, r.TenantID, wanted, *incidentID, kind, payload); err != nil {
+		held, err := enqueue(ctx, tx, r.TenantID, wanted, *incidentID, kind, r.Severity, payload)
+		if err != nil {
 			return err
 		}
 		if len(wanted) > 0 {
-			if err := addEvent(ctx, tx, r.TenantID, *incidentID, "notified", "Notified "+describeChannels(wanted), "alerter"); err != nil {
+			text := "Notified " + describeChannels(wanted)
+			if len(onCallNames) > 0 {
+				text += " (on call: " + joinNames(onCallNames) + ")"
+			}
+			if held > 0 {
+				text += fmt.Sprintf("; %d held for quiet hours", held)
+			}
+			if err := addEvent(ctx, tx, r.TenantID, *incidentID, "notified", text, "alerter"); err != nil {
+				return err
+			}
+		} else if len(onCallNames) == 0 && kind == "alert_firing" {
+			if err := addEvent(ctx, tx, r.TenantID, *incidentID, "notified", "Nobody was notified: no verified contact and nobody on call", "alerter"); err != nil {
 				return err
 			}
 		}
@@ -450,16 +491,25 @@ func describeChannels(chans []channel) string {
 	return strings.Join(parts, ", ")
 }
 
-func enqueue(ctx context.Context, tx pgx.Tx, tenantID string, chans []channel, incidentID, kind string, payload []byte) error {
+// enqueue queues one message per contact. A contact in its quiet hours gets
+// it when they end (next_attempt_at, held_until); returns how many were held.
+func enqueue(ctx context.Context, tx pgx.Tx, tenantID string, chans []channel, incidentID, kind, severity string, payload []byte) (int, error) {
+	held := 0
+	now := time.Now()
 	for _, c := range chans {
+		var heldUntil *time.Time
+		if t := c.Quiet.quietUntil(severity, now); !t.IsZero() {
+			heldUntil = &t
+			held++
+		}
 		_, err := tx.Exec(ctx, `
-			INSERT INTO outbound_messages (tenant_id, channel_id, incident_id, kind, payload)
-			VALUES ($1, $2, $3, $4, $5)`, tenantID, c.ID, incidentID, kind, payload)
+			INSERT INTO outbound_messages (tenant_id, channel_id, incident_id, kind, payload, held_until, next_attempt_at)
+			VALUES ($1, $2, $3, $4, $5, $6, coalesce($6, now()))`, tenantID, c.ID, incidentID, kind, payload, heldUntil)
 		if err != nil {
-			return err
+			return held, err
 		}
 	}
-	return nil
+	return held, nil
 }
 
 // ── Escalation ───────────────────────────────────────────────────────────────
@@ -467,17 +517,19 @@ func enqueue(ctx context.Context, tx pgx.Tx, tenantID string, chans []channel, i
 // escalation is an open, unacknowledged incident whose next escalation step
 // is due.
 type escalation struct {
-	IncidentID string
-	TenantID   string
-	HostID     *string
-	Summary    string
-	RuleName   string
-	Hostname   string
-	Value      *float64
-	OpenedAt   time.Time
-	Level      int // the step about to run (0-based position)
-	Steps      int // how many steps the rule has
-	ChannelIDs []string
+	IncidentID  string
+	TenantID    string
+	HostID      *string
+	Summary     string
+	RuleName    string
+	Hostname    string
+	Value       *float64
+	OpenedAt    time.Time
+	Level       int // the step about to run (0-based position)
+	Steps       int // how many steps the rule has
+	ChannelIDs  []string
+	ScheduleIDs []string
+	Severity    string
 }
 
 // dueEscalations finds incidents in this partition whose next step's delay
@@ -488,7 +540,7 @@ func (s *store) dueEscalations(ctx context.Context, partition, partitions int) (
 		SELECT i.id, i.tenant_id, i.host_id, i.summary, i.rule_name, i.hostname, i.value,
 		       i.opened_at, i.escalation_level,
 		       (SELECT count(*) FROM alert_escalation_steps a WHERE a.rule_id = i.rule_id),
-		       st.channel_ids::text[]
+		       st.channel_ids::text[], st.schedule_ids::text[], i.severity
 		  FROM incidents i
 		  JOIN tenants t ON t.id = i.tenant_id AND t.status = 'active'
 		  JOIN alert_rules r ON r.id = i.rule_id AND r.tenant_id = i.tenant_id AND r.enabled
@@ -504,7 +556,7 @@ func (s *store) dueEscalations(ctx context.Context, partition, partitions int) (
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (escalation, error) {
 		var e escalation
 		err := row.Scan(&e.IncidentID, &e.TenantID, &e.HostID, &e.Summary, &e.RuleName, &e.Hostname,
-			&e.Value, &e.OpenedAt, &e.Level, &e.Steps, &e.ChannelIDs)
+			&e.Value, &e.OpenedAt, &e.Level, &e.Steps, &e.ChannelIDs, &e.ScheduleIDs, &e.Severity)
 		return e, err
 	})
 }
@@ -526,7 +578,7 @@ func (s *store) escalate(ctx context.Context, e escalation, payload []byte) (boo
 		return false, err
 	}
 	rows, err := tx.Query(ctx, `
-		SELECT id, type, target, config, min_severity FROM notification_channels
+		SELECT id, type, target, config, min_severity, quiet_hours FROM notification_channels
 		 WHERE tenant_id = $1 AND id = ANY ($2::uuid[]) AND verified_at IS NOT NULL`, e.TenantID, e.ChannelIDs)
 	if err != nil {
 		return false, err
@@ -535,11 +587,21 @@ func (s *store) escalate(ctx context.Context, e escalation, payload []byte) (boo
 	if err != nil {
 		return false, err
 	}
-	if err := enqueue(ctx, tx, e.TenantID, chans, e.IncidentID, "alert_escalation", payload); err != nil {
+	onCall, who, err := onCallChannels(ctx, tx, e.TenantID, e.ScheduleIDs, time.Now())
+	if err != nil {
 		return false, err
 	}
-	if err := addEvent(ctx, tx, e.TenantID, e.IncidentID, "escalated",
-		fmt.Sprintf("Escalated to step %d of %d: notified %s", e.Level+1, e.Steps, describeChannels(chans)), "alerter"); err != nil {
+	chans = mergeChannels(chans, onCall)
+	// Escalations are for when nobody answered: they go out even in quiet
+	// hours, like critical alerts.
+	if _, err := enqueue(ctx, tx, e.TenantID, chans, e.IncidentID, "alert_escalation", "critical", payload); err != nil {
+		return false, err
+	}
+	text := fmt.Sprintf("Escalated to step %d of %d: notified %s", e.Level+1, e.Steps, describeChannels(chans))
+	if len(who) > 0 {
+		text += " (on call: " + joinNames(who) + ")"
+	}
+	if err := addEvent(ctx, tx, e.TenantID, e.IncidentID, "escalated", text, "alerter"); err != nil {
 		return false, err
 	}
 	return true, tx.Commit(ctx)
@@ -556,6 +618,25 @@ type outboxItem struct {
 }
 
 const leaseDuration = 2 * time.Minute
+
+// skipStaleHeld drops messages held for quiet hours whose incident resolved
+// meanwhile: the contact wakes up to neither the alert nor its resolution.
+func (s *store) skipStaleHeld(ctx context.Context) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE outbound_messages m
+		   SET status = 'skipped', last_error = 'Resolved during quiet hours: not sent'
+		  FROM incidents i
+		 WHERE m.incident_id = i.id AND m.tenant_id = i.tenant_id
+		   AND m.status = 'pending' AND m.held_until IS NOT NULL
+		   AND m.next_attempt_at <= now() AND i.status = 'resolved'
+		   AND (m.kind IN ('alert_firing', 'alert_escalation')
+		        OR (m.kind = 'alert_resolved' AND EXISTS (
+		            SELECT 1 FROM outbound_messages f
+		             WHERE f.incident_id = m.incident_id AND f.channel_id = m.channel_id
+		               AND f.kind = 'alert_firing' AND f.status IN ('skipped', 'pending')
+		               AND f.held_until IS NOT NULL)))`)
+	return tag.RowsAffected(), err
+}
 
 // claim leases pending messages by pushing next_attempt_at forward, so a
 // crashed sender's messages come back on their own and two dispatchers never

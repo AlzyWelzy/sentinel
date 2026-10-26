@@ -67,6 +67,11 @@ DELETE /v1/status-pages/{page_id} status_page.delete Deleted a status page
 POST /v1/status-pages/{page_id}/updates status_update.create Posted status update {name}
 PUT /v1/status-pages/{page_id}/updates/{update_id} status_update.update Changed status update {name}
 DELETE /v1/status-pages/{page_id}/updates/{update_id} status_update.delete Deleted a status update
+POST /v1/oncall/schedules oncall.create Created on-call schedule {name}
+PUT /v1/oncall/schedules/{schedule_id} oncall.update Changed on-call schedule {name}
+DELETE /v1/oncall/schedules/{schedule_id} oncall.delete Deleted an on-call schedule
+POST /v1/oncall/schedules/{schedule_id}/overrides oncall.override Added an on-call override
+DELETE /v1/oncall/overrides/{override_id} oncall.override_delete Removed an on-call override
 PUT /admin/v1/agent-rollout rollout.update Changed the agent rollout
 POST /admin/v1/agent-rollout/promote rollout.promote Promoted the agent candidate
 POST /admin/v1/agent-rollout/rollback rollout.rollback Rolled back the agent candidate

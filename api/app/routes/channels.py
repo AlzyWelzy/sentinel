@@ -20,6 +20,7 @@ from sqlalchemy import select, update
 
 from app.config import settings
 from app.models import NotificationChannel, OutboundMessage
+from app.services import oncall
 from app.services.secrets import hash_secret
 from app.tenancy import Tenant, TenantContext
 
@@ -133,6 +134,23 @@ def mask_target(type_: str, target: str) -> str:
     return f"{url.scheme}://{url.hostname}/…{target[-4:]}"
 
 
+class QuietHours(BaseModel):
+    """Alerts wait until `end`; critical ones still go out unless told not to."""
+
+    start: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$", examples=["22:00"])
+    end: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$", examples=["07:00"])
+    timezone: str = "UTC"
+    critical_breaks_through: bool = True
+
+    @model_validator(mode="after")
+    def _check(self) -> "QuietHours":
+        if oncall.zone(self.timezone).key != self.timezone:
+            raise ValueError("unknown time zone (use a name like Asia/Kolkata)")
+        if self.start == self.end:
+            raise ValueError("quiet hours start and end at different times")
+        return self
+
+
 class ChannelOut(BaseModel):
     id: uuid.UUID
     type: str
@@ -142,12 +160,14 @@ class ChannelOut(BaseModel):
     is_default: bool
     verified: bool
     min_severity: str
+    quiet_hours: QuietHours | None = None
     created_at: datetime
 
 
 class ChannelPatch(BaseModel):
     label: str | None = Field(default=None, max_length=100)
     min_severity: Severity | None = None
+    quiet_hours: QuietHours | None = Field(default=None, description="null to turn them off")
 
 
 class PushKeys(BaseModel):
@@ -190,6 +210,7 @@ def _out(c: NotificationChannel) -> ChannelOut:
         is_default=c.is_default,
         verified=c.verified_at is not None,
         min_severity=c.min_severity,
+        quiet_hours=QuietHours(**c.quiet_hours) if c.quiet_hours else None,
         created_at=c.created_at,
     )
 
@@ -332,6 +353,8 @@ async def update_channel(channel_id: uuid.UUID, body: ChannelPatch, t: Tenant) -
         channel.label = body.label
     if body.min_severity is not None:
         channel.min_severity = body.min_severity
+    if "quiet_hours" in body.model_fields_set:
+        channel.quiet_hours = body.quiet_hours.model_dump() if body.quiet_hours else None
     await t.db.flush()
     return _out(channel)
 

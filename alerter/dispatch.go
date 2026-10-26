@@ -30,6 +30,11 @@ func (d *dispatcher) run(ctx context.Context) {
 }
 
 func (d *dispatcher) dispatchOnce(ctx context.Context) int {
+	if n, err := d.store.skipStaleHeld(ctx); err != nil {
+		d.log.Warn("skipping stale held messages", "err", err)
+	} else if n > 0 {
+		d.log.Info("held messages skipped: incidents resolved during quiet hours", "count", n)
+	}
 	items, err := d.store.claim(ctx, 50)
 	if err != nil {
 		d.log.Error("claiming outbound messages", "err", err)

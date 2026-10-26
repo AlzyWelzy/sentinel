@@ -135,7 +135,9 @@ async def test_escalations(alice: User, bob: User):
     # Replaced on update.
     one = {**body, "escalations": [{"delay_minutes": 5, "channel_ids": [channel]}]}
     r = await alice.request("PUT", f"/v1/alert-rules/{rule['id']}", json=one)
-    assert r.json()["escalations"] == [{"delay_minutes": 5, "channel_ids": [channel]}]
+    assert r.json()["escalations"] == [
+        {"delay_minutes": 5, "channel_ids": [channel], "schedule_ids": []}
+    ]
 
     descending = {
         **body,

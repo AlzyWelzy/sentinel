@@ -13,7 +13,13 @@ async def events(user: User, **params) -> list[dict]:
 
 
 async def test_changes_are_recorded(alice: User, bob: User):
-    rule = {"name": "Disk above 95%", "kind": "metric", "metric": "disk", "operator": ">", "threshold": 95}
+    rule = {
+        "name": "Disk above 95%",
+        "kind": "metric",
+        "metric": "disk",
+        "operator": ">",
+        "threshold": 95,
+    }
     created = (await alice.request("POST", "/v1/alert-rules", json=rule)).json()
     # A rejected request leaves nothing behind.
     bad = await alice.request("POST", "/v1/alert-rules", json={"name": "x", "kind": "metric"})
@@ -44,11 +50,17 @@ async def test_changes_are_recorded(alice: User, bob: User):
 
 
 async def test_staff_changes_are_recorded(client, alice: User):
-    staff = {"Authorization": f"Bearer {console_token(str(uuid.uuid4()), 'ops@example.com', role='admin')}"}
+    staff = {
+        "Authorization": f"Bearer {console_token(str(uuid.uuid4()), 'ops@example.com', role='admin')}"
+    }
     tid = await alice.tenant_id()
-    r = await client.put(f"/admin/v1/tenants/{tid}/agent-pin", headers=staff, json={"version": None})
+    r = await client.put(
+        f"/admin/v1/tenants/{tid}/agent-pin", headers=staff, json={"version": None}
+    )
     assert r.status_code == 200
     mine = await events(alice)
     assert mine[0]["action"] == "rollout.pin" and mine[0]["actor_kind"] == "staff"
-    every = (await client.get("/admin/v1/audit-log", headers=staff, params={"staff_only": True})).json()
+    every = (
+        await client.get("/admin/v1/audit-log", headers=staff, params={"staff_only": True})
+    ).json()
     assert every[0]["actor"] == "ops@example.com"

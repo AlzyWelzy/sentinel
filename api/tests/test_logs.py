@@ -140,7 +140,11 @@ async def test_search_is_per_account(alice: User, bob: User, monkeypatch):
 
 
 async def test_saved_views(alice: User, bob: User):
-    body = {"kind": "logs", "name": "Payment errors", "params": {"q": "payment", "level": ["error"]}}
+    body = {
+        "kind": "logs",
+        "name": "Payment errors",
+        "params": {"q": "payment", "level": ["error"]},
+    }
     r = await alice.request("POST", "/v1/saved-views", json=body)
     assert r.status_code == 201, r.text
     view = r.json()
