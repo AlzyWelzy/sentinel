@@ -246,10 +246,27 @@ func (e *evaluator) checkDetail(ctx context.Context, r rule, h host) string {
 			Summary string `json:"summary"`
 		} `json:"diagnosis"`
 	}
-	// The agent's diagnosis says where it breaks: DNS, connect, path.
-	withDiagnosis := func(res result) string {
+	// The agent's diagnosis says where it breaks: DNS, connect, path. It
+	// comes with one failing run; ingest keeps the latest under diag:<place>.
+	diagnosisOf := func(field string, res result) string {
 		if res.Diagnosis != nil && res.Diagnosis.Summary != "" {
-			return res.Detail + " (" + res.Diagnosis.Summary + ")"
+			return res.Diagnosis.Summary
+		}
+		var stored struct {
+			Ts        int64 `json:"ts"`
+			Diagnosis *struct {
+				Summary string `json:"summary"`
+			} `json:"diagnosis"`
+		}
+		if json.Unmarshal([]byte(vals["diag:"+field]), &stored) == nil && stored.Diagnosis != nil &&
+			res.Ts-stored.Ts < (30*time.Minute).Milliseconds() {
+			return stored.Diagnosis.Summary
+		}
+		return ""
+	}
+	withDiagnosis := func(field string, res result) string {
+		if d := diagnosisOf(field, res); d != "" {
+			return res.Detail + " (" + d + ")"
 		}
 		return res.Detail
 	}
@@ -258,25 +275,18 @@ func (e *evaluator) checkDetail(ctx context.Context, r rule, h host) string {
 		var cur, fail result
 		json.Unmarshal([]byte(vals[h.ID]), &cur)
 		if json.Unmarshal([]byte(vals["fail:"+h.ID]), &fail) == nil && recent(fail) && (cur.OK || fail.Ts >= cur.Ts) {
-			return withDiagnosis(fail)
+			return withDiagnosis(h.ID, fail)
 		}
-		return withDiagnosis(cur)
+		return withDiagnosis(h.ID, cur)
 	}
 	var parts []string
 	for field, v := range vals {
-		if strings.HasPrefix(field, "fail:") {
+		if strings.HasPrefix(field, "fail:") || strings.HasPrefix(field, "diag:") {
 			continue
 		}
 		var res result
 		if json.Unmarshal([]byte(v), &res) == nil && !res.OK {
-			if res.Diagnosis == nil {
-				// The run that diagnosed may be the kept last failure.
-				var fail result
-				if json.Unmarshal([]byte(vals["fail:"+field]), &fail) == nil && recent(fail) {
-					res.Diagnosis = fail.Diagnosis
-				}
-			}
-			parts = append(parts, res.Region+": "+withDiagnosis(res))
+			parts = append(parts, res.Region+": "+withDiagnosis(field, res))
 		}
 	}
 	sort.Strings(parts)

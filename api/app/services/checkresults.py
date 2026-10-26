@@ -11,6 +11,19 @@ CHECK_RESULT_KEY = "pg:check:{check_id}"
 
 
 FAILURE_PREFIX = "fail:"
+DIAGNOSIS_PREFIX = "diag:"
+# A diagnosis is shown with a failure for this long after the agent made it.
+DIAGNOSIS_FRESH_MS = 30 * 60 * 1000
+
+
+def _with_diagnosis(result: dict, fields: dict, field: str) -> dict:
+    """Attach the place's latest diagnosis to a failing result, if fresh."""
+    if result.get("ok") or result.get("diagnosis"):
+        return result
+    stored = _parse(fields.get(DIAGNOSIS_PREFIX + field) or "")
+    if stored and result.get("ts", 0) - stored.get("ts", 0) < DIAGNOSIS_FRESH_MS:
+        return {**result, "diagnosis": stored.get("diagnosis")}
+    return result
 
 
 async def _hashes(check_ids: list[uuid.UUID]) -> list[dict]:
@@ -33,10 +46,12 @@ async def latest(check_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[dict]]:
         return {}
     out: dict[uuid.UUID, list[dict]] = {}
     for cid, fields in zip(check_ids, await _hashes(check_ids), strict=True):
+        fields = fields or {}
         results = [
-            r
-            for field, raw in (fields or {}).items()
-            if not field.startswith(FAILURE_PREFIX) and (r := _parse(raw)) is not None
+            _with_diagnosis(r, fields, field)
+            for field, raw in fields.items()
+            if not field.startswith((FAILURE_PREFIX, DIAGNOSIS_PREFIX))
+            and (r := _parse(raw)) is not None
         ]
         results.sort(key=lambda r: (r.get("region") or "", r.get("host_id") or ""))
         out[cid] = results
@@ -49,9 +64,10 @@ async def last_failures(check_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
         return {}
     out: dict[uuid.UUID, dict] = {}
     for cid, fields in zip(check_ids, await _hashes(check_ids), strict=True):
+        fields = fields or {}
         fails = [
-            r
-            for field, raw in (fields or {}).items()
+            _with_diagnosis(r, fields, field.removeprefix(FAILURE_PREFIX))
+            for field, raw in fields.items()
             if field.startswith(FAILURE_PREFIX) and (r := _parse(raw)) is not None
         ]
         if fails:

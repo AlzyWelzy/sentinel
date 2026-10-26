@@ -119,3 +119,36 @@ async def test_digest(alice: User, monkeypatch):
         "[Pulsegrid] Your monitoring day"
     )
     assert not jobs.digest_due(t, now)  # once per slot
+
+
+async def test_diagnosis_survives_later_failing_runs():
+    import json as _json
+
+    from app.services import checkresults
+    from app.services.heartbeats import redis
+
+    cid = uuid.uuid4()
+    key = checkresults.CHECK_RESULT_KEY.format(check_id=cid)
+    diag = {"summary": "DNS ok · TCP to 1.1.1.1:81 i/o timeout", "connect": []}
+    await redis.hset(
+        key,
+        mapping={
+            # The current run failed without a diagnosis (the agent made one
+            # five minutes ago, kept under diag:).
+            "probe:in-dc1": _json.dumps(
+                {"ok": False, "detail": "timeout", "ts": 600_000, "region": "in-dc1"}
+            ),
+            "fail:probe:in-dc1": _json.dumps(
+                {"ok": False, "detail": "timeout", "ts": 600_000, "region": "in-dc1"}
+            ),
+            "diag:probe:in-dc1": _json.dumps({"ts": 300_000, "diagnosis": diag}),
+            "probe:in-dc2": _json.dumps({"ok": True, "ts": 600_000, "region": "in-dc2"}),
+        },
+    )
+    try:
+        latest = (await checkresults.latest([cid]))[cid]
+        assert [r["region"] for r in latest] == ["in-dc1", "in-dc2"]  # diag: isn't a place
+        assert latest[0]["diagnosis"] == diag and "diagnosis" not in latest[1]
+        assert (await checkresults.last_failures([cid]))[cid]["diagnosis"] == diag
+    finally:
+        await redis.delete(key)

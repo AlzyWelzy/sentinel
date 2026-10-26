@@ -23,7 +23,7 @@ async def live_url():
         port = s.getsockname()[1]
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     task = asyncio.create_task(server.serve())
-    while not server.started:
+    while not server.started:  # noqa: ASYNC110 (uvicorn offers no event to wait on)
         await asyncio.sleep(0.05)
     yield f"http://127.0.0.1:{port}"
     server.should_exit = True

@@ -98,6 +98,13 @@ func (c *cache) storeCheckResults(ctx context.Context, id hostIdentity, hc *host
 			continue
 		}
 		pipe.HSet(ctx, checkResultKey+r.ID, field, b)
+		// The agent diagnoses a failure once, then every few minutes: keep
+		// the latest diagnosis apart so later failing runs don't drop it.
+		if v.Diagnosis != nil {
+			if d, err := json.Marshal(storedDiagnosis{Ts: r.TimestampMs, Diagnosis: v.Diagnosis}); err == nil {
+				pipe.HSet(ctx, checkResultKey+r.ID, diagnosisPrefix+field, d)
+			}
+		}
 		if !r.OK {
 			// The last failure is kept too: the next passing run replaces
 			// the current result before the alerter may have read it.
@@ -136,6 +143,13 @@ func (c *cache) takeQuota(ctx context.Context, kind, hostID string, n, perMinute
 		return perMinute - before, nil
 	}
 	return n, nil
+}
+
+const diagnosisPrefix = "diag:"
+
+type storedDiagnosis struct {
+	Ts        int64            `json:"ts"`
+	Diagnosis *proto.Diagnosis `json:"diagnosis"`
 }
 
 // capDiagnosis bounds what an agent can store with a result.
