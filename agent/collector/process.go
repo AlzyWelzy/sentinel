@@ -116,6 +116,7 @@ func (t *processTracker) collect(ctx context.Context) (map[string]*procUsage, in
 			zombies++
 			continue // exited, waiting for its parent to reap it: not running
 		}
+		name = groupName(name)
 		u := usage[name]
 		if u == nil {
 			u = &procUsage{name: name}
@@ -194,7 +195,7 @@ func parsePS(out []byte, cpus float64) (map[string]*procUsage, int, bool) {
 		if err1 != nil || err2 != nil {
 			continue
 		}
-		name := strings.Join(f[:len(f)-2], " ")
+		name := groupName(strings.Join(f[:len(f)-2], " "))
 		u := usage[name]
 		if u == nil {
 			u = &procUsage{name: name}
@@ -206,6 +207,19 @@ func parsePS(out []byte, cpus float64) (map[string]*procUsage, int, bool) {
 		total++
 	}
 	return usage, total, total > 0
+}
+
+// Linux kernel threads named per CPU or per job (kworker/0:2-events,
+// ksoftirqd/3, irq/24-virtio0) are grouped under the part before the slash.
+var kernelThreadPrefixes = []string{"kworker/", "ksoftirqd/", "migration/", "cpuhp/", "idle_inject/", "irq/", "rcuop/", "rcuos/", "rcuog/", "kthrotld/", "scsi_eh_", "scsi_tmf_"}
+
+func groupName(name string) string {
+	for _, prefix := range kernelThreadPrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return strings.TrimRight(prefix, "/_")
+		}
+	}
+	return name
 }
 
 // topByCPUAndMemory returns the n busiest names by CPU together with the n

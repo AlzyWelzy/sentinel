@@ -141,3 +141,14 @@ func TestWatchedProcesses(t *testing.T) {
 		t.Errorf("the test binary %q should be running: %v", self, counts)
 	}
 }
+
+func TestGroupName(t *testing.T) {
+	for in, want := range map[string]string{
+		"kworker/0:2-ata_sff": "kworker", "ksoftirqd/3": "ksoftirqd", "irq/24-virtio0": "irq",
+		"scsi_eh_0": "scsi_eh", "nginx": "nginx", "php-fpm8.2": "php-fpm8.2",
+	} {
+		if got := groupName(in); got != want {
+			t.Errorf("groupName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
