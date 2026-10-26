@@ -358,6 +358,8 @@ class StatusPageItem(TenantScoped):
     )
     host_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
     check_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    # An uptime monitor kept in step by the console (external_monitors.key).
+    external_key: Mapped[str | None] = mapped_column(Text)
     label: Mapped[str] = mapped_column(Text)
     position: Mapped[int] = mapped_column(default=0)
 
@@ -427,4 +429,23 @@ class Dashboard(TenantScoped):
     panels: Mapped[list] = mapped_column(JSONB, default=list)
     created_by: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ExternalMonitor(TenantScoped):
+    """An uptime monitor that runs elsewhere (the console's Uptime Kuma)."""
+
+    __tablename__ = "external_monitors"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
+    )
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    uptime_24h: Mapped[float | None]
+    uptime_30d: Mapped[float | None]
+    response_ms: Mapped[float | None]
+    daily: Mapped[list] = mapped_column(JSONB, default=list)
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())

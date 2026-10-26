@@ -12,7 +12,8 @@ from typing import Annotated, Literal
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import any_, func, literal, select, text
+from sqlalchemy import any_, delete, func, literal, select, text, true
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.internal import verify_internal_api_key
@@ -20,6 +21,7 @@ from app.config import settings
 from app.db import service_session
 from app.models import (
     AgentKey,
+    ExternalMonitor,
     Host,
     MaintenanceWindow,
     NotificationChannel,
@@ -271,3 +273,79 @@ async def maintenance_for_address(
     now = datetime.now(UTC)
     covered = [h.hostname for h in hosts if in_maintenance(windows, h, now)]
     return MaintenanceOut(in_maintenance=bool(covered), hosts=covered)
+
+
+# ── Uptime monitors kept in step by the console ──────────────────────────────
+
+
+EXTERNAL_FIELDS = (
+    "name",
+    "kind",
+    "status",
+    "uptime_24h",
+    "uptime_30d",
+    "response_ms",
+    "daily",
+    "updated_at",
+)
+
+
+class ExternalDay(BaseModel):
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    uptime: float | None = Field(default=None, ge=0, le=100)
+
+
+class ExternalMonitorIn(BaseModel):
+    key: str = Field(pattern=r"^[a-z]+:[A-Za-z0-9_-]{1,64}$")
+    name: str = Field(min_length=1, max_length=200)
+    kind: str | None = Field(default=None, max_length=40)
+    status: Literal["up", "down", "pending", "maintenance", "paused", "unknown"]
+    uptime_24h: float | None = Field(default=None, ge=0, le=100)
+    uptime_30d: float | None = Field(default=None, ge=0, le=100)
+    response_ms: float | None = Field(default=None, ge=0)
+    daily: list[ExternalDay] = Field(default_factory=list, max_length=90)
+
+
+class ExternalMonitorsIn(BaseModel):
+    source: str = Field(default="kuma", pattern=r"^[a-z]+$")
+    monitors: list[ExternalMonitorIn] = Field(default_factory=list, max_length=1000)
+
+
+@router.put("/tenants/{external_account_id}/external-monitors")
+async def put_external_monitors(
+    external_account_id: str, body: ExternalMonitorsIn, db: ServiceDB
+) -> dict:
+    """Replace the account's monitors from one source (keys "<source>:<id>"):
+    upsert those sent, drop the ones gone."""
+    tenant = await _tenant(db, external_account_id)
+    keys = [m.key for m in body.monitors]
+    if any(not k.startswith(body.source + ":") for k in keys):
+        raise HTTPException(status_code=422, detail="every key starts with the source")
+    await db.execute(
+        delete(ExternalMonitor).where(
+            ExternalMonitor.tenant_id == tenant.id,
+            ExternalMonitor.key.like(body.source + ":%"),
+            ExternalMonitor.key.not_in(keys) if keys else true(),
+        )
+    )
+    now = datetime.now(UTC)
+    for m in body.monitors:
+        stmt = pg_insert(ExternalMonitor).values(
+            tenant_id=tenant.id,
+            key=m.key,
+            name=m.name,
+            kind=m.kind,
+            status=m.status,
+            uptime_24h=m.uptime_24h,
+            uptime_30d=m.uptime_30d,
+            response_ms=m.response_ms,
+            daily=[d.model_dump() for d in m.daily],
+            updated_at=now,
+        )
+        await db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=["tenant_id", "key"],
+                set_={c: stmt.excluded[c] for c in EXTERNAL_FIELDS},
+            )
+        )
+    return {"monitors": len(keys)}
