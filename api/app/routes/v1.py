@@ -42,6 +42,19 @@ def install_command_windows(key: str, tags: list[str] | None = None) -> str:
     return f"& ([scriptblock]::Create((irm {url}))) -Key {key}{extra}"
 
 
+def docker_command(key: str, tags: list[str] | None = None) -> str:
+    """The agent as a container watching its host (host /proc, /sys and
+    /etc read-only). The image updates itself; the volume keeps its identity."""
+    extra = f" -e PULSEGRID_TAGS={','.join(tags)}" if tags else ""
+    return (
+        "docker run -d --name pulsegrid-agent --restart unless-stopped --pid host --network host"
+        " -v /proc:/host/proc:ro -v /sys:/host/sys:ro -v /etc:/host/etc:ro"
+        " -e HOST_PROC=/host/proc -e HOST_SYS=/host/sys -e HOST_ETC=/host/etc"
+        f" -e PULSEGRID_URL={settings.PUBLIC_INGEST_URL} -e PULSEGRID_KEY={key}{extra}"
+        f" -v pulsegrid-agent:/var/lib/pulsegrid {settings.AGENT_IMAGE}"
+    )
+
+
 def cloud_init(key: str, tags: list[str] | None = None) -> str:
     """User data for a new Linux VM (cloud-init runs it once, as root, at
     first boot). It waits for the network, then installs the agent."""
@@ -110,6 +123,7 @@ class AgentKeyCreated(AgentKeyOut):
     install_command: str
     install_command_windows: str
     cloud_init: str  # user data that installs the agent on a new Linux VM
+    docker_command: str = ""  # the self-updating agent container
 
 
 def _agent_key_out(k: AgentKey) -> AgentKeyOut:
@@ -143,6 +157,7 @@ async def create_agent_key(body: AgentKeyIn, t: Tenant) -> AgentKeyCreated:
         install_command=install_command(plaintext, body.tags),
         install_command_windows=install_command_windows(plaintext, body.tags),
         cloud_init=cloud_init(plaintext, body.tags),
+        docker_command=docker_command(plaintext, body.tags),
     )
 
 

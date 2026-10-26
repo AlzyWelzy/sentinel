@@ -28,6 +28,7 @@ from app.routes import (
     saved_views,
     statuspages,
     tokens,
+    tools,
     v1,
 )
 
@@ -40,6 +41,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Pulsegrid-Account"],
 )
 
+app.include_router(tools.router)
 app.include_router(v1.router)
 app.include_router(channels.router)
 app.include_router(alerts.router)
