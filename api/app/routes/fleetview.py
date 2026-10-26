@@ -151,12 +151,17 @@ async def host_disks(host_id: uuid.UUID, t: Tenant) -> list[DiskOut]:
     host = await t.db.scalar(select(Host).where(Host.id == host_id, Host.tenant_id == t.tenant_id))
     if host is None:
         raise HTTPException(status_code=404, detail="Host not found")
-    sel = f'host_id="{host.id}"'
+    return await disks_for(t.tenant_id, host.id)
+
+
+async def disks_for(tenant_id: uuid.UUID, host_id: uuid.UUID) -> list[DiskOut]:
+    """A server's filesystems now, with a forecast (also the staff view's)."""
+    sel = f'host_id="{host_id}"'
 
     async def by_mount(query: str) -> dict[str, tuple[dict, float]]:
         return {
             labels.get("mountpoint", ""): (labels, v)
-            for labels, v in await metrics.query_instant(t.tenant_id, query)
+            for labels, v in await metrics.query_instant(tenant_id, query)
         }
 
     try:

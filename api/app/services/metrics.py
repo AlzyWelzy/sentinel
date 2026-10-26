@@ -87,9 +87,9 @@ CATALOG: dict[str, MetricDef] = {
         "sum(rate(pulsegrid_disk_weighted_io_seconds_total{SEL}[2m]))", "count", []
     ),
     "network_interfaces": MetricDef(
-        "sum by (interface) (rate(pulsegrid_network_bytes_total{SEL}[2m]))",
+        "sum by (interface, direction) (rate(pulsegrid_network_bytes_total{SEL}[2m]))",
         "bytes_per_second",
-        ["interface"],
+        ["interface", "direction"],
     ),
     "network_packets": MetricDef(
         "sum by (direction) (rate(pulsegrid_network_packets_total{SEL}[2m]))",

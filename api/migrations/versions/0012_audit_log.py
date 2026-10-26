@@ -43,9 +43,7 @@ def upgrade() -> None:
         f"USING (tenant_id = {CURRENT_TENANT}) WITH CHECK (tenant_id = {CURRENT_TENANT})"
     )
     op.execute("GRANT SELECT, INSERT ON audit_events TO pulsegrid_app, pulsegrid_service")
-    op.execute(
-        "GRANT USAGE ON SEQUENCE audit_events_id_seq TO pulsegrid_app, pulsegrid_service"
-    )
+    op.execute("GRANT USAGE ON SEQUENCE audit_events_id_seq TO pulsegrid_app, pulsegrid_service")
     op.execute("GRANT DELETE ON audit_events TO pulsegrid_service")  # retention cleanup
 
 
