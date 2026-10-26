@@ -31,6 +31,7 @@ class ServerHealth(BaseModel):
     disk: float | None
     load1: float | None
     cpu_cores: int | None
+    uptime_seconds: float | None
     open_incidents: int
     critical_incidents: int
     last_seen: int | None
@@ -88,8 +89,11 @@ async def servers_overview(t: Tenant) -> FleetOverview:
         load = await _latest(
             t.tenant_id, 'max by (host_id) (last_over_time(pulsegrid_load{period="1m"}[3m]))'
         )
+        uptime = await _latest(
+            t.tenant_id, "max by (host_id) (last_over_time(pulsegrid_uptime_seconds[3m]))"
+        )
     except MetricsUnavailable:
-        cpu = mem = disk = load = {}
+        cpu = mem = disk = load = uptime = {}
         available = False
     counts = {"down": 0, "critical": 0, "warning": 0, "maintenance": 0, "up": 0}
     servers = []
@@ -125,6 +129,7 @@ async def servers_overview(t: Tenant) -> FleetOverview:
                 disk=r(disk.get(key)),
                 load1=r(load.get(key)) if o.online else None,
                 cpu_cores=h.cpu_cores,
+                uptime_seconds=uptime.get(key) if o.online else None,
                 open_incidents=sum(sev.values()),
                 critical_incidents=sev.get("critical", 0),
                 last_seen=o.last_seen,

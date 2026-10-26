@@ -240,11 +240,20 @@ async def delete_host_series(tenant_id: uuid.UUID, host_id: uuid.UUID) -> None:
 
 async def query_instant(tenant_id: uuid.UUID, query: str) -> list[tuple[dict[str, str], float]]:
     """Run a query built in code (never from a request) for one tenant."""
+    return await _instant({"query": query, "extra_label": f"tenant_id={tenant_id}"})
+
+
+async def query_instant_all(query: str) -> list[tuple[dict[str, str], float]]:
+    """Run a query built in code across every tenant, for the staff views."""
+    return await _instant({"query": query})
+
+
+async def _instant(params: dict[str, str]) -> list[tuple[dict[str, str], float]]:
     try:
         async with httpx.AsyncClient(base_url=settings.VICTORIAMETRICS_URL) as client:
             response = await client.get(
                 "/api/v1/query",
-                params={"query": query, "extra_label": f"tenant_id={tenant_id}"},
+                params=params,
                 timeout=20,
             )
             response.raise_for_status()

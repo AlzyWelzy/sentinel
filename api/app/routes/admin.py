@@ -209,6 +209,34 @@ async def tenant_hosts(tenant_id: uuid.UUID, db: ServiceDB) -> list[HostOut]:
 class StaffHost(HostOut):
     tenant_id: uuid.UUID
     account_email: str | None
+    cpu: float | None = None
+    memory: float | None = None
+    disk: float | None = None
+    load1: float | None = None
+    uptime_seconds: float | None = None
+    open_incidents: int = 0
+    critical_incidents: int = 0
+
+
+# Latest value per server across every account, for the staff list.
+_LATEST = {
+    "cpu": "max by (host_id) (last_over_time(pulsegrid_cpu_usage_percent[3m]))",
+    "memory": "max by (host_id) (last_over_time(pulsegrid_memory_used_percent[3m]))",
+    "disk": "max by (host_id) (last_over_time(pulsegrid_disk_used_percent[5m]))",
+    "load1": 'max by (host_id) (last_over_time(pulsegrid_load{period="1m"}[3m]))',
+    "uptime_seconds": "max by (host_id) (last_over_time(pulsegrid_uptime_seconds[3m]))",
+}
+
+
+async def _latest_all() -> dict[str, dict[str, float]]:
+    out: dict[str, dict[str, float]] = {}
+    try:
+        for name, query in _LATEST.items():
+            for labels, v in await metrics.query_instant_all(query):
+                out.setdefault(labels.get("host_id", ""), {})[name] = v
+    except metrics.MetricsUnavailable:
+        return {}
+    return out
 
 
 @router.get("/hosts")
@@ -230,10 +258,32 @@ async def all_hosts(
         )
     rows = (await db.execute(query.order_by(Tenant.email, Host.hostname).limit(limit))).all()
     seen = await heartbeats.last_seen([h.id for h, _ in rows])
-    return [
-        StaffHost(**_host_out(h, seen[h.id]).model_dump(), tenant_id=h.tenant_id, account_email=e)
-        for h, e in rows
-    ]
+    latest = await _latest_all()
+    incidents: dict[uuid.UUID, dict[str, int]] = {}
+    for row in await db.execute(
+        select(Incident.host_id, Incident.severity, func.count())
+        .where(Incident.status == "open", Incident.host_id.is_not(None))
+        .group_by(Incident.host_id, Incident.severity)
+    ):
+        if row[0] is not None:
+            incidents.setdefault(row[0], {})[str(row[1])] = int(row[2])
+    out = []
+    for h, e in rows:
+        base = _host_out(h, seen[h.id])
+        m = latest.get(str(h.id), {})
+        live = {k: round(v, 1) for k, v in m.items() if base.online or k == "disk"}
+        sev = incidents.get(h.id, {})
+        out.append(
+            StaffHost(
+                **base.model_dump(),
+                **live,
+                tenant_id=h.tenant_id,
+                account_email=e,
+                open_incidents=sum(sev.values()),
+                critical_incidents=sev.get("critical", 0),
+            )
+        )
+    return out
 
 
 class StaffCheck(BaseModel):
