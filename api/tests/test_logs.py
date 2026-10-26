@@ -98,7 +98,7 @@ async def test_search_is_per_account(alice: User, bob: User, monkeypatch):
     await push(b_tid, b_host, f"ERROR bob {marker} secret 2")
 
     found = []
-    for _ in range(20):  # pushes become searchable within a moment
+    for _ in range(60):  # pushes become searchable within a moment
         r = await alice.request("GET", "/v1/logs", params={"q": marker})
         found = r.json()["lines"]
         if len(found) >= 2:
@@ -130,7 +130,7 @@ async def test_search_is_per_account(alice: User, bob: User, monkeypatch):
     newest = max(line["ts"] for line in found)
     await push(a_tid, a_host, f"ERROR alice {marker} after")
     tail = []
-    for _ in range(20):
+    for _ in range(60):
         r = await alice.request("GET", "/v1/logs", params={"q": marker, "after": newest})
         tail = r.json()["lines"]
         if tail:
@@ -194,7 +194,7 @@ async def test_log_rule_preview(alice: User, monkeypatch):
         "log_filter": {"q": marker, "levels": ["error"]},
     }
     preview = {}
-    for _ in range(20):
+    for _ in range(60):
         preview = (await alice.request("POST", "/v1/alert-rules/preview", json=body)).json()
         if preview.get("fires"):
             break

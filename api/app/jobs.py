@@ -182,6 +182,10 @@ async def cleanup(now: datetime) -> None:
             text("DELETE FROM incidents WHERE status = 'resolved' AND resolved_at < :t"),
             {"t": now - timedelta(days=400)},
         )
+        await db.execute(
+            text("DELETE FROM audit_events WHERE created_at < :t"),
+            {"t": now - timedelta(days=400)},
+        )
 
 
 async def rollouts(now: datetime) -> None:

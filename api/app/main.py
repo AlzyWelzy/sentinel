@@ -11,6 +11,7 @@ from app.routes import (
     alerts,
     apm,
     apps,
+    audit,
     channels,
     checks,
     hostops,
@@ -46,6 +47,7 @@ app.include_router(tokens.router)
 app.include_router(members.router)
 app.include_router(logs.router)
 app.include_router(saved_views.router)
+app.include_router(audit.router)
 app.include_router(apm.router)
 app.include_router(statuspages.router)
 app.include_router(statuspages.public)

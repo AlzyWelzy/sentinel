@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.console import InvalidToken, Principal, console_verifier, dev_principal
 from app.config import settings
 from app.db import AppSession, ServiceSession
+from app.services import audit
 from app.services.secrets import hash_secret
 
 API_TOKEN_PREFIX = "pgt_"  # noqa: S105 (a prefix, not a secret)
@@ -220,6 +221,28 @@ async def tenant_context(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Monitoring is suspended"
             )
         yield TenantContext(tenant_id=tenant_id, principal=principal, db=db, role=role)
+        # Reached only when the request succeeded: record it in the same
+        # transaction as the change.
+        if request.method.upper() not in READ_ONLY_METHODS:
+            await audit.record_request(
+                db,
+                request,
+                tenant_id=tenant_id,
+                actor=actor_of(principal),
+                actor_kind=actor_kind(principal, role),
+            )
+
+
+def actor_of(principal: Principal) -> str:
+    if principal.api_token_id:
+        return f"API token {principal.name or principal.api_token_id}"
+    return principal.email or principal.name or principal.external_account_id
+
+
+def actor_kind(principal: Principal, role: str) -> str:
+    if principal.api_token_id:
+        return "api_token"
+    return "owner" if role == "owner" else "member"
 
 
 Tenant = Annotated[TenantContext, Depends(tenant_context)]

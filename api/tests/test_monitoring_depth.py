@@ -293,7 +293,16 @@ async def test_ack_link(client, alice: User, monkeypatch):
 
     assert (await client.post(f"/v1/ack/{token}")).status_code == 200
     got = (await alice.request("GET", f"/v1/incidents/{incident}")).json()
-    assert got["acknowledged_at"] is not None and got["acknowledged_by"] == "alert link"
+    assert got["acknowledged_at"] is not None and got["acknowledged_by"] == "alert email link"
+
+    # Snoozing from the same page: 1 hour, 4 hours, or until it resolves.
+    assert "Snooze 4 hours" in (await client.get(f"/v1/ack/{token}")).text
+    assert (await client.post(f"/v1/ack/{token}?snooze=240")).status_code == 200
+    got = (await alice.request("GET", f"/v1/incidents/{incident}")).json()
+    assert got["snoozed_until"] is not None and got["snoozed_by"] == "alert email link"
+    assert (await client.post(f"/v1/ack/{token}?snooze=forever")).status_code == 404
+    log = (await alice.request("GET", "/v1/audit-log")).json()
+    assert [e["action"] for e in log[:2]] == ["incident.snooze", "incident.acknowledge"]
 
     forged = incident + "." + "A" * 24
     assert (await client.get(f"/v1/ack/{forged}")).status_code == 404

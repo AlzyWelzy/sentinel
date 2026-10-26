@@ -12,10 +12,11 @@ the only gate. Keep every handler behind `staff`.
 
 import time
 import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
@@ -25,6 +26,7 @@ from app.auth.console import InvalidToken, Principal, admin_verifier
 from app.config import settings
 from app.db import service_session
 from app.models import Check, Host, Incident, IncidentEvent, Tenant
+from app.routes import audit as audit_routes
 from app.routes.alerts import IncidentDetail, IncidentEventOut, IncidentOut, _incident_out
 from app.routes.checks import CheckStatus, _status
 from app.routes.v1 import (
@@ -38,7 +40,7 @@ from app.routes.v1 import (
     checks_of,
     processes_of,
 )
-from app.services import checkresults, heartbeats, metrics, rollout
+from app.services import audit, checkresults, heartbeats, metrics, rollout
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -59,9 +61,28 @@ async def staff(
     return principal
 
 
-router = APIRouter(prefix="/admin/v1", dependencies=[Depends(staff)])
-
 ServiceDB = Annotated[AsyncSession, Depends(service_session)]
+
+
+async def staff_audit(
+    request: Request,
+    db: ServiceDB,
+    principal: Annotated[Principal, Depends(staff)],
+) -> AsyncIterator[None]:
+    """Staff changes go into the audit log (the account's, when it's about one)."""
+    yield
+    if request.method.upper() not in ("GET", "HEAD", "OPTIONS"):
+        tenant = request.path_params.get("tenant_id")
+        await audit.record_request(
+            db,
+            request,
+            tenant_id=uuid.UUID(str(tenant)) if tenant else None,
+            actor=principal.email or principal.name or "staff",
+            actor_kind="staff",
+        )
+
+
+router = APIRouter(prefix="/admin/v1", dependencies=[Depends(staff), Depends(staff_audit)])
 
 
 class Overview(BaseModel):
@@ -610,4 +631,22 @@ async def set_probe(host_id: uuid.UUID, body: ProbeIn, db: ServiceDB) -> FleetHo
         online=heartbeats.is_online(seen.get(host.id)),
         tenant_email=tenant.email,
         probe_region=host.probe_region,
+    )
+
+
+# ── Audit log ────────────────────────────────────────────────────────────────
+
+
+@router.get("/audit-log")
+async def staff_audit_log(
+    db: ServiceDB,
+    tenant_id: uuid.UUID | None = None,
+    staff_only: bool = False,
+    q: Annotated[str | None, Query(max_length=100)] = None,
+    before: int | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[audit_routes.AuditEventOut]:
+    """Every account's changes and staff's own (staff_only: just staff's)."""
+    return await audit_routes.query(
+        db, tenant_id=tenant_id, staff_only=staff_only, q=q, before=before, limit=limit
     )
