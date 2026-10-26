@@ -106,7 +106,9 @@ INVALID = (
 
 
 @router.get("/{token}")
-async def show(token: str, db: AsyncSession = Depends(service_session)) -> HTMLResponse:
+async def show(
+    token: str, db: AsyncSession = Depends(service_session, scope="function")
+) -> HTMLResponse:
     incident = await _load(token, db)
     if incident is None:
         return _page(*INVALID, status_code=404)
@@ -134,7 +136,7 @@ async def acknowledge(
     token: str,
     request: Request,
     snooze: str | None = None,
-    db: AsyncSession = Depends(service_session),
+    db: AsyncSession = Depends(service_session, scope="function"),
 ) -> HTMLResponse:
     incident = await _load(token, db)
     if incident is None:

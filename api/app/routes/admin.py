@@ -61,7 +61,7 @@ async def staff(
     return principal
 
 
-ServiceDB = Annotated[AsyncSession, Depends(service_session)]
+ServiceDB = Annotated[AsyncSession, Depends(service_session, scope="function")]
 
 
 async def staff_audit(
@@ -73,7 +73,7 @@ async def staff_audit(
     yield
     if request.method.upper() not in ("GET", "HEAD", "OPTIONS"):
         tenant = request.path_params.get("tenant_id")
-        await audit.record_request(
+        await audit.record_safely(
             db,
             request,
             tenant_id=uuid.UUID(str(tenant)) if tenant else None,
@@ -82,7 +82,9 @@ async def staff_audit(
         )
 
 
-router = APIRouter(prefix="/admin/v1", dependencies=[Depends(staff), Depends(staff_audit)])
+router = APIRouter(
+    prefix="/admin/v1", dependencies=[Depends(staff), Depends(staff_audit, scope="function")]
+)
 
 
 class Overview(BaseModel):

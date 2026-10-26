@@ -226,7 +226,7 @@ async def tenant_context(
         # Reached only when the request succeeded: record it in the same
         # transaction as the change.
         if request.method.upper() not in READ_ONLY_METHODS:
-            await audit.record_request(
+            await audit.record_safely(
                 db,
                 request,
                 tenant_id=tenant_id,
@@ -247,7 +247,9 @@ def actor_kind(principal: Principal, role: str) -> str:
     return "owner" if role == "owner" else "member"
 
 
-Tenant = Annotated[TenantContext, Depends(tenant_context)]
+# scope="function": the transaction commits before the response is sent, so
+# a client that reads right after a change sees it.
+Tenant = Annotated[TenantContext, Depends(tenant_context, scope="function")]
 
 
 async def console_tenant_context(
@@ -265,4 +267,4 @@ async def console_tenant_context(
         yield ctx
 
 
-ConsoleTenant = Annotated[TenantContext, Depends(console_tenant_context)]
+ConsoleTenant = Annotated[TenantContext, Depends(console_tenant_context, scope="function")]

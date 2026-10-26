@@ -34,7 +34,7 @@ from app.validation import normalize_tags
 
 router = APIRouter(prefix="/internal/v1", dependencies=[Depends(verify_internal_api_key)])
 
-ServiceDB = Annotated[AsyncSession, Depends(service_session)]
+ServiceDB = Annotated[AsyncSession, Depends(service_session, scope="function")]
 
 
 class TenantUsage(BaseModel):

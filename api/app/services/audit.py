@@ -4,12 +4,15 @@ change that fails or rolls back leaves no event. Request bodies are kept
 with anything secret-looking redacted."""
 
 import json
+import logging
 import uuid
 from typing import Any
 
 from fastapi import Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+log = logging.getLogger("pulsegrid.audit")
 
 MAX_DETAILS = 4000
 REDACT = ("password", "secret", "token", "key", "auth", "code", "p256dh", "webhook_url")
@@ -96,11 +99,16 @@ def redact(value: Any) -> Any:
     return value
 
 
-async def _body(request: Request) -> Any:
+def _body(request: Request) -> Any:
+    """The JSON body, only if the route already read it. Reading it here
+    would wait on the client after the response went out (a request with no
+    body then raises ClientDisconnect), so a body nobody read is skipped."""
+    raw = getattr(request, "_body", None)
+    if not raw:
+        return None
     try:
-        raw = await request.body()
-        return json.loads(raw) if raw else None
-    except (ValueError, RuntimeError):
+        return json.loads(raw)
+    except ValueError:
         return None
 
 
@@ -166,7 +174,7 @@ async def record_request(
     action, template = LABELS.get(
         (method, route), (f"{method.lower()} {route}", f"{method} {route}")
     )
-    body = await _body(request)
+    body = _body(request)
     name = ""
     if isinstance(body, dict):
         name = str(body.get("name") or body.get("title") or body.get("email") or "")
@@ -188,3 +196,13 @@ async def record_request(
         else {"params": params},
         request=request,
     )
+
+
+async def record_safely(db: AsyncSession, request: Request, **kw: Any) -> None:
+    """record_request in a savepoint: the audit log must never undo the
+    change it describes (a failed insert would abort the transaction)."""
+    try:
+        async with db.begin_nested():
+            await record_request(db, request, **kw)
+    except Exception:  # noqa: BLE001 (logged; the change itself goes through)
+        log.exception("audit event not recorded for %s %s", request.method, request.url.path)
