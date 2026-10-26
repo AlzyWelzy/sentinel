@@ -238,19 +238,29 @@ func (e *evaluator) checkDetail(ctx context.Context, r rule, h host) string {
 		return ""
 	}
 	type result struct {
-		OK     bool   `json:"ok"`
-		Detail string `json:"detail"`
-		Region string `json:"region"`
-		Ts     int64  `json:"ts"`
+		OK        bool   `json:"ok"`
+		Detail    string `json:"detail"`
+		Region    string `json:"region"`
+		Ts        int64  `json:"ts"`
+		Diagnosis *struct {
+			Summary string `json:"summary"`
+		} `json:"diagnosis"`
+	}
+	// The agent's diagnosis says where it breaks: DNS, connect, path.
+	withDiagnosis := func(res result) string {
+		if res.Diagnosis != nil && res.Diagnosis.Summary != "" {
+			return res.Detail + " (" + res.Diagnosis.Summary + ")"
+		}
+		return res.Detail
 	}
 	recent := func(res result) bool { return time.Since(time.UnixMilli(res.Ts)) < 10*time.Minute }
 	if !r.Check.OnProbes {
 		var cur, fail result
 		json.Unmarshal([]byte(vals[h.ID]), &cur)
 		if json.Unmarshal([]byte(vals["fail:"+h.ID]), &fail) == nil && recent(fail) && (cur.OK || fail.Ts >= cur.Ts) {
-			return fail.Detail
+			return withDiagnosis(fail)
 		}
-		return cur.Detail
+		return withDiagnosis(cur)
 	}
 	var parts []string
 	for field, v := range vals {
@@ -259,7 +269,14 @@ func (e *evaluator) checkDetail(ctx context.Context, r rule, h host) string {
 		}
 		var res result
 		if json.Unmarshal([]byte(v), &res) == nil && !res.OK {
-			parts = append(parts, res.Region+": "+res.Detail)
+			if res.Diagnosis == nil {
+				// The run that diagnosed may be the kept last failure.
+				var fail result
+				if json.Unmarshal([]byte(vals["fail:"+field]), &fail) == nil && recent(fail) {
+					res.Diagnosis = fail.Diagnosis
+				}
+			}
+			parts = append(parts, res.Region+": "+withDiagnosis(res))
 		}
 	}
 	sort.Strings(parts)

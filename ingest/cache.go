@@ -66,12 +66,13 @@ const (
 )
 
 type storedCheckResult struct {
-	OK        bool    `json:"ok"`
-	Detail    string  `json:"detail,omitempty"`
-	LatencyMs float64 `json:"latency_ms"`
-	Ts        int64   `json:"ts"`
-	HostID    string  `json:"host_id,omitempty"`
-	Region    string  `json:"region,omitempty"`
+	OK        bool             `json:"ok"`
+	Detail    string           `json:"detail,omitempty"`
+	LatencyMs float64          `json:"latency_ms"`
+	Ts        int64            `json:"ts"`
+	HostID    string           `json:"host_id,omitempty"`
+	Region    string           `json:"region,omitempty"`
+	Diagnosis *proto.Diagnosis `json:"diagnosis,omitempty"`
 }
 
 func (c *cache) storeCheckResults(ctx context.Context, id hostIdentity, hc *hostConfig, results []proto.CheckResult) error {
@@ -84,7 +85,7 @@ func (c *cache) storeCheckResults(ctx context.Context, id hostIdentity, hc *host
 		if !ok {
 			continue
 		}
-		v := storedCheckResult{OK: r.OK, Detail: r.Detail, LatencyMs: r.LatencyMs, Ts: r.TimestampMs}
+		v := storedCheckResult{OK: r.OK, Detail: r.Detail, LatencyMs: r.LatencyMs, Ts: r.TimestampMs, Diagnosis: capDiagnosis(r.Diagnosis)}
 		field := id.HostID
 		if def.OnProbes {
 			field = "probe:" + hc.region
@@ -135,4 +136,27 @@ func (c *cache) takeQuota(ctx context.Context, kind, hostID string, n, perMinute
 		return perMinute - before, nil
 	}
 	return n, nil
+}
+
+// capDiagnosis bounds what an agent can store with a result.
+func capDiagnosis(d *proto.Diagnosis) *proto.Diagnosis {
+	if d == nil {
+		return nil
+	}
+	c := *d
+	if len(c.Summary) > 500 {
+		c.Summary = c.Summary[:500]
+	}
+	if c.DNS != nil && len(c.DNS.Addresses) > 8 {
+		dns := *c.DNS
+		dns.Addresses = dns.Addresses[:8]
+		c.DNS = &dns
+	}
+	if len(c.Connect) > 8 {
+		c.Connect = c.Connect[:8]
+	}
+	if len(c.Path) > 30 {
+		c.Path = c.Path[:30]
+	}
+	return &c
 }

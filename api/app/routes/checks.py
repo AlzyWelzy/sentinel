@@ -215,6 +215,8 @@ class CheckResultOut(BaseModel):
     ts: int
     host_id: str | None = None
     region: str | None = None
+    # A failing network check: DNS, a connect to each address, the path.
+    diagnosis: dict | None = None
 
 
 class CheckOut(BaseModel):

@@ -58,6 +58,10 @@ type scheduled struct {
 	// log line, one refused connection) is never lost.
 	held        *proto.CheckResult
 	heldSamples []proto.Sample
+	// Network checks: diagnose once when a check starts failing, and again
+	// every rediagnoseAfter while it keeps failing.
+	lastOK      bool
+	diagnosedAt time.Time
 }
 
 // checkState is what a check remembers between runs.
@@ -246,6 +250,13 @@ func (r *Runner) run(ctx context.Context, s *scheduled) (proto.CheckResult, []pr
 		LatencyMs:   float64(latency.Microseconds()) / 1000,
 		TimestampMs: time.Now().UnixMilli(),
 	}
+	if !out.ok && (s.lastOK || time.Since(s.diagnosedAt) > rediagnoseAfter) {
+		if d := diagnose(context.WithoutCancel(ctx), c, c.Params["public_only"] == "true"); d != nil {
+			res.Diagnosis = d
+			s.diagnosedAt = time.Now()
+		}
+	}
+	s.lastOK = out.ok
 	samples := []proto.Sample{
 		sample("pulsegrid_check_up", boolValue(out.ok), c.ID),
 	}

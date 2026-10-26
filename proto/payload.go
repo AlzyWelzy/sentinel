@@ -75,11 +75,45 @@ type Check struct {
 // samples pulsegrid_check_up / pulsegrid_check_latency_seconds; this carries
 // the human-readable detail for alert messages and the dashboard.
 type CheckResult struct {
-	ID          string  `json:"id"`
-	OK          bool    `json:"ok"`
-	Detail      string  `json:"detail,omitempty"`
-	LatencyMs   float64 `json:"latency_ms,omitempty"`
-	TimestampMs int64   `json:"ts"`
+	ID          string     `json:"id"`
+	OK          bool       `json:"ok"`
+	Detail      string     `json:"detail,omitempty"`
+	LatencyMs   float64    `json:"latency_ms,omitempty"`
+	TimestampMs int64      `json:"ts"`
+	Diagnosis   *Diagnosis `json:"diagnosis,omitempty"`
+}
+
+// Diagnosis is what the agent found out when a network check failed: how
+// the name resolved, whether each address accepts a connection, and the
+// network path towards it. Summary is one line for alerts.
+type Diagnosis struct {
+	Summary  string        `json:"summary"`
+	DNS      *DNSStep      `json:"dns,omitempty"`
+	Connect  []ConnectStep `json:"connect,omitempty"`
+	Path     []Hop         `json:"path,omitempty"`
+	PathNote string        `json:"path_note,omitempty"`
+}
+
+type DNSStep struct {
+	Host      string   `json:"host"`
+	Addresses []string `json:"addresses,omitempty"`
+	ElapsedMs float64  `json:"elapsed_ms"`
+	Error     string   `json:"error,omitempty"`
+}
+
+type ConnectStep struct {
+	Address   string  `json:"address"`
+	OK        bool    `json:"ok"`
+	ElapsedMs float64 `json:"elapsed_ms"`
+	Error     string  `json:"error,omitempty"`
+}
+
+// Hop is one router on the path; Address is empty when it didn't answer.
+type Hop struct {
+	TTL     int     `json:"ttl"`
+	Address string  `json:"address,omitempty"`
+	RttMs   float64 `json:"rtt_ms,omitempty"`
+	Reached bool    `json:"reached,omitempty"`
 }
 
 // ActionRequest asks the agent to run a named action from its local allow-list.
