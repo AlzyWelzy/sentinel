@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.console import InvalidToken, Principal, admin_verifier
 from app.config import settings
 from app.db import service_session
-from app.models import Check, Host, Incident, IncidentEvent, Tenant
+from app.models import AgentKey, Check, Host, Incident, IncidentEvent, Tenant
 from app.routes import audit as audit_routes
 from app.routes.alerts import IncidentDetail, IncidentEventOut, IncidentOut, _incident_out
 from app.routes.checks import CheckStatus, _status
@@ -38,17 +38,25 @@ from app.routes.fleetview import (
     summary_for,
 )
 from app.routes.v1 import (
+    AgentKeyCreated,
+    AgentKeyIn,
     ChecksOut,
     HostOut,
     MetricName,
     MetricsOut,
     ProcessesOut,
     Series,
+    _agent_key_out,
     _host_out,
     checks_of,
+    cloud_init,
+    docker_command,
+    install_command,
+    install_command_windows,
     processes_of,
 )
 from app.services import audit, checkresults, heartbeats, metrics, rollout
+from app.services.secrets import new_agent_key
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -193,6 +201,38 @@ async def list_tenants(
         )
         for r in rows
     ]
+
+
+@router.post("/tenants/{tenant_id}/agent-keys", status_code=status.HTTP_201_CREATED)
+async def create_tenant_agent_key(
+    tenant_id: uuid.UUID,
+    body: AgentKeyIn,
+    db: ServiceDB,
+    principal: Annotated[Principal, Depends(staff)],
+) -> AgentKeyCreated:
+    """An install key in a customer's account, so staff can install the agent
+    on the customer's server for them. The key shows in the account's own
+    install keys, named after who made it, and can be revoked there."""
+    if await db.get(Tenant, tenant_id) is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    plaintext, prefix, key_hash = new_agent_key()
+    key = AgentKey(
+        tenant_id=tenant_id,
+        name=f"{body.name} (by {_actor(principal)})"[:100],
+        key_prefix=prefix,
+        key_hash=key_hash,
+    )
+    db.add(key)
+    await db.flush()
+    await db.refresh(key)
+    return AgentKeyCreated(
+        **_agent_key_out(key).model_dump(),
+        key=plaintext,
+        install_command=install_command(plaintext, body.tags),
+        install_command_windows=install_command_windows(plaintext, body.tags),
+        cloud_init=cloud_init(plaintext, body.tags),
+        docker_command=docker_command(plaintext, body.tags),
+    )
 
 
 @router.get("/tenants/{tenant_id}/hosts")

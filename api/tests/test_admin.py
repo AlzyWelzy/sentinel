@@ -105,3 +105,23 @@ async def test_staff_list_every_server_and_check(client, staff_headers, alice: U
     assert [(c["name"], c["status"]) for c in mine] == [("site", "pending")]
     for path in ("/admin/v1/hosts", "/admin/v1/checks"):
         assert (await alice.request("GET", path)).status_code == 403
+
+
+async def test_staff_make_install_keys_for_an_account(client, staff_headers, alice: User):
+    tid = await alice.tenant_id()
+    r = await client.post(
+        f"/admin/v1/tenants/{tid}/agent-keys",
+        json={"name": "Web server", "tags": ["web"]},
+        headers=staff_headers,
+    )
+    assert r.status_code == 201
+    made = r.json()
+    assert made["key"] in made["install_command"] and "web" in made["install_command"]
+    assert made["name"] == "Web server (by support@Example.com)"
+    # The customer sees it among their own keys and can revoke it.
+    keys = (await alice.request("GET", "/v1/agent-keys")).json()
+    assert [k["id"] for k in keys] == [made["id"]]
+    missing = await client.post(
+        f"/admin/v1/tenants/{uuid.uuid4()}/agent-keys", json={"name": "x"}, headers=staff_headers
+    )
+    assert missing.status_code == 404
