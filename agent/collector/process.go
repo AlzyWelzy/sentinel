@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
+	"os/user"
 	"runtime"
 	"sort"
 	"strconv"
@@ -28,6 +29,11 @@ const topProcesses = 10
 type processTracker struct {
 	last   map[int32]procTimes
 	lastAt time.Time
+	// From the last collection: zombies, threads, and usage per user.
+	zombies int
+	threads int
+	users   map[string]*procUsage
+	names   map[uint32]string // uid → user name, looked up once
 }
 
 type procTimes struct {
@@ -55,6 +61,18 @@ func (c *gopsutilCollector) processSamples(ctx context.Context) []proto.Sample {
 		return nil
 	}
 	out := []proto.Sample{sample("pulsegrid_processes_total", float64(total))}
+	if runtime.GOOS != "windows" {
+		out = append(out, sample("pulsegrid_procs", float64(c.procs.zombies), "state", "zombie"))
+	}
+	if c.procs.threads > 0 {
+		out = append(out, sample("pulsegrid_threads_total", float64(c.procs.threads)))
+	}
+	for _, u := range topByCPUAndMemory(c.procs.users, topProcesses) {
+		out = append(out,
+			sample("pulsegrid_user_cpu_percent", u.cpu, "user", u.name),
+			sample("pulsegrid_user_memory_bytes", u.memory, "user", u.name),
+		)
+	}
 	for _, u := range topByCPUAndMemory(usage, topProcesses) {
 		out = append(out,
 			sample("pulsegrid_process_cpu_percent", u.cpu, "process", u.name),
@@ -84,12 +102,18 @@ func (t *processTracker) collect(ctx context.Context) (map[string]*procUsage, in
 	cpus := float64(runtime.NumCPU())
 	seen := make(map[int32]procTimes, len(procs))
 	usage := map[string]*procUsage{}
+	users := map[string]*procUsage{}
+	zombies, threads := 0, 0
+	if t.names == nil {
+		t.names = map[uint32]string{}
+	}
 	for _, p := range procs {
 		name, err := p.NameWithContext(ctx)
 		if err != nil || name == "" {
 			continue // exited, or not ours to read
 		}
 		if zombie(ctx, p) {
+			zombies++
 			continue // exited, waiting for its parent to reap it: not running
 		}
 		u := usage[name]
@@ -98,8 +122,19 @@ func (t *processTracker) collect(ctx context.Context) (map[string]*procUsage, in
 			usage[name] = u
 		}
 		u.count++
+		owner := t.owner(ctx, p)
+		byUser := users[owner]
+		if byUser == nil {
+			byUser = &procUsage{name: owner}
+			users[owner] = byUser
+		}
+		byUser.count++
+		if n, err := p.NumThreadsWithContext(ctx); err == nil {
+			threads += int(n)
+		}
 		if m, err := p.MemoryInfoWithContext(ctx); err == nil {
 			u.memory += float64(m.RSS)
+			byUser.memory += float64(m.RSS)
 		}
 		times, err := p.TimesWithContext(ctx)
 		if err != nil {
@@ -109,10 +144,13 @@ func (t *processTracker) collect(ctx context.Context) (map[string]*procUsage, in
 		cur := procTimes{created: created, cpu: times.User + times.System}
 		seen[p.Pid] = cur
 		if prev, ok := t.last[p.Pid]; ok && prev.created == cur.created && wall > 0 {
-			u.cpu += max(0, cur.cpu-prev.cpu) / wall / cpus * 100
+			pct := max(0, cur.cpu-prev.cpu) / wall / cpus * 100
+			u.cpu += pct
+			byUser.cpu += pct
 		}
 	}
 	t.last, t.lastAt = seen, now
+	t.zombies, t.threads, t.users = zombies, threads, users
 	return usage, len(procs), true
 }
 
@@ -209,4 +247,25 @@ func topByCPUAndMemory(usage map[string]*procUsage, n int) []*procUsage {
 func sameProcess(actual, want string) bool {
 	trim := func(s string) string { return strings.TrimSuffix(strings.ToLower(s), ".exe") }
 	return trim(actual) == trim(want)
+}
+
+// owner is the user a process runs as (names cached by uid).
+func (t *processTracker) owner(ctx context.Context, p *process.Process) string {
+	uids, err := p.UidsWithContext(ctx)
+	if err != nil || len(uids) == 0 {
+		if name, err := p.UsernameWithContext(ctx); err == nil && name != "" {
+			return name
+		}
+		return "unknown"
+	}
+	uid := uids[0]
+	if name, ok := t.names[uid]; ok {
+		return name
+	}
+	name := strconv.Itoa(int(uid))
+	if u, err := user.LookupId(name); err == nil && u.Username != "" {
+		name = u.Username
+	}
+	t.names[uid] = name
+	return name
 }

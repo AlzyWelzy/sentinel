@@ -41,6 +41,8 @@ class Panel(BaseModel):
 
     @model_validator(mode="after")
     def _scope(self) -> "Panel":
+        if self.metric not in metrics.COMPARE:
+            raise ValueError(f"{self.metric} can't be compared across servers")
         if not self.host_ids and not self.tag:
             raise ValueError("a panel shows some servers or a tag")
         return self
@@ -159,6 +161,8 @@ async def compare(
     step: Annotated[int | None, Query(ge=15, le=86400)] = None,
 ) -> CompareOut:
     """One line per server: the chosen servers, or every server with a tag."""
+    if metric not in metrics.COMPARE:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "This metric can't be compared")
     q = select(Host.id, Host.hostname).where(
         Host.tenant_id == t.tenant_id, Host.revoked_at.is_(None)
     )

@@ -248,9 +248,17 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 			sample("pulsegrid_memory_available_bytes", float64(vm.Available)),
 		)
 	}
-	if sw, err := mem.SwapMemoryWithContext(ctx); err == nil && sw.Total > 0 {
+	sw, swErr := mem.SwapMemoryWithContext(ctx)
+	if swErr == nil && sw.Total > 0 {
 		out = append(out, sample("pulsegrid_swap_used_percent", sw.UsedPercent))
 	}
+	if vmErr == nil && lim.memLimit == 0 {
+		if swErr != nil {
+			sw = nil
+		}
+		out = append(out, memoryDetail(vm, sw)...)
+	}
+	out = append(out, systemActivity(ctx)...)
 
 	if avg, ok := loadAverage(ctx); ok {
 		out = append(out,
@@ -292,7 +300,19 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 			out = append(out,
 				sample("pulsegrid_network_bytes_total", float64(n.BytesRecv), "interface", n.Name, "direction", "rx"),
 				sample("pulsegrid_network_bytes_total", float64(n.BytesSent), "interface", n.Name, "direction", "tx"),
+				sample("pulsegrid_network_packets_total", float64(n.PacketsRecv), "interface", n.Name, "direction", "rx"),
+				sample("pulsegrid_network_packets_total", float64(n.PacketsSent), "interface", n.Name, "direction", "tx"),
+				sample("pulsegrid_network_errors_total", float64(n.Errin), "interface", n.Name, "direction", "rx"),
+				sample("pulsegrid_network_errors_total", float64(n.Errout), "interface", n.Name, "direction", "tx"),
+				sample("pulsegrid_network_drops_total", float64(n.Dropin), "interface", n.Name, "direction", "rx"),
+				sample("pulsegrid_network_drops_total", float64(n.Dropout), "interface", n.Name, "direction", "tx"),
 			)
+			if up, speed, ok := linkInfo(n.Name); runtime.GOOS == "linux" {
+				out = append(out, sample("pulsegrid_network_up", up, "interface", n.Name))
+				if ok {
+					out = append(out, sample("pulsegrid_network_speed_mbps", speed, "interface", n.Name))
+				}
+			}
 		}
 	}
 
@@ -309,6 +329,8 @@ func diskSamples(mountpoint, device string, u *disk.UsageStat) []proto.Sample {
 	out := []proto.Sample{
 		sample("pulsegrid_disk_used_percent", u.UsedPercent, "mountpoint", mountpoint, "device", device),
 		sample("pulsegrid_disk_free_bytes", float64(u.Free), "mountpoint", mountpoint, "device", device),
+		sample("pulsegrid_disk_total_bytes", float64(u.Total), "mountpoint", mountpoint, "device", device, "fstype", u.Fstype),
+		sample("pulsegrid_disk_used_bytes", float64(u.Used), "mountpoint", mountpoint, "device", device),
 	}
 	// Filesystems without a fixed inode table (NTFS, ZFS, btrfs) report 0.
 	if u.InodesTotal > 0 {
@@ -348,6 +370,17 @@ func diskIOSamples(ctx context.Context) []proto.Sample {
 		)
 		if busyTime {
 			out = append(out, sample("pulsegrid_disk_io_time_seconds_total", float64(c.IoTime)/1000, "device", name))
+		}
+		// Time spent on reads and writes (latency = time / operations) and the
+		// weighted I/O time (its rate is the average queue length).
+		if c.ReadTime > 0 || c.WriteTime > 0 {
+			out = append(out,
+				sample("pulsegrid_disk_read_time_seconds_total", float64(c.ReadTime)/1000, "device", name),
+				sample("pulsegrid_disk_write_time_seconds_total", float64(c.WriteTime)/1000, "device", name),
+			)
+		}
+		if c.WeightedIO > 0 {
+			out = append(out, sample("pulsegrid_disk_weighted_io_seconds_total", float64(c.WeightedIO)/1000, "device", name))
 		}
 	}
 	return out

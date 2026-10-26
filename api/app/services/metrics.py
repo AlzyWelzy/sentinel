@@ -60,6 +60,65 @@ CATALOG: dict[str, MetricDef] = {
         ["direction"],
     ),
     "processes": MetricDef("pulsegrid_processes_total{SEL}", "count", []),
+    # Where memory goes, and paging.
+    "memory_breakdown": MetricDef(
+        'pulsegrid_memory_bytes{SEL,kind=~"used|cached|buffers|free"}', "bytes", ["kind"]
+    ),
+    "swap_io": MetricDef(
+        "sum by (direction) (rate(pulsegrid_swap_io_bytes_total{SEL}[2m]))",
+        "bytes_per_second",
+        ["direction"],
+    ),
+    "page_faults": MetricDef(
+        "sum by (kind) (rate(pulsegrid_memory_page_faults_total{SEL}[2m]))",
+        "ops_per_second",
+        ["kind"],
+    ),
+    # Average time per read and write, and how many requests wait.
+    "disk_latency": MetricDef(
+        "label_set(sum(rate(pulsegrid_disk_read_time_seconds_total{SEL}[2m])) * 1000 / "
+        'clamp_min(sum(rate(pulsegrid_disk_reads_total{SEL}[2m])), 0.001), "op", "read") or '
+        "label_set(sum(rate(pulsegrid_disk_write_time_seconds_total{SEL}[2m])) * 1000 / "
+        'clamp_min(sum(rate(pulsegrid_disk_writes_total{SEL}[2m])), 0.001), "op", "write")',
+        "ms",
+        ["op"],
+    ),
+    "disk_queue": MetricDef(
+        "sum(rate(pulsegrid_disk_weighted_io_seconds_total{SEL}[2m]))", "count", []
+    ),
+    "network_interfaces": MetricDef(
+        "sum by (interface) (rate(pulsegrid_network_bytes_total{SEL}[2m]))",
+        "bytes_per_second",
+        ["interface"],
+    ),
+    "network_packets": MetricDef(
+        "sum by (direction) (rate(pulsegrid_network_packets_total{SEL}[2m]))",
+        "ops_per_second",
+        ["direction"],
+    ),
+    "network_errors": MetricDef(
+        'label_set(sum(rate(pulsegrid_network_errors_total{SEL}[2m])), "what", "errors") or '
+        'label_set(sum(rate(pulsegrid_network_drops_total{SEL}[2m])), "what", "drops")',
+        "ops_per_second",
+        ["what"],
+    ),
+    "tcp_connections": MetricDef("pulsegrid_tcp_connections{SEL}", "count", ["state"]),
+    "context_switches": MetricDef(
+        'label_set(rate(pulsegrid_context_switches_total{SEL}[2m]), "what", "context switches") or '
+        'label_set(rate(pulsegrid_interrupts_total{SEL}[2m]), "what", "interrupts")',
+        "ops_per_second",
+        ["what"],
+    ),
+    "proc_states": MetricDef("pulsegrid_procs{SEL}", "count", ["state"]),
+    "threads": MetricDef("pulsegrid_threads_total{SEL}", "count", []),
+    "pressure": MetricDef(
+        'pulsegrid_pressure_percent{SEL,window="60"}', "percent", ["resource", "kind"]
+    ),
+    "users_logged_in": MetricDef("pulsegrid_users_logged_in{SEL}", "count", []),
+    "user_cpu": MetricDef("pulsegrid_user_cpu_percent{SEL}", "percent", ["user"]),
+    "user_memory": MetricDef("pulsegrid_user_memory_bytes{SEL}", "bytes", ["user"]),
+    "process_cpu": MetricDef("pulsegrid_process_cpu_percent{SEL}", "percent", ["process"]),
+    "process_memory": MetricDef("pulsegrid_process_memory_bytes{SEL}", "bytes", ["process"]),
 }
 
 
