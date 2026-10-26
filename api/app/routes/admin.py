@@ -29,7 +29,7 @@ from app.models import Check, Host, Incident, IncidentEvent, Tenant
 from app.routes import audit as audit_routes
 from app.routes.alerts import IncidentDetail, IncidentEventOut, IncidentOut, _incident_out
 from app.routes.checks import CheckStatus, _status
-from app.routes.fleetview import DiskOut, disks_for
+from app.routes.fleetview import DiskOut, ServerSummary, disks_for, summary_for
 from app.routes.v1 import (
     ChecksOut,
     HostOut,
@@ -331,6 +331,14 @@ async def host_metrics(
 async def host_disks(host_id: uuid.UUID, db: ServiceDB) -> list[DiskOut]:
     host = await _host(db, host_id)
     return await disks_for(host.tenant_id, host.id)
+
+
+@router.get("/hosts/{host_id}/summary")
+async def host_summary(
+    host_id: uuid.UUID, db: ServiceDB, range: Annotated[int, Query(ge=3600, le=90 * 86400)] = 86400
+) -> ServerSummary:
+    host = await _host(db, host_id)
+    return await summary_for(db, host.tenant_id, host, range)
 
 
 @router.get("/hosts/{host_id}/processes")

@@ -75,3 +75,17 @@ func TestCollectReportsSystemDetail(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenFiles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "file-nr")
+	if err := os.WriteFile(path, []byte("2944\t0\t9223372036854775807\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	open, max, ok := openFiles(path)
+	if !ok || open != 2944 || max != 9223372036854775807 {
+		t.Errorf("openFiles = %v, %v, %v", open, max, ok)
+	}
+	if _, _, ok := openFiles(filepath.Join(t.TempDir(), "missing")); ok {
+		t.Error("a missing file should not be ok")
+	}
+}

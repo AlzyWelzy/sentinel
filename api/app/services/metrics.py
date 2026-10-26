@@ -115,6 +115,7 @@ CATALOG: dict[str, MetricDef] = {
         'pulsegrid_pressure_percent{SEL,window="60"}', "percent", ["resource", "kind"]
     ),
     "users_logged_in": MetricDef("pulsegrid_users_logged_in{SEL}", "count", []),
+    "open_files": MetricDef("pulsegrid_open_files{SEL}", "count", []),
     "user_cpu": MetricDef("pulsegrid_user_cpu_percent{SEL}", "percent", ["user"]),
     "user_memory": MetricDef("pulsegrid_user_memory_bytes{SEL}", "bytes", ["user"]),
     "process_cpu": MetricDef("pulsegrid_process_cpu_percent{SEL}", "percent", ["process"]),

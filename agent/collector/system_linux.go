@@ -90,7 +90,33 @@ func platformActivity() []proto.Sample {
 	for _, res := range []string{"cpu", "memory", "io"} {
 		out = append(out, pressure(filepath.Join(root, "pressure", res), res)...)
 	}
+	if open, max, ok := openFiles(filepath.Join(root, "sys", "fs", "file-nr")); ok {
+		out = append(out, sample("pulsegrid_open_files", open))
+		if max > 0 && max < 1<<40 { // newer kernels report a meaningless 2^63-1
+			out = append(out, sample("pulsegrid_open_files_limit", max))
+		}
+	}
 	return out
+}
+
+// openFiles reads /proc/sys/fs/file-nr: file handles allocated, allocated
+// but unused (always 0 since Linux 2.6), and the system-wide maximum.
+func openFiles(path string) (open, max float64, ok bool) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0, 0, false
+	}
+	f := strings.Fields(string(b))
+	if len(f) < 3 {
+		return 0, 0, false
+	}
+	alloc, err1 := strconv.ParseFloat(f[0], 64)
+	unused, err2 := strconv.ParseFloat(f[1], 64)
+	limit, err3 := strconv.ParseFloat(f[2], 64)
+	if err1 != nil || err2 != nil || err3 != nil {
+		return 0, 0, false
+	}
+	return alloc - unused, limit, true
 }
 
 // interrupts is the total from /proc/stat's "intr" line.

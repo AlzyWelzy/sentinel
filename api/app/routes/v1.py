@@ -509,6 +509,7 @@ MetricName = Literal[
     "threads",
     "pressure",
     "users_logged_in",
+    "open_files",
     "user_cpu",
     "user_memory",
     "process_cpu",

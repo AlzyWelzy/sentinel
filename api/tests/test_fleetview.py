@@ -65,3 +65,62 @@ async def test_overview_and_disks(alice: User, bob: User, client):
         f"/admin/v1/hosts/{busy}/disks", headers={"Authorization": f"Bearer {token}"}
     )
     assert staff.status_code == 200 and staff.json() == disks
+
+
+def test_timeline_merges_worst_state():
+    from app.routes.fleetview import timeline
+
+    segs = timeline(
+        [(100, 400, "warning"), (200, 300, "critical"), (350, 500, "down"), (50, 80, "warning")],
+        60,
+        450,
+    )
+    assert [(s.start, s.end, s.state) for s in segs] == [
+        (60, 80, "warning"),
+        (100, 200, "warning"),
+        (200, 300, "critical"),
+        (300, 350, "warning"),
+        (350, 450, "down"),
+    ]
+    assert timeline([], 0, 100) == []
+
+
+@needs_vm
+async def test_server_summary(alice: User, bob: User, client):
+    tid = await alice.tenant_id()
+    host = await insert_host(tid, "sum-1")
+    await redis.set(f"pg:last_seen:{host}", int(time.time()))
+    _push(
+        tid,
+        host,
+        [
+            "pulsegrid_uptime_seconds{} 7200",
+            "pulsegrid_processes_total{} 140",
+            "pulsegrid_open_files{} 2944",
+        ],
+    )
+    async with ServiceSession() as db, db.begin():
+        await db.execute(
+            text(
+                "INSERT INTO incidents (tenant_id, host_id, summary, rule_name, hostname, "
+                "severity, opened_at, resolved_at, status) VALUES "
+                "(:t, :h, 'Memory high', 'mem', 'sum-1', 'warning', now() - interval '2 hours', "
+                "now() - interval '1 hour', 'resolved'), "
+                "(:t, :h, 'CPU high', 'cpu', 'sum-1', 'critical', "
+                "now() - interval '10 minutes', null, 'open')"
+            ),
+            {"t": tid, "h": host},
+        )
+    r = await alice.request("GET", f"/v1/hosts/{host}/summary?range=86400")
+    assert r.status_code == 200, r.text
+    s = r.json()
+    assert [seg["state"] for seg in s["timeline"]] == ["warning", "critical"]
+    assert [h["summary"] for h in s["history"]] == ["CPU high", "Memory high"]
+    assert s["root_causes"] == ["CPU high"] and s["downtimes"] == 0
+    assert s["uptime_seconds"] == 7200 and s["processes"] == 140 and s["open_files"] == 2944
+    assert (await bob.request("GET", f"/v1/hosts/{host}/summary")).status_code == 404
+    token = console_token(str(uuid.uuid4()), "demo-support@example.com", role="admin")
+    staff = await client.get(
+        f"/admin/v1/hosts/{host}/summary", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert staff.status_code == 200 and staff.json()["root_causes"] == ["CPU high"]
