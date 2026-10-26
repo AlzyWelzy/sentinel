@@ -1,0 +1,28 @@
+#!/bin/sh
+# Nightly logical backup of Pulsegrid's database (accounts, rules, incidents,
+# status pages...). Metrics, logs and traces live in VictoriaMetrics,
+# VictoriaLogs and Tempo and age out by retention; this is the part that
+# can't be rebuilt.
+#
+#   BACKUP_EVERY_SECONDS  how often (86400)
+#   BACKUP_KEEP_DAYS      how long dumps are kept (7)
+#
+# Restore one into a fresh database:
+#   docker exec -i <postgres container> pg_restore -U pulsegrid -d pulsegrid --clean --if-exists < pulsegrid-YYYYmmdd-HHMM.dump
+set -u
+EVERY=${BACKUP_EVERY_SECONDS:-86400}
+KEEP=${BACKUP_KEEP_DAYS:-7}
+mkdir -p /backups
+while :; do
+    ts=$(date -u +%Y%m%d-%H%M)
+    out=/backups/pulsegrid-$ts.dump
+    if PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -h postgres -U pulsegrid -Fc pulsegrid >"$out.tmp"; then
+        mv "$out.tmp" "$out"
+        echo "backup $ts: $(du -h "$out" | cut -f1)"
+    else
+        rm -f "$out.tmp"
+        echo "backup $ts failed" >&2
+    fi
+    find /backups -name 'pulsegrid-*.dump' -mtime +"$KEEP" -delete
+    sleep "$EVERY"
+done

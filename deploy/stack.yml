@@ -177,6 +177,25 @@ services:
       placement:
         constraints: [node.labels.pulsegrid.db == true]
 
+  # Nightly pg_dump of Pulsegrid's database, kept BACKUP_KEEP_DAYS (see
+  # postgres/backup.sh for restoring).
+  backup:
+    image: postgres:18-alpine
+    entrypoint: ["sh", "/backup.sh"]
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      BACKUP_EVERY_SECONDS: ${BACKUP_EVERY_SECONDS:-86400}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-7}
+    configs:
+      - source: backup_script
+        target: /backup.sh
+    volumes:
+      - pg-backups:/backups
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: [node.labels.pulsegrid.db == true]
+
   victoriametrics:
     image: victoriametrics/victoria-metrics:v1.106.1
     command:
@@ -220,6 +239,9 @@ services:
         constraints: [node.labels.pulsegrid.db == true]
 
 configs:
+  backup_script:
+    name: pulsegrid-backup-${BACKUP_SCRIPT:-v1}
+    file: ./postgres/backup.sh
   tempo:
     # Swarm configs can't change in place: name each version by its content
     # (set by the deploy, e.g. TEMPO_CONFIG=$(sha256sum tempo/tempo.yml | cut -c1-8)).
@@ -234,6 +256,7 @@ volumes:
   caddy-data:
   agent-dist:
   postgres-data:
+  pg-backups:
   redis-data:
   vm-data:
   vlogs-data:

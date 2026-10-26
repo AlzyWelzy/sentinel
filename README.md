@@ -279,6 +279,15 @@ average, counters the hour-end value), which charts read for ranges past raw
 retention or longer than a month, daily cleanup, and agent rollouts (adopting
 a new `AGENT_VERSION` as the canary, and the health gate).
 
+## Backups
+
+The `backup` service dumps Pulsegrid's Postgres every night (`pg_dump -Fc`
+into the `pg-backups` volume, kept `BACKUP_KEEP_DAYS`, default 7). That's the
+part that can't be rebuilt: accounts, rules, incidents, status pages. Metrics,
+logs and traces age out by retention. Restore with `pg_restore --clean
+--if-exists` (see `deploy/postgres/backup.sh`); copy the volume off the host
+(restic, rclone) for off-site copies.
+
 ## Probes
 
 Uptime checks run on agents staff mark as probes (`PUT
