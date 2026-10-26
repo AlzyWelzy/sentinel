@@ -27,6 +27,46 @@ func sysRoot() string {
 	return "/sys"
 }
 
+func runRoot() string {
+	if p := os.Getenv("HOST_RUN"); p != "" {
+		return p
+	}
+	return "/run"
+}
+
+// loggedInSessions counts open login sessions from systemd-logind, which
+// newer distributions keep instead of utmp. ok is false without logind.
+func loggedInSessions(dir string) (n int, ok bool) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, false
+	}
+	for _, e := range entries {
+		f, err := os.Open(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		class, state := "", ""
+		sc := bufio.NewScanner(f)
+		for sc.Scan() {
+			if v, found := strings.CutPrefix(sc.Text(), "CLASS="); found {
+				class = v
+			} else if v, found := strings.CutPrefix(sc.Text(), "STATE="); found {
+				state = v
+			}
+		}
+		f.Close()
+		if class == "user" && state != "closing" {
+			n++
+		}
+	}
+	return n, true
+}
+
+func platformUsers() (int, bool) {
+	return loggedInSessions(filepath.Join(runRoot(), "systemd", "sessions"))
+}
+
 // TCP states as /proc/net/tcp numbers them.
 var tcpStates = map[string]string{
 	"01": "established", "02": "syn_sent", "03": "syn_recv", "04": "fin_wait1",

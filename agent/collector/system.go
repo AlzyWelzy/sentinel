@@ -33,10 +33,12 @@ func memoryDetail(vm *mem.VirtualMemoryStat, sw *mem.SwapMemoryStat) []proto.Sam
 			)
 		}
 		// Linux reports these (from /proc/vmstat); elsewhere they're zero.
+		// gopsutil scales the fault counts by 4 KiB as if they were bytes.
 		if sw.PgFault > 0 || sw.PgIn > 0 {
+			const gopsutilPage = 4 * 1024
 			out = append(out,
-				sample("pulsegrid_memory_page_faults_total", float64(sw.PgFault-sw.PgMajFault), "kind", "minor"),
-				sample("pulsegrid_memory_page_faults_total", float64(sw.PgMajFault), "kind", "major"),
+				sample("pulsegrid_memory_page_faults_total", float64((sw.PgFault-sw.PgMajFault)/gopsutilPage), "kind", "minor"),
+				sample("pulsegrid_memory_page_faults_total", float64(sw.PgMajFault/gopsutilPage), "kind", "major"),
 				sample("pulsegrid_memory_pages_total", float64(sw.PgIn), "direction", "in"),
 				sample("pulsegrid_memory_pages_total", float64(sw.PgOut), "direction", "out"),
 				sample("pulsegrid_swap_io_bytes_total", float64(sw.Sin), "direction", "in"),
@@ -60,7 +62,9 @@ func systemActivity(ctx context.Context) []proto.Sample {
 			out = append(out, sample("pulsegrid_context_switches_total", float64(misc.Ctxt)))
 		}
 	}
-	if users, err := host.UsersWithContext(ctx); err == nil {
+	if n, ok := platformUsers(); ok {
+		out = append(out, sample("pulsegrid_users_logged_in", float64(n)))
+	} else if users, err := host.UsersWithContext(ctx); err == nil {
 		out = append(out, sample("pulsegrid_users_logged_in", float64(len(users))))
 	}
 	out = append(out, platformActivity()...)

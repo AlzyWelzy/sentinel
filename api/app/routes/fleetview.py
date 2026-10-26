@@ -176,7 +176,7 @@ async def host_disks(host_id: uuid.UUID, t: Tenant) -> list[DiskOut]:
         free_b = free.get(mount, ({}, None))[1]
         total_b = total.get(mount, ({}, None))[1]
         if total_b is None and free_b is not None and pct < 100:
-            total_b = free_b / (1 - pct / 100)  # agents before 0.7 sent no total
+            total_b = round(free_b / (1 - pct / 100))  # agents before 0.7 sent no total
         used_b = used.get(mount, ({}, None))[1]
         if used_b is None and total_b is not None and free_b is not None:
             used_b = total_b - free_b

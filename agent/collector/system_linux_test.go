@@ -36,6 +36,21 @@ func TestCountTCP(t *testing.T) {
 	}
 }
 
+func TestLoggedInSessions(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) { os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644) }
+	write("1", "UID=1000\nSTATE=active\nCLASS=manager\n")
+	write("2", "UID=1000\nSTATE=closing\nCLASS=user\n")
+	write("3", "UID=1000\nSTATE=active\nCLASS=user\n")
+	write("4", "UID=0\nSTATE=online\nCLASS=user\n")
+	if n, ok := loggedInSessions(dir); !ok || n != 2 {
+		t.Fatalf("got %d %v, want 2 true", n, ok)
+	}
+	if _, ok := loggedInSessions(filepath.Join(dir, "missing")); ok {
+		t.Fatal("a missing directory should report no logind")
+	}
+}
+
 // A real collection on this machine reports the new families.
 func TestCollectReportsSystemDetail(t *testing.T) {
 	c, _ := New()

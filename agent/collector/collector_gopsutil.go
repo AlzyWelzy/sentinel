@@ -277,7 +277,7 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 			}
 			seen[p.Mountpoint] = true
 			if u, err := disk.UsageWithContext(ctx, p.Mountpoint); err == nil && u.Total > 0 {
-				out = append(out, diskSamples(p.Mountpoint, p.Device, u)...)
+				out = append(out, diskSamples(p.Mountpoint, p.Device, p.Fstype, u)...)
 				disks++
 			}
 		}
@@ -286,7 +286,7 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 	// which is filtered above; report the root filesystem rather than nothing.
 	if disks == 0 {
 		if u, err := disk.UsageWithContext(ctx, "/"); err == nil && u.Total > 0 {
-			out = append(out, diskSamples("/", u.Fstype, u)...)
+			out = append(out, diskSamples("/", u.Fstype, u.Fstype, u)...)
 		}
 	}
 
@@ -325,11 +325,12 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 	return out, nil
 }
 
-func diskSamples(mountpoint, device string, u *disk.UsageStat) []proto.Sample {
+// fstype comes from the mount table: statfs names ext4 "ext2/ext3".
+func diskSamples(mountpoint, device, fstype string, u *disk.UsageStat) []proto.Sample {
 	out := []proto.Sample{
 		sample("pulsegrid_disk_used_percent", u.UsedPercent, "mountpoint", mountpoint, "device", device),
 		sample("pulsegrid_disk_free_bytes", float64(u.Free), "mountpoint", mountpoint, "device", device),
-		sample("pulsegrid_disk_total_bytes", float64(u.Total), "mountpoint", mountpoint, "device", device, "fstype", u.Fstype),
+		sample("pulsegrid_disk_total_bytes", float64(u.Total), "mountpoint", mountpoint, "device", device, "fstype", fstype),
 		sample("pulsegrid_disk_used_bytes", float64(u.Used), "mountpoint", mountpoint, "device", device),
 	}
 	// Filesystems without a fixed inode table (NTFS, ZFS, btrfs) report 0.

@@ -43,13 +43,14 @@ def install_command_windows(key: str, tags: list[str] | None = None) -> str:
 
 
 def docker_command(key: str, tags: list[str] | None = None) -> str:
-    """The agent as a container watching its host (host /proc, /sys and
-    /etc read-only). The image updates itself; the volume keeps its identity."""
+    """The agent as a container watching its host (host /proc, /sys, /etc and
+    the logind sessions read-only). The image updates itself; the volume keeps its identity."""
     extra = f" -e PULSEGRID_TAGS={','.join(tags)}" if tags else ""
     return (
         "docker run -d --name pulsegrid-agent --restart unless-stopped --pid host --network host"
         " -v /proc:/host/proc:ro -v /sys:/host/sys:ro -v /etc:/host/etc:ro"
-        " -e HOST_PROC=/host/proc -e HOST_SYS=/host/sys -e HOST_ETC=/host/etc"
+        " -v /run/systemd:/host/run/systemd:ro"
+        " -e HOST_PROC=/host/proc -e HOST_SYS=/host/sys -e HOST_ETC=/host/etc -e HOST_RUN=/host/run"
         f" -e PULSEGRID_URL={settings.PUBLIC_INGEST_URL} -e PULSEGRID_KEY={key}{extra}"
         f" -v pulsegrid-agent:/var/lib/pulsegrid {settings.AGENT_IMAGE}"
     )
