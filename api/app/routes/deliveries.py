@@ -40,6 +40,7 @@ async def _query(
     *,
     incident_id: uuid.UUID | None = None,
     channel_id: uuid.UUID | None = None,
+    host_id: uuid.UUID | None = None,
     status: str | None = None,
     limit: int = 100,
 ) -> list[DeliveryOut]:
@@ -56,6 +57,8 @@ async def _query(
         q = q.where(OutboundMessage.incident_id == incident_id)
     if channel_id:
         q = q.where(OutboundMessage.channel_id == channel_id)
+    if host_id:
+        q = q.where(Incident.host_id == host_id)
     if status == "held":
         q = q.where(OutboundMessage.status == "pending", OutboundMessage.held_until.is_not(None))
     elif status:
@@ -90,10 +93,11 @@ async def _query(
 async def list_deliveries(
     t: Tenant,
     channel_id: uuid.UUID | None = None,
+    host_id: Annotated[uuid.UUID | None, Query(description="alerts about this server")] = None,
     status: Literal["sent", "failed", "pending", "held"] | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[DeliveryOut]:
-    return await _query(t, channel_id=channel_id, status=status, limit=limit)
+    return await _query(t, channel_id=channel_id, host_id=host_id, status=status, limit=limit)
 
 
 @router.get("/incidents/{incident_id}/deliveries")

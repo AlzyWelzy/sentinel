@@ -363,3 +363,81 @@ async def host_summary(
     if host is None:
         raise HTTPException(status_code=404, detail="Host not found")
     return await summary_for(t.db, t.tenant_id, host, range)
+
+
+# ── Forecast ─────────────────────────────────────────────────────────────
+
+
+class ForecastSeries(BaseModel):
+    key: str  # cpu, memory, disk:<mountpoint>
+    label: str
+    history: list[list[float]]  # hourly averages [ts, percent]
+    trend: list[list[float]]
+    upper: list[list[float]]
+    slope_per_day: float
+    reaches_at: int | None
+
+
+class ForecastOut(BaseModel):
+    limit: float
+    horizon_days: int
+    # Resources without a day of history are listed here, not projected.
+    waiting: list[str]
+    series: list[ForecastSeries]
+
+
+async def forecast_for(tenant_id: uuid.UUID, host_id: uuid.UUID, days: int) -> ForecastOut:
+    """CPU, memory and each disk's last 14 days (hourly averages) and where
+    their trend puts them over the next `days` (also the staff view's)."""
+    from app.services.forecast import project
+
+    limit = 90.0
+    now = int(time.time())
+    start = now - 14 * 86400
+    sel = f'host_id="{host_id}"'
+    wanted = [
+        ("cpu", "CPU", f"avg_over_time(pulsegrid_cpu_usage_percent{{{sel}}}[1h])", []),
+        ("memory", "Memory", f"avg_over_time(pulsegrid_memory_used_percent{{{sel}}}[1h])", []),
+        (
+            "disk",
+            "Disk",
+            f"avg_over_time(pulsegrid_disk_used_percent{{{sel}}}[1h])",
+            ["mountpoint"],
+        ),
+    ]
+    out: list[ForecastSeries] = []
+    waiting: list[str] = []
+    try:
+        for key, label, query, legend in wanted:
+            for s in await metrics.query_series(tenant_id, query, start, now, 3600, legend):
+                mount = s["labels"].get("mountpoint")
+                name = f"{label} {mount}" if mount else label
+                p = project(s["points"], horizon=days * 86400, step=3600, limit=limit)
+                if p is None:
+                    waiting.append(name)
+                    continue
+                out.append(
+                    ForecastSeries(
+                        key=f"{key}:{mount}" if mount else key,
+                        label=name,
+                        history=s["points"],
+                        trend=p.points,
+                        upper=p.upper,
+                        slope_per_day=p.slope_per_day,
+                        reaches_at=p.reaches_at,
+                    )
+                )
+    except MetricsUnavailable:
+        raise HTTPException(status_code=503, detail="Metrics are unavailable right now") from None
+    out.sort(key=lambda s: (s.reaches_at is None, s.reaches_at or 0, s.key))
+    return ForecastOut(limit=limit, horizon_days=days, waiting=waiting, series=out)
+
+
+@router.get("/hosts/{host_id}/forecast")
+async def host_forecast(
+    host_id: uuid.UUID, t: Tenant, days: Annotated[int, Query(ge=1, le=30)] = 7
+) -> ForecastOut:
+    host = await t.db.scalar(select(Host).where(Host.id == host_id, Host.tenant_id == t.tenant_id))
+    if host is None:
+        raise HTTPException(status_code=404, detail="Host not found")
+    return await forecast_for(t.tenant_id, host.id, days)

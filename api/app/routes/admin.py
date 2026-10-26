@@ -29,7 +29,14 @@ from app.models import Check, Host, Incident, IncidentEvent, Tenant
 from app.routes import audit as audit_routes
 from app.routes.alerts import IncidentDetail, IncidentEventOut, IncidentOut, _incident_out
 from app.routes.checks import CheckStatus, _status
-from app.routes.fleetview import DiskOut, ServerSummary, disks_for, summary_for
+from app.routes.fleetview import (
+    DiskOut,
+    ForecastOut,
+    ServerSummary,
+    disks_for,
+    forecast_for,
+    summary_for,
+)
 from app.routes.v1 import (
     ChecksOut,
     HostOut,
@@ -339,6 +346,14 @@ async def host_summary(
 ) -> ServerSummary:
     host = await _host(db, host_id)
     return await summary_for(db, host.tenant_id, host, range)
+
+
+@router.get("/hosts/{host_id}/forecast")
+async def host_forecast(
+    host_id: uuid.UUID, db: ServiceDB, days: Annotated[int, Query(ge=1, le=30)] = 7
+) -> ForecastOut:
+    host = await _host(db, host_id)
+    return await forecast_for(host.tenant_id, host.id, days)
 
 
 @router.get("/hosts/{host_id}/processes")

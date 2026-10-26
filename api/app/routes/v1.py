@@ -21,7 +21,7 @@ from app.models import Tenant as TenantRow
 from app.services import heartbeats, metrics
 from app.services.maintenance import in_maintenance
 from app.services.secrets import new_agent_key
-from app.tenancy import Tenant, TenantContext
+from app.tenancy import Tenant, TenantContext, actor_of
 from app.validation import normalize_tags
 
 router = APIRouter(prefix="/v1")
@@ -195,6 +195,9 @@ class HostOut(BaseModel):
     cpu_cores: int | None
     memory_bytes: int | None
     in_maintenance: bool
+    notes: str | None = None
+    notes_updated_at: datetime | None = None
+    notes_updated_by: str | None = None
 
 
 def _host_out(h: Host, last_seen: int | None, maintenance: bool = False) -> HostOut:
@@ -216,6 +219,9 @@ def _host_out(h: Host, last_seen: int | None, maintenance: bool = False) -> Host
         cpu_cores=h.cpu_cores,
         memory_bytes=h.memory_bytes,
         in_maintenance=maintenance,
+        notes=h.notes,
+        notes_updated_at=h.notes_updated_at,
+        notes_updated_by=h.notes_updated_by,
     )
 
 
@@ -270,6 +276,9 @@ class HostPatch(BaseModel):
         default=None, description="alerts are held back while this host is silent"
     )
     clear_depends_on: bool = False
+    notes: str | None = Field(
+        default=None, max_length=4000, description="free text; an empty string clears it"
+    )
 
     @field_validator("tags")
     @classmethod
@@ -287,6 +296,10 @@ async def update_host(host_id: uuid.UUID, body: HostPatch, t: Tenant) -> HostOut
     elif body.depends_on_host_id is not None:
         await _check_dependency(t, host, body.depends_on_host_id)
         host.depends_on_host_id = body.depends_on_host_id
+    if body.notes is not None:
+        host.notes = body.notes.strip() or None
+        host.notes_updated_at = datetime.now(UTC)
+        host.notes_updated_by = actor_of(t.principal)
     await t.db.flush()
     return (await _hosts_out(t, [host]))[0]
 
