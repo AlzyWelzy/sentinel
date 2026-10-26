@@ -34,6 +34,9 @@ type processTracker struct {
 	threads int
 	users   map[string]*procUsage
 	names   map[uint32]string // uid → user name, looked up once
+	// The container's CPU quota in cores (0 = none), so a process's CPU is a
+	// share of what this server may use, like its CPU usage.
+	cores float64
 }
 
 type procTimes struct {
@@ -99,7 +102,7 @@ func (t *processTracker) collect(ctx context.Context) (map[string]*procUsage, in
 	}
 	now := time.Now()
 	wall := now.Sub(t.lastAt).Seconds()
-	cpus := float64(runtime.NumCPU())
+	cpus := effectiveCPUs(runtime.NumCPU(), t.cores)
 	seen := make(map[int32]procTimes, len(procs))
 	usage := map[string]*procUsage{}
 	users := map[string]*procUsage{}
@@ -161,6 +164,15 @@ func zombie(ctx context.Context, p *process.Process) bool {
 	}
 	status, err := p.StatusWithContext(ctx)
 	return err == nil && len(status) > 0 && status[0] == process.Zombie
+}
+
+// effectiveCPUs is how many cores the server may use: its CPU quota when it
+// has one below the host's core count, otherwise every core.
+func effectiveCPUs(hostCPUs int, quota float64) float64 {
+	if quota > 0 && quota < float64(hostCPUs) {
+		return quota
+	}
+	return float64(hostCPUs)
 }
 
 // psUsage reads ps where gopsutil has no process support (NetBSD). %CPU from

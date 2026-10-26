@@ -152,3 +152,15 @@ func TestGroupName(t *testing.T) {
 		}
 	}
 }
+
+func TestEffectiveCPUs(t *testing.T) {
+	for _, c := range []struct {
+		host  int
+		quota float64
+		want  float64
+	}{{10, 0, 10}, {10, 2, 2}, {10, 0.5, 0.5}, {4, 8, 4}, {4, 4, 4}} {
+		if got := effectiveCPUs(c.host, c.quota); got != c.want {
+			t.Errorf("effectiveCPUs(%d, %g) = %g, want %g", c.host, c.quota, got, c.want)
+		}
+	}
+}

@@ -225,6 +225,7 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 		hostMem = vm.Total
 	}
 	lim := detectLimits(runtime.NumCPU(), hostMem)
+	c.procs.cores = lim.cores
 	if pct, ok := c.cgCPU.percent(lim, time.Now()); ok {
 		for i := range out {
 			if out[i].Name == "pulsegrid_cpu_usage_percent" {
