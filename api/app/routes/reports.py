@@ -4,14 +4,15 @@ period, as JSON or CSV; and the monthly report email preference."""
 import csv
 import io
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
 from app.models import Tenant as TenantRow
+from app.services import oncall
 from app.services.reports import Summary, build_summary
 from app.tenancy import Tenant, TenantContext
 
@@ -20,6 +21,16 @@ router = APIRouter(prefix="/v1/reports")
 
 class ReportSettings(BaseModel):
     monthly_report: bool
+    digest: Literal["off", "daily", "weekly"] = "weekly"
+    digest_hour: int = Field(default=9, ge=0, le=23, description="in digest_timezone")
+    digest_timezone: str = "Asia/Kolkata"
+
+    @field_validator("digest_timezone")
+    @classmethod
+    def _tz(cls, v: str) -> str:
+        if oncall.zone(v).key != v:
+            raise ValueError("unknown time zone (use a name like Asia/Kolkata)")
+        return v
 
 
 def _period(start: datetime | None, end: datetime | None, days: int) -> tuple[datetime, datetime]:
@@ -104,8 +115,17 @@ async def summary_csv(
 
 @router.get("/settings")
 async def get_settings(t: Tenant) -> ReportSettings:
-    value = await t.db.scalar(select(TenantRow.monthly_report).where(TenantRow.id == t.tenant_id))
-    return ReportSettings(monthly_report=bool(value))
+    row = await t.db.scalar(select(TenantRow).where(TenantRow.id == t.tenant_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return ReportSettings.model_validate(
+        {
+            "monthly_report": row.monthly_report,
+            "digest": row.digest,
+            "digest_hour": row.digest_hour,
+            "digest_timezone": row.digest_timezone,
+        }
+    )
 
 
 @router.put("/settings")
@@ -114,4 +134,9 @@ async def put_settings(body: ReportSettings, t: Tenant) -> ReportSettings:
     if row is None:
         raise HTTPException(status_code=404, detail="Account not found")
     row.monthly_report = body.monthly_report
+    row.digest, row.digest_hour, row.digest_timezone = (
+        body.digest,
+        body.digest_hour,
+        body.digest_timezone,
+    )
     return body

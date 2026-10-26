@@ -130,8 +130,9 @@ async def test_health_gate_rolls_back_a_silent_canary(clean_rollout, alice: User
     assert len(canary) >= 2 and len(canary) < len(hosts)
 
     async def seen(ids):
-        # Canary servers stopped reporting; the rest are fine.
-        return {h: (None if h in canary else int(now.timestamp())) for h in ids}
+        # Every server offered the canary stopped reporting (other tests'
+        # servers too: the gate looks at every account); the rest are fine.
+        return {h: (None if rollout.bucket(h) < 50 else int(now.timestamp())) for h in ids}
 
     monkeypatch.setattr(heartbeats, "last_seen", seen)
     async with ServiceSession() as db, db.begin():

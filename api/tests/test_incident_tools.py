@@ -15,8 +15,8 @@ async def _incident(tenant_id, host_id, summary, severity="warning") -> str:
             (
                 await db.execute(
                     text(
-                        "INSERT INTO incidents (tenant_id, host_id, summary, rule_name, hostname, severity) "
-                        "VALUES (:t, :h, :s, 'r', 'web-1', :sev) RETURNING id"
+                        "INSERT INTO incidents (tenant_id, host_id, summary, rule_name, "
+                        "hostname, severity) VALUES (:t, :h, :s, 'r', 'web-1', :sev) RETURNING id"
                     ),
                     {"t": tenant_id, "h": host_id, "s": summary, "sev": severity},
                 )
@@ -66,3 +66,56 @@ async def test_rule_test_alert(alice: User):
     assert log[0]["kind"] == "test" and log[0]["subject"] == "[Pulsegrid] TEST: Server down"
     missing = await alice.request("POST", f"/v1/alert-rules/{uuid.uuid4()}/test")
     assert missing.status_code == 404
+
+
+async def test_digest(alice: User, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from app import jobs
+    from app.models import OutboundMessage, Tenant
+    from app.services import digest, heartbeats
+
+    async def nobody_seen(ids):
+        return {}
+
+    monkeypatch.setattr(heartbeats, "last_seen", nobody_seen)
+    tid = await alice.tenant_id()
+    host = await insert_host(tid, "web-1")
+    await _incident(tid, host, "web-1 is not reporting", severity="critical")
+    settings = await alice.request(
+        "PUT",
+        "/v1/reports/settings",
+        json={
+            "monthly_report": True,
+            "digest": "daily",
+            "digest_hour": 0,
+            "digest_timezone": "UTC",
+        },
+    )
+    assert settings.status_code == 200, settings.text
+    assert (await alice.request("GET", "/v1/reports/settings")).json()["digest"] == "daily"
+
+    now = datetime.now(UTC)
+    async with ServiceSession() as db:
+        d = await digest.build(db, tid, now - timedelta(days=1), now)
+    assert (d.opened, d.critical, d.open_count) == (1, 1, 1)
+    assert d.silent == ["web-1"] and not d.quiet
+    assert "web-1 is not reporting" in digest.render_html(d, "Alice", "https://x")
+
+    async with ServiceSession() as db:
+        t = await db.get(Tenant, tid)
+        assert jobs.digest_due(t, now)
+    await jobs.send_digests(now)
+    async with ServiceSession() as db:
+        rows = list(
+            await db.scalars(
+                __import__("sqlalchemy")
+                .select(OutboundMessage)
+                .where(OutboundMessage.tenant_id == tid, OutboundMessage.kind == "digest")
+            )
+        )
+        t = await db.get(Tenant, tid)
+    assert len(rows) == 1 and rows[0].payload["subject"].startswith(
+        "[Pulsegrid] Your monitoring day"
+    )
+    assert not jobs.digest_due(t, now)  # once per slot

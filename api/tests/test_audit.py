@@ -50,9 +50,8 @@ async def test_changes_are_recorded(alice: User, bob: User):
 
 
 async def test_staff_changes_are_recorded(client, alice: User):
-    staff = {
-        "Authorization": f"Bearer {console_token(str(uuid.uuid4()), 'ops@example.com', role='admin')}"
-    }
+    token = console_token(str(uuid.uuid4()), "ops@example.com", role="admin")
+    staff = {"Authorization": f"Bearer {token}"}
     tid = await alice.tenant_id()
     r = await client.put(
         f"/admin/v1/tenants/{tid}/agent-pin", headers=staff, json={"version": None}

@@ -439,9 +439,10 @@ async def test_reports(alice: User):
     assert s["incidents_total"] == 1
     csv = (await alice.request("GET", "/v1/reports/summary.csv")).text
     assert csv.startswith("type,name,availability_percent") and "web-1" in csv
-    assert (await alice.request("GET", "/v1/reports/settings")).json() == {"monthly_report": True}
+    got = (await alice.request("GET", "/v1/reports/settings")).json()
+    assert got["monthly_report"] is True and got["digest"] == "weekly"
     await alice.request("PUT", "/v1/reports/settings", json={"monthly_report": False})
-    assert (await alice.request("GET", "/v1/reports/settings")).json() == {"monthly_report": False}
+    assert (await alice.request("GET", "/v1/reports/settings")).json()["monthly_report"] is False
 
 
 async def test_monthly_report_job_queues_once(alice: User):

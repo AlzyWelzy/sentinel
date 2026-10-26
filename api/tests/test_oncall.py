@@ -19,7 +19,7 @@ class S:
 
 
 @dataclass
-class O:
+class Override:
     starts_at: datetime
     ends_at: datetime
     responder: dict
@@ -38,8 +38,10 @@ def test_rotation_and_overrides():
     }.items():
         assert oncall.current(s, [], START + timedelta(hours=hours))["name"] == want
     overrides = [
-        O(START + timedelta(hours=24), START + timedelta(hours=48), {"name": "Cover"}, START),
-        O(
+        Override(
+            START + timedelta(hours=24), START + timedelta(hours=48), {"name": "Cover"}, START
+        ),
+        Override(
             START + timedelta(hours=25),
             START + timedelta(hours=30),
             {"name": "Cover (newest)"},

@@ -7,6 +7,8 @@
   back years after raw samples expire. Gauges keep their hourly average;
   counters keep their value at the end of the hour, so rate() still works.
 - Daily cleanup of delivered messages, finished actions and old incidents.
+- Digest emails, daily or weekly at the account's chosen hour (its own time
+  zone); a daily digest with nothing to say isn't sent.
 - Agent rollouts: a new agent version becomes the canary on deploy, and the
   health gate rolls a canary back if its servers go silent.
 
@@ -25,7 +27,7 @@ from sqlalchemy import select, text
 from app.config import settings
 from app.db import ServiceSession
 from app.models import Host, NotificationChannel, OutboundMessage, Tenant
-from app.services import rollout
+from app.services import digest, oncall, rollout
 from app.services.heartbeats import redis
 from app.services.reports import build_summary, previous_month, render_html, render_text
 
@@ -188,6 +190,80 @@ async def cleanup(now: datetime) -> None:
         )
 
 
+def digest_due(t: Tenant, now: datetime) -> bool:
+    local = now.astimezone(oncall.zone(t.digest_timezone))
+    if t.digest == "off" or local.hour < t.digest_hour:
+        return False
+    if t.digest == "weekly" and local.weekday() != 0:  # Mondays
+        return False
+    slot = local.replace(hour=t.digest_hour, minute=0, second=0, microsecond=0)
+    return t.digest_sent_at is None or t.digest_sent_at < slot
+
+
+async def send_digests(now: datetime) -> int:
+    sent = 0
+    async with ServiceSession() as db, db.begin():
+        tenants = list(
+            await db.scalars(
+                select(Tenant).where(Tenant.status == "active", Tenant.digest != "off")
+            )
+        )
+    for tenant in tenants:
+        if not digest_due(tenant, now):
+            continue
+        async with ServiceSession() as db, db.begin():
+            locked = await db.scalar(
+                select(Tenant).where(Tenant.id == tenant.id).with_for_update(skip_locked=True)
+            )
+            if locked is None or not digest_due(locked, now):
+                continue
+            locked.digest_sent_at = now
+            has_hosts = await db.scalar(
+                select(Host.id)
+                .where(
+                    Host.tenant_id == tenant.id,
+                    Host.revoked_at.is_(None),
+                    Host.probe_region.is_(None),
+                )
+                .limit(1)
+            )
+            if has_hosts is None:
+                continue
+            channels = list(
+                await db.scalars(
+                    select(NotificationChannel).where(
+                        NotificationChannel.tenant_id == tenant.id,
+                        NotificationChannel.type == "email",
+                        NotificationChannel.verified_at.is_not(None),
+                    )
+                )
+            )
+            if not channels:
+                continue
+            days = 1 if locked.digest == "daily" else 7
+            d = await digest.build(db, tenant.id, now - timedelta(days=days), now)
+            if days == 1 and d.quiet:
+                continue
+            account = tenant.display_name or tenant.email or "your account"
+            payload = {
+                "subject": (
+                    f"[Pulsegrid] Your monitoring {'day' if days == 1 else 'week'}: "
+                    f"{d.opened} incident(s), {d.open_count} open"
+                ),
+                "text": digest.render_text(d, account),
+                "html": digest.render_html(d, account, settings.PUBLIC_DASHBOARD_URL),
+                "event": {"type": "digest", "days": days},
+            }
+            for c in channels:
+                db.add(
+                    OutboundMessage(
+                        tenant_id=tenant.id, channel_id=c.id, kind="digest", payload=payload
+                    )
+                )
+            sent += 1
+    return sent
+
+
 async def rollouts(now: datetime) -> None:
     async with ServiceSession() as db, db.begin():
         changed = await rollout.adopt_release(db)
@@ -216,6 +292,12 @@ async def tick() -> None:
                 log.info("queued %d monthly report(s)", n)
         except Exception:
             log.exception("monthly reports failed")
+    try:
+        n = await send_digests(now)
+        if n:
+            log.info("queued %d digest(s)", n)
+    except Exception:
+        log.exception("digests failed")
     today = now.date().isoformat()
     if await redis.get(CLEANUP_KEY) != today:
         try:

@@ -37,6 +37,10 @@ class Tenant(Base):
     report_sent_for: Mapped[date | None]
     logs_account_id: Mapped[int] = mapped_column(BigInteger, server_default=FetchedValue())
     agent_version_pin: Mapped[str | None] = mapped_column(Text)
+    digest: Mapped[str] = mapped_column(Text, default="weekly")
+    digest_hour: Mapped[int] = mapped_column(default=9)
+    digest_timezone: Mapped[str] = mapped_column(Text, default="Asia/Kolkata")
+    digest_sent_at: Mapped[datetime | None]
 
 
 class TenantMember(Base):
