@@ -16,6 +16,7 @@ from app.routes import (
     checks,
     dashboards,
     deliveries,
+    fleet,
     fleetview,
     hostops,
     insights,
@@ -44,6 +45,7 @@ app.add_middleware(
 
 app.include_router(tools.router)
 app.include_router(fleetview.router)
+app.include_router(fleet.router)
 app.include_router(v1.router)
 app.include_router(channels.router)
 app.include_router(alerts.router)
