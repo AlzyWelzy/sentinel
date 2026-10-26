@@ -344,6 +344,18 @@ func (s *store) apply(
 			if err := addEvent(ctx, tx, r.TenantID, *incidentID, "resolved", text, "alerter"); err != nil {
 				return err
 			}
+			// Merged into another incident: that one carries the story, so
+			// the recovery goes on its timeline and nobody gets a separate
+			// "resolved" for an alert they handled as part of it.
+			var mergedInto *string
+			tx.QueryRow(ctx, `SELECT merged_into FROM incidents WHERE id = $1`, *incidentID).Scan(&mergedInto)
+			if mergedInto != nil {
+				quiet = true
+				if err := addEvent(ctx, tx, r.TenantID, *mergedInto, "note",
+					"Merged alert recovered: "+r.Name+" on "+h.Hostname, "alerter"); err != nil {
+					return err
+				}
+			}
 			// A flapping incident never notified that it opened, so it
 			// doesn't notify that it closed either.
 			var wasFlapping bool

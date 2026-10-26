@@ -14,7 +14,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import any_, delete, func, literal, select, update
+from sqlalchemy import any_, delete, func, literal, or_, select, update
 
 from app.models import (
     AlertEscalationStep,
@@ -26,9 +26,12 @@ from app.models import (
     Incident,
     IncidentEvent,
     NotificationChannel,
+    OncallOverride,
     OncallSchedule,
+    OutboundMessage,
 )
-from app.services import backtest
+from app.routes.channels import mask_target
+from app.services import backtest, oncall
 from app.services import logs as logstore
 from app.services.metrics import MetricsUnavailable
 from app.tenancy import Tenant, TenantContext
@@ -326,6 +329,7 @@ class IncidentOut(BaseModel):
     duration_seconds: int
     snoozed_until: datetime | None = None
     snoozed_by: str | None = None
+    merged_into: uuid.UUID | None = None
 
 
 class IncidentEventOut(BaseModel):
@@ -375,6 +379,7 @@ def _incident_out(i: Incident) -> IncidentOut:
         if i.snoozed_until and i.snoozed_until > datetime.now(UTC)
         else None,
         snoozed_by=i.snoozed_by,
+        merged_into=i.merged_into,
     )
 
 
@@ -1071,3 +1076,147 @@ async def preview_rule(
     for h in out["hosts"]:
         h["hostname"] = names.get(h["host_id"], h["host_id"])
     return out
+
+
+# ── Merging and related incidents ────────────────────────────────────────────
+
+
+class MergeIn(BaseModel):
+    into: uuid.UUID = Field(description="the incident that carries on")
+    incident_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
+
+
+@router.post("/incidents/merge")
+async def merge_incidents(body: MergeIn, t: Tenant) -> IncidentDetail:
+    """Fold related incidents into one: they close, pointing at it, and its
+    timeline lists them. Their later recoveries are noted there instead of
+    notifying on their own."""
+    target = await _get_incident(t, body.into)
+    if target.merged_into is not None:
+        raise HTTPException(status_code=409, detail="That incident was itself merged away")
+    ids = [i for i in dict.fromkeys(body.incident_ids) if i != target.id]
+    if not ids:
+        raise HTTPException(status_code=422, detail="Choose incidents other than the one to keep")
+    others = list(
+        await t.db.scalars(
+            select(Incident).where(Incident.tenant_id == t.tenant_id, Incident.id.in_(ids))
+        )
+    )
+    if len(others) != len(ids):
+        raise HTTPException(status_code=404, detail="Incident not found")
+    now = datetime.now(UTC)
+    actor = _actor(t)
+    for o in others:
+        o.merged_into = target.id
+        if o.status == "open":
+            o.status, o.resolved_at, o.resolved_by = "resolved", now, f"merged by {actor}"
+        _event(t, o, "merged", f"Merged into “{target.summary}”")
+    names = "; ".join(o.summary for o in others[:5]) + (" …" if len(others) > 5 else "")
+    _event(t, target, "merged", f"Merged {len(others)} related incident(s): {names}")
+    if target.severity != "critical" and any(o.severity == "critical" for o in others):
+        target.severity = "critical"
+    await t.db.flush()
+    return await _detail(t, target)
+
+
+@router.get("/incidents/{incident_id}/related")
+async def related_incidents(incident_id: uuid.UUID, t: Tenant) -> list[IncidentOut]:
+    """Open incidents that likely share a cause: same server, or the same
+    rule, opened within an hour of this one."""
+    incident = await _get_incident(t, incident_id)
+    window = timedelta(hours=1)
+    near = [Incident.rule_id == incident.rule_id] if incident.rule_id else []
+    if incident.host_id:
+        near.append(Incident.host_id == incident.host_id)
+    if not near:
+        return []
+    rows = await t.db.scalars(
+        select(Incident)
+        .where(
+            Incident.tenant_id == t.tenant_id,
+            Incident.id != incident.id,
+            Incident.status == "open",
+            Incident.merged_into.is_(None),
+            Incident.opened_at.between(incident.opened_at - window, incident.opened_at + window),
+            or_(*near),
+        )
+        .order_by(Incident.opened_at)
+        .limit(50)
+    )
+    return [_incident_out(i) for i in rows]
+
+
+# ── Test a rule's notifications ─────────────────────────────────────────────
+
+
+@router.post("/alert-rules/{rule_id}/test", status_code=status.HTTP_202_ACCEPTED)
+async def test_rule(rule_id: uuid.UUID, t: Tenant) -> dict:
+    """Send a sample alert to exactly who this rule would notify now: its
+    contacts, whoever is on call in its schedules, or the default contact.
+    Nothing opens, and quiet hours don't apply to tests."""
+    rule = await _get_rule(t, rule_id)
+    linked = list(
+        await t.db.scalars(
+            select(NotificationChannel)
+            .join(AlertRuleChannel, AlertRuleChannel.channel_id == NotificationChannel.id)
+            .where(
+                AlertRuleChannel.rule_id == rule.id, NotificationChannel.tenant_id == t.tenant_id
+            )
+        )
+    )
+    recipients: list[tuple[NotificationChannel, str]] = [(c, "rule") for c in linked]
+    now = datetime.now(UTC)
+    for sid in rule.schedule_ids or []:
+        schedule = await t.db.get(OncallSchedule, sid)
+        if schedule is None or schedule.tenant_id != t.tenant_id:
+            continue
+        overrides = list(
+            await t.db.scalars(
+                select(OncallOverride).where(
+                    OncallOverride.schedule_id == sid, OncallOverride.ends_at > now
+                )
+            )
+        )
+        who = oncall.current(schedule, overrides, now)
+        if who:
+            for c in await t.db.scalars(
+                select(NotificationChannel).where(
+                    NotificationChannel.tenant_id == t.tenant_id,
+                    NotificationChannel.id.in_(who.get("channel_ids") or []),
+                )
+            ):
+                recipients.append((c, f"on call in {schedule.name}: {who.get('name')}"))
+    if not linked and not rule.schedule_ids:
+        for c in await t.db.scalars(
+            select(NotificationChannel).where(
+                NotificationChannel.tenant_id == t.tenant_id, NotificationChannel.is_default
+            )
+        ):
+            recipients.append((c, "default contact"))
+    seen: set[uuid.UUID] = set()
+    sent = []
+    for c, why in recipients:
+        if c.id in seen or c.verified_at is None:
+            continue
+        seen.add(c.id)
+        t.db.add(
+            OutboundMessage(
+                tenant_id=t.tenant_id,
+                channel_id=c.id,
+                kind="test",
+                payload={
+                    "subject": f"[Pulsegrid] TEST: {rule.name}",
+                    "text": (
+                        f"This is a test of the alert rule “{rule.name}”. When it fires for real, "
+                        f"this is where the alert arrives ({why}).\n\nNothing is wrong."
+                    ),
+                    "event": {"type": "test", "rule_id": str(rule.id)},
+                },
+            )
+        )
+        sent.append({"type": c.type, "target": mask_target(c.type, c.target), "why": why})
+    if not sent:
+        raise HTTPException(
+            status_code=409, detail="Nobody to notify: no verified contact and nobody on call"
+        )
+    return {"sent_to": sent}

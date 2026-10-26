@@ -27,6 +27,7 @@ POST /v1/agent-keys agent_key.create Created install key {name}
 DELETE /v1/agent-keys/{key_id} agent_key.revoke Revoked an install key
 POST /v1/alert-rules alert_rule.create Created alert rule {name}
 POST /v1/alert-rules/recommended alert_rule.recommended Added the recommended alert rules
+POST /v1/alert-rules/{rule_id}/test alert_rule.test Sent a test alert for a rule
 PUT /v1/alert-rules/{rule_id} alert_rule.update Changed alert rule {name}
 DELETE /v1/alert-rules/{rule_id} alert_rule.delete Deleted an alert rule
 POST /v1/api-tokens api_token.create Created API token {name}

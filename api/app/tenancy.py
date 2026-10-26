@@ -49,6 +49,8 @@ OPERATOR_WRITES = frozenset(
         "/v1/incidents/{incident_id}/notes",
         "/v1/incidents/{incident_id}/resolve",
         "/v1/incidents/{incident_id}/reopen",
+        "/v1/incidents/{incident_id}/snooze",
+        "/v1/incidents/merge",
         "/v1/maintenance",
         "/v1/maintenance/{window_id}",
         "/v1/hosts/{host_id}/actions",
