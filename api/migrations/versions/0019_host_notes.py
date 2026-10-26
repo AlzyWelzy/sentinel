@@ -23,4 +23,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE hosts DROP COLUMN notes, DROP COLUMN notes_updated_at, DROP COLUMN notes_updated_by")
+    op.execute(
+        "ALTER TABLE hosts DROP COLUMN notes, DROP COLUMN notes_updated_at, DROP COLUMN notes_updated_by"
+    )

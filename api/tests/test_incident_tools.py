@@ -104,6 +104,7 @@ async def test_digest(alice: User, monkeypatch):
 
     async with ServiceSession() as db:
         t = await db.get(Tenant, tid)
+        assert t is not None
         assert jobs.digest_due(t, now)
     await jobs.send_digests(now)
     async with ServiceSession() as db:
@@ -115,6 +116,7 @@ async def test_digest(alice: User, monkeypatch):
             )
         )
         t = await db.get(Tenant, tid)
+    assert t is not None
     assert len(rows) == 1 and rows[0].payload["subject"].startswith(
         "[Pulsegrid] Your monitoring day"
     )

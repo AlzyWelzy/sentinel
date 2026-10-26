@@ -3,8 +3,10 @@ status pages, actions, inventory, reports and staff probe management."""
 
 import json
 import uuid
+from typing import cast
 
 import pytest
+from joserfc.jwk import KeySet
 from sqlalchemy import text
 
 from app.config import settings
@@ -525,7 +527,7 @@ async def test_jwks_outage_keeps_the_cached_keys():
     with pytest.raises(HTTPException) as exc:  # nothing cached yet: 503, not 500
         await v._key_set()
     assert exc.value.status_code == 503
-    cached = object()
+    cached = cast(KeySet, object())
     v._keys, v._expiry = cached, 0.0  # cached keys, now stale
     assert await v._key_set() is cached
     assert v._expiry > 0  # retried again later, not on every request

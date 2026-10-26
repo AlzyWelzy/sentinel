@@ -29,6 +29,13 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("ALTER TABLE hosts DROP CONSTRAINT hosts_tenant_machine_hostname_key")
+    # The old rule allows one host per machine: keep the newest of any
+    # machine that has since registered under several hostnames.
+    op.execute(
+        "DELETE FROM hosts h USING hosts newer "
+        "WHERE h.tenant_id = newer.tenant_id AND h.machine_id = newer.machine_id "
+        "AND (h.created_at, h.id) < (newer.created_at, newer.id)"
+    )
     op.execute(
         "ALTER TABLE hosts ADD CONSTRAINT hosts_tenant_id_machine_id_key "
         "UNIQUE (tenant_id, machine_id)"

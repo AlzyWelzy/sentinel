@@ -496,7 +496,12 @@ async def test_console_uptime_alerts_reach_push_devices(client, alice: User):
             "min_severity": floor,
         }
         assert (await alice.request("POST", "/v1/channels/push", json=sub)).status_code == 201
-    body = {"title": "shop.example is down", "text": "HTTP 502", "severity": "warning", "key": "42"}
+    body: dict[str, object] = {
+        "title": "shop.example is down",
+        "text": "HTTP 502",
+        "severity": "warning",
+        "key": "42",
+    }
     r = await client.post(f"/internal/v1/tenants/{alice.uid}/notify", json=body, headers=headers)
     assert r.status_code == 200, r.text
     assert r.json() == {"queued": 1}

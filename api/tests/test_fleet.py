@@ -22,7 +22,9 @@ def test_judge():
     assert judge(0.3, 0.1, 0.01, 10) is None
     # Big rise, but only 1.3x the usual level: not unusual enough.
     assert judge(65, 50, 1, 10) is None
-    sev, factor = judge(45, 20, 6, 10)
+    got = judge(45, 20, 6, 10)
+    assert got is not None
+    sev, factor = got
     assert sev == "likely" and round(factor, 2) == 2.25
 
 

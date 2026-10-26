@@ -11,24 +11,26 @@ from .conftest import User, insert_host
 
 def test_rule_advice():
     assert rule_advice(0, 0, 0, 30) is None
-    assert "recovery threshold" in rule_advice(6, 3, 0, 30)
-    assert "raise the duration" in rule_advice(6, 0, 4, 30)
-    assert "several times a day" in rule_advice(120, 0, 0, 30)
+    assert "recovery threshold" in (rule_advice(6, 3, 0, 30) or "")
+    assert "raise the duration" in (rule_advice(6, 0, 4, 30) or "")
+    assert "several times a day" in (rule_advice(120, 0, 0, 30) or "")
     assert rule_advice(2, 0, 0, 30) is None
 
 
 def test_host_verdict():
     assert host_verdict(None, 50, 4, 8 * 1024**3)[0] == "unknown"
     verdict, advice = host_verdict(9, 30, 8, 16 * 1024**3)
+    assert advice is not None
     assert verdict == "oversized" and "4 vCPU" in advice and "8 GB" in advice
     assert host_verdict(95, 40, 2, 4 * 1024**3)[0] == "undersized"
-    assert "memory" in host_verdict(50, 97, 2, 4 * 1024**3)[1]
+    assert "memory" in (host_verdict(50, 97, 2, 4 * 1024**3)[1] or "")
     assert host_verdict(50, 60, 2, 4 * 1024**3) == ("ok", None)
     assert host_verdict(5, 10, 1, 1024**3)[0] == "ok"  # nothing smaller to move to
 
 
 def test_slo_numbers():
     budget, used, left, burn, status = slo_numbers(99.9, 99.95, 30, 100)
+    assert used is not None and left is not None
     assert round(budget, 1) == 43.2 and round(used, 1) == 21.6 and round(left) == 50
     assert burn == 0 and status == "healthy"
     assert slo_numbers(99.9, 99.8, 30, None)[4] == "breached"
@@ -151,12 +153,12 @@ def test_backtest_simulation():
 
     # Two spikes: 3 minutes over (too short for a 5-minute duration), then 10 minutes over.
     values = [10] * 5 + [95] * 3 + [10] * 5 + [95] * 10 + [10] * 5
-    points = [[i * 60, v] for i, v in enumerate(values)]
+    points: list[list[float]] = [[i * 60, v] for i, v in enumerate(values)]
     h = simulate(points, ">", 90, 300, None)
     assert h.fires == 1 and h.peak == 95 and h.firing_minutes == 5
     assert simulate(points, ">", 90, 0, None).fires == 2
     # With a recovery threshold of 50 it stays firing through a dip to 80.
-    wobble = [[i * 60, v] for i, v in enumerate([95, 95, 80, 95, 40])]
+    wobble: list[list[float]] = [[i * 60, v] for i, v in enumerate([95, 95, 80, 95, 40])]
     assert simulate(wobble, ">", 90, 0, 50).fires == 1
     assert simulate(wobble, ">", 90, 0, None).fires == 2
 

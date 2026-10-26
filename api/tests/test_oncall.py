@@ -36,7 +36,7 @@ def test_rotation_and_overrides():
         72: "Asha",
         50: "Meera",
     }.items():
-        assert oncall.current(s, [], START + timedelta(hours=hours))["name"] == want
+        assert (oncall.current(s, [], START + timedelta(hours=hours)) or {})["name"] == want
     overrides = [
         Override(
             START + timedelta(hours=24), START + timedelta(hours=48), {"name": "Cover"}, START
@@ -48,8 +48,9 @@ def test_rotation_and_overrides():
             START + timedelta(minutes=1),
         ),
     ]
-    assert oncall.current(s, overrides, START + timedelta(hours=26))["name"] == "Cover (newest)"
-    assert oncall.current(s, overrides, START + timedelta(hours=31))["name"] == "Cover"
+    newest = oncall.current(s, overrides, START + timedelta(hours=26))
+    assert (newest or {})["name"] == "Cover (newest)"
+    assert (oncall.current(s, overrides, START + timedelta(hours=31)) or {})["name"] == "Cover"
     shifts = oncall.shifts(s, overrides[:1], START, START + timedelta(days=3))
     assert [(sh.responder["name"], sh.override) for sh in shifts] == [
         ("Asha", False),
