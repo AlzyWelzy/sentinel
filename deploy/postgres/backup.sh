@@ -20,8 +20,12 @@ while :; do
         mv "$out.tmp" "$out"
         echo "backup $ts: $(du -h "$out" | cut -f1)"
     else
+        # e.g. postgres still starting with the stack: try again soon, not
+        # a whole interval later
         rm -f "$out.tmp"
-        echo "backup $ts failed" >&2
+        echo "backup $ts failed; retrying in 60s" >&2
+        sleep 60
+        continue
     fi
     find /backups -name 'pulsegrid-*.dump' -mtime +"$KEEP" -delete
     sleep "$EVERY"
