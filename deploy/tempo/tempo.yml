@@ -1,7 +1,10 @@
-# Tempo for Pulsegrid APM. multitenancy_enabled makes every request name its
-# tenant (X-Scope-OrgID = the Pulsegrid account id): ingest writes with it,
-# the API reads with it. local-blocks lets the API ask TraceQL metrics
-# (request rate, errors, latency percentiles) without a separate store.
+# Tempo 3 for Pulsegrid APM (single binary, local disk). multitenancy_enabled
+# makes every request name its tenant (X-Scope-OrgID = the Pulsegrid account
+# id): ingest writes with it, the API reads with it. TraceQL metrics (request
+# rate, errors, latency percentiles) come from the live store for the last few
+# minutes and from the stored blocks for anything older, so they reach back
+# over the whole retention and survive a restart (Tempo 3 has no local-blocks
+# processor; this replaces it).
 multitenancy_enabled: true
 stream_over_http_enabled: true
 
@@ -16,28 +19,14 @@ distributor:
         http:
           endpoint: 0.0.0.0:4318
 
-ingester:
-  max_block_duration: 5m
-
-compactor:
+backend_worker:
   compaction:
     block_retention: 168h # 7 days
 
 metrics_generator:
   storage:
     path: /var/tempo/generator/wal
-  traces_storage:
-    path: /var/tempo/generator/traces
-  processor:
-    local_blocks:
-      # Keep consumer spans too (not just server spans), and write the blocks
-      # to storage so rate/latency queries reach back over the whole
-      # retention and survive a restart.
-      filter_server_spans: false
-      flush_to_storage: true
 
-# Metrics for the last few minutes come from the generators' memory;
-# anything older from the flushed blocks, so a restart loses at most that.
 query_frontend:
   metrics:
     max_duration: 169h
@@ -53,8 +42,6 @@ storage:
 
 overrides:
   defaults:
-    metrics_generator:
-      processors: [local-blocks]
     ingestion:
       rate_limit_bytes: 5000000
       burst_size_bytes: 10000000
