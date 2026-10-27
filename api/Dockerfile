@@ -55,6 +55,11 @@ RUN uv sync --locked --no-dev --no-install-project
 COPY api/ .
 RUN uv sync --locked --no-dev
 COPY --from=dist /dist ./dist
+# The stack files of this release, so a host that only pulls images (e.g. the
+# console prod's autoupdate) can deploy it as published.
+COPY deploy/stack.console.yml /deploy/stack.yml
+COPY deploy/postgres /deploy/postgres
+COPY deploy/tempo /deploy/tempo
 
 RUN useradd --system pulsegrid
 USER pulsegrid

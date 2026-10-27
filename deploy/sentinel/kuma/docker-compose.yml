@@ -1,0 +1,21 @@
+# Uptime Kuma for the prod console's monitoring module, moved from console
+# (core_uptime_kuma) and console_db (kuma_db) on 2026-10-27. Reached by the
+# console backend at http://172.23.2.15:3001 (LAN only).
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?}
+    volumes: [db:/var/lib/mysql]
+    ports: ["127.0.0.1:3306:3306"]
+    healthcheck: {test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"], interval: 10s, retries: 10}
+  kuma:
+    image: louislam/uptime-kuma:2.0.2
+    restart: unless-stopped
+    depends_on: {db: {condition: service_healthy}}
+    volumes: [data:/app/data]
+    ports: ["172.23.2.15:3001:3001"]
+volumes:
+  db:
+  data:

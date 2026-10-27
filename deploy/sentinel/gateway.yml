@@ -1,0 +1,16 @@
+# docker stack deploy -c gateway.yml gateway
+# Port 80 on every interface; sentinel has only its LAN address (172.23.2.15).
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    configs: [{source: gateway, target: /etc/nginx/nginx.conf}]
+    ports: [{target: 80, published: 80, mode: host}]
+    networks: [console]
+    healthcheck: {test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/__gateway"], interval: 15s, timeout: 5s, retries: 3}
+    deploy: {replicas: 1, update_config: {order: stop-first}, restart_policy: {condition: any, delay: 5s}}
+configs:
+  gateway:
+    name: gateway-${GATEWAY_CONFIG:-v1}
+    file: ./gateway/nginx.conf
+networks:
+  console: {external: true, name: pulsegrid-console}
