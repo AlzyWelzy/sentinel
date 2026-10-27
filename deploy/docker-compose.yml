@@ -8,7 +8,7 @@ name: pulsegrid-dev
 
 services:
   postgres:
-    image: postgres:18-alpine
+    image: postgres:18.6-alpine
     environment:
       POSTGRES_DB: pulsegrid
       POSTGRES_USER: pulsegrid          # owner: runs migrations, owns the tables
@@ -27,7 +27,7 @@ services:
       retries: 20
 
   redis:
-    image: redis:7.4-alpine
+    image: redis:8.10.3-alpine
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -37,7 +37,7 @@ services:
       retries: 20
 
   victoriametrics:
-    image: victoriametrics/victoria-metrics:v1.106.1
+    image: victoriametrics/victoria-metrics:v1.155.0
     command:
       - -storageDataPath=/storage
       - -retentionPeriod=90d
@@ -48,7 +48,7 @@ services:
       - "127.0.0.1:${VM_PORT:-8428}:8428"
 
   victoriametrics-long:
-    image: victoriametrics/victoria-metrics:v1.106.1
+    image: victoriametrics/victoria-metrics:v1.155.0
     command:
       - -storageDataPath=/storage
       - -retentionPeriod=2y

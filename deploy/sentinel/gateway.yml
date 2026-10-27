@@ -2,7 +2,7 @@
 # Port 80 on every interface; sentinel has only its LAN address (172.23.2.15).
 services:
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.30.6-alpine
     configs: [{source: gateway, target: /etc/nginx/nginx.conf}]
     ports: [{target: 80, published: 80, mode: host}]
     networks: [console]
