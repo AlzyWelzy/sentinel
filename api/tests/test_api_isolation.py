@@ -134,3 +134,37 @@ async def test_bad_token_is_rejected_even_with_dev_bypass(client, monkeypatch):
     assert (await client.get("/v1/hosts", headers=bad)).status_code == 401
     # With no token at all, the bypass applies.
     assert (await client.get("/v1/hosts")).status_code == 200
+
+
+async def test_internal_incidents_for_ticket_rules(client, alice: User, bob: User):
+    from sqlalchemy import text
+
+    from app.db import ServiceSession
+
+    from .conftest import insert_host
+
+    key = {"X-Internal-Api-Key": "change-me-pulsegrid-internal-key"}
+    a = await alice.tenant_id()
+    await bob.tenant_id()
+    host = await insert_host(a, "alice-web")
+    async with ServiceSession() as db, db.begin():
+        open_id, closed_id = [
+            (
+                await db.execute(
+                    text(
+                        "INSERT INTO incidents "
+                        "(tenant_id, host_id, summary, rule_name, hostname, status) "
+                        "VALUES (:t, :h, 'Disk full', 'Disk', 'alice-web', :s) RETURNING id"
+                    ),
+                    {"t": a, "h": host, "s": s},
+                )
+            ).scalar_one()
+            for s in ("open", "resolved")
+        ]
+    assert (await client.get("/internal/v1/incidents")).status_code == 401
+    listed = (await client.get("/internal/v1/incidents", headers=key)).json()
+    mine = [i["id"] for i in listed if i["external_account_id"] == alice.uid]
+    assert mine == [str(open_id)]
+    both = {"ids": [str(open_id), str(closed_id)]}
+    by_id = (await client.get("/internal/v1/incidents", params=both, headers=key)).json()
+    assert sorted(i["status"] for i in by_id) == ["open", "resolved"]

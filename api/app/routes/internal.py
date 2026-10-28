@@ -6,11 +6,12 @@ These run on the BYPASSRLS service role and see every tenant, which is why
 they sit behind the internal API key and must never be exposed publicly.
 """
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import any_, delete, func, literal, select, text, true
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -23,11 +24,13 @@ from app.models import (
     AgentKey,
     ExternalMonitor,
     Host,
+    Incident,
     MaintenanceWindow,
     NotificationChannel,
     OutboundMessage,
     Tenant,
 )
+from app.routes.alerts import IncidentOut, _incident_out
 from app.routes.v1 import cloud_init, install_command, install_command_windows
 from app.services import heartbeats
 from app.services.maintenance import in_maintenance
@@ -59,6 +62,37 @@ async def usage(db: ServiceDB) -> list[TenantUsage]:
         .group_by(Tenant.external_account_id)
     )
     return [TenantUsage(external_account_id=e, active_hosts=n) for e, n in rows]
+
+
+class TenantIncident(IncidentOut):
+    external_account_id: str
+    account_email: str | None
+
+
+@router.get("/incidents")
+async def incidents(
+    db: ServiceDB,
+    ids: Annotated[list[uuid.UUID] | None, Query(max_length=500)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> list[TenantIncident]:
+    """Open incidents in every console account, for the console's ticket
+    rules; with ``ids``, those incidents whatever their state, so the
+    console can tell which of the ones it ticketed have since resolved."""
+    q = (
+        select(Incident, Tenant.external_account_id, Tenant.email)
+        .join(Tenant, Tenant.id == Incident.tenant_id)
+        .where(Tenant.source == settings.TENANT_SOURCE)
+    )
+    q = q.where(Incident.id.in_(ids)) if ids else q.where(Incident.status == "open")
+    rows = (await db.execute(q.order_by(Incident.opened_at).limit(limit))).all()
+    return [
+        TenantIncident(
+            **_incident_out(r.Incident).model_dump(),
+            external_account_id=r.external_account_id,
+            account_email=r.email,
+        )
+        for r in rows
+    ]
 
 
 async def _tenant(db: AsyncSession, external_account_id: str) -> Tenant:
