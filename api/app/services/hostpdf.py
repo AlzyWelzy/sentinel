@@ -4,6 +4,7 @@ overview, statistics, charts and incidents."""
 
 import io
 import math
+import re
 import statistics
 import uuid
 from dataclasses import dataclass, field
@@ -124,6 +125,28 @@ def fmt_period(seconds: float) -> str:
     return fmt_duration(seconds)
 
 
+def natural(name: str) -> list:
+    """Sort key putting "5m" before "15m" and "core 2" before "core 10"."""
+    return [int(p) if p.isdigit() else p for p in re.split(r"(\d+)", name)]
+
+
+def segments(points: list[list[float]]) -> list[list[list[float]]]:
+    """Split a series where samples stop for over three typical steps."""
+    if len(points) < 3:
+        return [points]
+    gaps = sorted(b[0] - a[0] for a, b in zip(points, points[1:], strict=False))
+    limit = gaps[len(gaps) // 2] * 3
+    runs, run = [], [points[0]]
+    for a, b in zip(points, points[1:], strict=False):
+        if b[0] - a[0] > limit:
+            runs.append(run)
+            run = []
+        run.append(b)
+    runs.append(run)
+    # A lone sample can't be drawn as a line; keep it as a two-point dot.
+    return [r if len(r) > 1 else [r[0], [r[0][0] + 1, r[0][1]]] for r in runs]
+
+
 def series_name(labels: dict[str, str], fallback: str) -> str:
     return " ".join(labels.values()) or fallback
 
@@ -234,7 +257,9 @@ def _chart(title: str, unit: str, series: list[dict], width: float, tz: ZoneInfo
     height = 58 * mm
     d = Drawing(width, height)
     d.add(String(0, height - 10, title, fontName="Helvetica-Bold", fontSize=9, fillColor=INK))
-    shown = [s for s in series if s["points"]][: len(SERIES)]
+    shown = sorted(
+        (s for s in series if s["points"]), key=lambda s: natural(series_name(s["labels"], ""))
+    )[: len(SERIES)]
     if not shown:
         d.add(String(0, height / 2, "No data in this period", fontSize=8, fillColor=MUTED))
         return d
@@ -242,9 +267,15 @@ def _chart(title: str, unit: str, series: list[dict], width: float, tz: ZoneInfo
     plot: Any = LinePlot()
     plot.x, plot.y = 38, 26
     plot.width, plot.height = width - 46, height - 52
-    plot.data = [[(p[0], p[1]) for p in s["points"]] for s in shown]
-    for i, _ in enumerate(shown):
-        plot.lines[i].strokeColor = SERIES[i]
+    # One plotted line per unbroken stretch, so outages show as gaps (not a
+    # straight line drawn across them), each in its series' colour.
+    plot.data, line_colors = [], []
+    for i, s in enumerate(shown):
+        for run in segments(s["points"]):
+            plot.data.append([(p[0], p[1]) for p in run])
+            line_colors.append(SERIES[i])
+    for i, c in enumerate(line_colors):
+        plot.lines[i].strokeColor = c
         plot.lines[i].strokeWidth = 1.1
     xs = [p[0] for s in plot.data for p in s]
     ys = [p[1] for s in plot.data for p in s]

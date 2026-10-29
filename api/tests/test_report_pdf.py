@@ -33,3 +33,11 @@ async def test_pdf_periods_and_ownership(alice: User, bob: User):
     assert (
         await alice.request("GET", path, params={"host_id": str(web), "tz": "Mars/Base"})
     ).status_code == 422
+
+
+def test_charts_break_at_gaps_and_sort_naturally():
+    from app.services.hostpdf import natural, segments
+
+    pts: list[list[float]] = [[0, 1], [60, 1], [120, 1], [3600, 2], [3660, 2]]
+    assert [len(r) for r in segments(pts)] == [3, 2]
+    assert sorted(["15m", "1m", "5m"], key=natural) == ["1m", "5m", "15m"]
