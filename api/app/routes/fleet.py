@@ -173,7 +173,7 @@ async def groups(
             by_group.setdefault(tag, []).append(h)
     out = []
     for name, members in by_group.items():
-        counts = {"down": 0, "critical": 0, "warning": 0, "maintenance": 0, "up": 0}
+        counts = {"paused": 0, "down": 0, "critical": 0, "warning": 0, "maintenance": 0, "up": 0}
         avail = []
         for h in members:
             counts[status.get(h.id, "down")] += 1

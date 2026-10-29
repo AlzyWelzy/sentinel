@@ -50,7 +50,7 @@ async def test_overview_and_disks(alice: User, bob: User, client):
     assert by_name["busy-1"]["status"] == "critical" and by_name["busy-1"]["cpu"] == 91.2
     assert by_name["busy-1"]["disk"] == 82 and by_name["busy-1"]["load1"] == 3.5
     assert by_name["quiet-1"]["status"] == "up" and by_name["gone-1"]["status"] == "down"
-    assert body["counts"] == {"down": 1, "critical": 1, "warning": 0, "maintenance": 0, "up": 1}
+    assert body["counts"] == {"paused": 0, "down": 1, "critical": 1, "warning": 0, "maintenance": 0, "up": 1}
     assert (await bob.request("GET", "/v1/servers/overview")).json()["servers"] == []
 
     disks = (await alice.request("GET", f"/v1/hosts/{busy}/disks")).json()

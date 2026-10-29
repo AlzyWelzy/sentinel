@@ -17,7 +17,7 @@ from app.tenancy import Tenant
 
 router = APIRouter(prefix="/v1", tags=["servers"])
 
-Status = Literal["down", "critical", "warning", "maintenance", "up"]
+Status = Literal["paused", "down", "critical", "warning", "maintenance", "up"]
 
 
 class ServerHealth(BaseModel):
@@ -26,6 +26,7 @@ class ServerHealth(BaseModel):
     status: Status
     online: bool
     in_maintenance: bool
+    paused: bool = False
     cpu: float | None
     memory: float | None
     disk: float | None
@@ -52,7 +53,7 @@ async def _latest(tenant_id: uuid.UUID, query: str) -> dict[str, float]:
 @router.get("/servers/overview")
 async def servers_overview(t: Tenant) -> FleetOverview:
     """Every server with its status (down: not reporting; critical / warning:
-    the worst open incident; maintenance; up) and latest CPU, memory, fullest
+    the worst open incident; maintenance; up; paused first) and latest CPU, memory, fullest
     disk and 1-minute load."""
     hosts = list(
         await t.db.scalars(
@@ -95,13 +96,15 @@ async def servers_overview(t: Tenant) -> FleetOverview:
     except MetricsUnavailable:
         cpu = mem = disk = load = uptime = {}
         available = False
-    counts = {"down": 0, "critical": 0, "warning": 0, "maintenance": 0, "up": 0}
+    counts = {"paused": 0, "down": 0, "critical": 0, "warning": 0, "maintenance": 0, "up": 0}
     servers = []
     for h in hosts:
         o = outs[h.id]
         sev = open_by_host.get(h.id, {})
         status: Status
-        if not o.online:
+        if o.paused:
+            status = "paused"
+        elif not o.online:
             status = "down"
         elif sev.get("critical"):
             status = "critical"
@@ -124,6 +127,7 @@ async def servers_overview(t: Tenant) -> FleetOverview:
                 status=status,
                 online=o.online,
                 in_maintenance=o.in_maintenance,
+                paused=o.paused,
                 cpu=r(cpu.get(key)) if o.online else None,
                 memory=r(mem.get(key)) if o.online else None,
                 disk=r(disk.get(key)),

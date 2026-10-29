@@ -198,6 +198,9 @@ class HostOut(BaseModel):
     notes: str | None = None
     notes_updated_at: datetime | None = None
     notes_updated_by: str | None = None
+    paused: bool = False
+    paused_at: datetime | None = None
+    paused_by: str | None = None
 
 
 def _host_out(h: Host, last_seen: int | None, maintenance: bool = False) -> HostOut:
@@ -222,6 +225,9 @@ def _host_out(h: Host, last_seen: int | None, maintenance: bool = False) -> Host
         notes=h.notes,
         notes_updated_at=h.notes_updated_at,
         notes_updated_by=h.notes_updated_by,
+        paused=h.paused_at is not None,
+        paused_at=h.paused_at,
+        paused_by=h.paused_by,
     )
 
 
@@ -300,6 +306,70 @@ async def update_host(host_id: uuid.UUID, body: HostPatch, t: Tenant) -> HostOut
         host.notes = body.notes.strip() or None
         host.notes_updated_at = datetime.now(UTC)
         host.notes_updated_by = actor_of(t.principal)
+    await t.db.flush()
+    return (await _hosts_out(t, [host]))[0]
+
+
+async def pause_hosts(t: TenantContext, hosts: list[Host]) -> None:
+    """Stop monitoring these servers until resumed: their open incidents
+    close (quietly, with a note) and any half-fired alert state is dropped,
+    so resuming starts clean."""
+    from app.models import AlertState, Incident, IncidentEvent
+
+    now = datetime.now(UTC)
+    actor = actor_of(t.principal)
+    ids = [h.id for h in hosts if h.paused_at is None]
+    for h in hosts:
+        if h.paused_at is None:
+            h.paused_at, h.paused_by = now, actor
+    if not ids:
+        return
+    open_incidents = list(
+        await t.db.scalars(
+            select(Incident).where(
+                Incident.tenant_id == t.tenant_id,
+                Incident.host_id.in_(ids),
+                Incident.status == "open",
+            )
+        )
+    )
+    for incident in open_incidents:
+        incident.status = "resolved"
+        incident.resolved_at = now
+        incident.resolved_by = actor
+        t.db.add(
+            IncidentEvent(
+                tenant_id=t.tenant_id,
+                incident_id=incident.id,
+                kind="resolved",
+                message="Closed: monitoring was paused for this server",
+                actor=actor,
+            )
+        )
+    await t.db.execute(
+        delete(AlertState).where(AlertState.tenant_id == t.tenant_id, AlertState.host_id.in_(ids))
+    )
+
+
+def resume_hosts(hosts: list[Host]) -> None:
+    for h in hosts:
+        h.paused_at = h.paused_by = None
+
+
+@router.post("/hosts/{host_id}/pause")
+async def pause_host(host_id: uuid.UUID, t: Tenant) -> HostOut:
+    """Pause monitoring: no alerts or incidents for this server until it's
+    resumed. Its metrics are still collected."""
+    host = await _get_host(t, host_id)
+    await pause_hosts(t, [host])
+    await t.db.flush()
+    return (await _hosts_out(t, [host]))[0]
+
+
+@router.post("/hosts/{host_id}/resume")
+async def resume_host(host_id: uuid.UUID, t: Tenant) -> HostOut:
+    host = await _get_host(t, host_id)
+    resume_hosts([host])
     await t.db.flush()
     return (await _hosts_out(t, [host]))[0]
 

@@ -154,3 +154,34 @@ async def test_diagnosis_survives_later_failing_runs():
         assert (await checkresults.last_failures([cid]))[cid]["diagnosis"] == diag
     finally:
         await redis.delete(key)
+
+
+async def test_pausing_a_server_closes_its_incidents_and_resume_clears_it(alice: User):
+    tenant = await alice.tenant_id()
+    host = await insert_host(tenant, "paused-web")
+    async with ServiceSession() as db, db.begin():
+        incident = (
+            await db.execute(
+                text(
+                    "INSERT INTO incidents (tenant_id, host_id, summary, rule_name, hostname) "
+                    "VALUES (:t, :h, 'CPU high', 'CPU', 'paused-web') RETURNING id"
+                ),
+                {"t": tenant, "h": host},
+            )
+        ).scalar_one()
+
+    paused = (await alice.request("POST", f"/v1/hosts/{host}/pause")).json()
+    assert paused["paused"] is True and paused["paused_by"]
+    detail = (await alice.request("GET", f"/v1/incidents/{incident}")).json()
+    assert detail["status"] == "resolved"
+    assert any("paused" in e["message"] for e in detail["events"])
+    fleet = (await alice.request("GET", "/v1/servers/overview")).json()
+    assert [s["status"] for s in fleet["servers"] if s["id"] == str(host)] == ["paused"]
+
+    resumed = (await alice.request("POST", f"/v1/hosts/{host}/resume")).json()
+    assert resumed["paused"] is False and resumed["paused_at"] is None
+
+    body = {"host_ids": [str(host)], "action": "pause"}
+    bulk = await alice.request("POST", "/v1/hosts/bulk", json=body)
+    assert bulk.status_code == 200 and bulk.json()["changed"] == 1
+    assert (await alice.request("GET", f"/v1/hosts/{host}")).json()["paused"] is True

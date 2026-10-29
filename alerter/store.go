@@ -130,11 +130,12 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 }
 
 // hosts returns the hosts a rule covers: all of the tenant's, one, or those
-// with the rule's tag.
+// with the rule's tag. Paused servers are left out: nothing about them is
+// evaluated or opened until they're resumed.
 func (s *store) hosts(ctx context.Context, r rule) ([]host, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, hostname, created_at, tags, depends_on_host_id, allowed_actions FROM hosts
-		 WHERE tenant_id = $1 AND revoked_at IS NULL AND ($2::uuid IS NULL OR id = $2)
+		 WHERE tenant_id = $1 AND revoked_at IS NULL AND paused_at IS NULL AND ($2::uuid IS NULL OR id = $2)
 		   AND ($3::text IS NULL OR $3 = ANY (tags))`,
 		r.TenantID, r.HostID, r.Tag)
 	if err != nil {

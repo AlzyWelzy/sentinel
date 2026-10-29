@@ -110,6 +110,10 @@ class Host(TenantScoped):
     notes: Mapped[str | None] = mapped_column(Text)
     notes_updated_at: Mapped[datetime | None]
     notes_updated_by: Mapped[str | None] = mapped_column(Text)
+    # Paused: the alerter skips the server entirely (no incidents, no "not
+    # reporting") until it's resumed. Metrics are still stored.
+    paused_at: Mapped[datetime | None]
+    paused_by: Mapped[str | None] = mapped_column(Text)
     cpu_cores: Mapped[int | None]
     memory_bytes: Mapped[int | None] = mapped_column(BigInteger)
     probe_region: Mapped[str | None] = mapped_column(Text)

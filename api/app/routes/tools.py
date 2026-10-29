@@ -120,7 +120,7 @@ async def search(
 
 class BulkIn(BaseModel):
     host_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
-    action: Literal["add_tag", "remove_tag", "mute", "delete"]
+    action: Literal["add_tag", "remove_tag", "mute", "pause", "resume", "delete"]
     tag: str | None = None
     minutes: int | None = Field(default=None, ge=15, le=7 * 24 * 60, description="mute: how long")
 
@@ -145,8 +145,8 @@ class BulkOut(BaseModel):
 
 @router.post("/hosts/bulk")
 async def bulk(body: BulkIn, t: Tenant) -> BulkOut:
-    """Tag, untag, mute (a maintenance window per server) or remove many
-    servers at once. Removing works as removing one: open incidents resolve."""
+    """Tag, untag, mute (a maintenance window per server), pause, resume or
+    remove many servers at once. Removing works as removing one: open incidents resolve."""
     hosts = list(
         await t.db.scalars(
             select(Host).where(
@@ -180,6 +180,14 @@ async def bulk(body: BulkIn, t: Tenant) -> BulkOut:
                     timezone="UTC",
                 )
             )
+    elif body.action == "pause":
+        from app.routes.v1 import pause_hosts
+
+        await pause_hosts(t, hosts)
+    elif body.action == "resume":
+        from app.routes.v1 import resume_hosts
+
+        resume_hosts(hosts)
     else:
         from app.routes.v1 import delete_host
 
