@@ -27,6 +27,7 @@ from app.config import settings
 from app.db import service_session
 from app.models import AgentKey, Check, Host, Incident, IncidentEvent, Tenant
 from app.routes import audit as audit_routes
+from app.routes import v1
 from app.routes.alerts import IncidentDetail, IncidentEventOut, IncidentOut, _incident_out
 from app.routes.checks import CheckStatus, _status
 from app.routes.fleetview import (
@@ -57,6 +58,7 @@ from app.routes.v1 import (
 )
 from app.services import audit, checkresults, heartbeats, metrics, rollout
 from app.services.secrets import new_agent_key
+from app.tenancy import TenantContext
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -716,6 +718,38 @@ async def pin_tenant(tenant_id: uuid.UUID, body: PinIn, db: ServiceDB) -> dict:
 
 
 # ── Probes (the one thing staff change here) ─────────────────────────────────
+
+
+async def _as_tenant(db: AsyncSession, principal: Principal, host_id: uuid.UUID) -> TenantContext:
+    """Act in the host's own account, as staff, so edits run the same code
+    (and checks) as the customer's."""
+    host = await _host(db, host_id)
+    return TenantContext(tenant_id=host.tenant_id, principal=principal, db=db, role="staff")
+
+
+@router.patch("/hosts/{host_id}")
+async def update_host(
+    host_id: uuid.UUID,
+    body: v1.HostPatch,
+    db: ServiceDB,
+    principal: Annotated[Principal, Depends(staff)],
+) -> v1.HostOut:
+    return await v1.update_host(host_id, body, await _as_tenant(db, principal, host_id))
+
+
+@router.post("/hosts/{host_id}/pause")
+async def pause_host(
+    host_id: uuid.UUID, db: ServiceDB, principal: Annotated[Principal, Depends(staff)]
+) -> v1.HostOut:
+    return await v1.pause_host(host_id, await _as_tenant(db, principal, host_id))
+
+
+@router.post("/hosts/{host_id}/resume")
+async def resume_host(
+    host_id: uuid.UUID, db: ServiceDB, principal: Annotated[Principal, Depends(staff)]
+) -> v1.HostOut:
+    return await v1.resume_host(host_id, await _as_tenant(db, principal, host_id))
+
 
 REGION_RE = r"^[a-z0-9][a-z0-9-]{1,39}$"
 

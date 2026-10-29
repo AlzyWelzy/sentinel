@@ -1,4 +1,4 @@
-"""Staff view: read-only access across accounts, for console staff only."""
+"""Staff view: access across accounts (read, plus editing and pausing servers), for console staff only."""
 
 import uuid
 
@@ -125,3 +125,22 @@ async def test_staff_make_install_keys_for_an_account(client, staff_headers, ali
         f"/admin/v1/tenants/{uuid.uuid4()}/agent-keys", json={"name": "x"}, headers=staff_headers
     )
     assert missing.status_code == 404
+
+
+async def test_staff_edit_pause_and_resume_a_server(client, staff_headers, alice: User):
+    host = await insert_host(await alice.tenant_id(), "alice-web")
+    body = {"tags": ["prod"], "notes": "Racked in DC2"}
+    assert (await alice.request("PATCH", f"/admin/v1/hosts/{host}", json=body)).status_code == 403
+    r = await client.patch(f"/admin/v1/hosts/{host}", json=body, headers=staff_headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["tags"] == ["prod"] and r.json()["notes"] == "Racked in DC2"
+
+    paused = (await client.post(f"/admin/v1/hosts/{host}/pause", headers=staff_headers)).json()
+    assert paused["paused"] is True and paused["paused_by"]
+    mine = (await alice.request("GET", f"/v1/hosts/{host}")).json()
+    assert mine["paused"] is True and mine["tags"] == ["prod"]
+    resumed = (await client.post(f"/admin/v1/hosts/{host}/resume", headers=staff_headers)).json()
+    assert resumed["paused"] is False
+    missing = uuid.uuid4()
+    r = await client.post(f"/admin/v1/hosts/{missing}/pause", headers=staff_headers)
+    assert r.status_code == 404
