@@ -17,16 +17,18 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.console import InvalidToken, Principal, admin_verifier
 from app.config import settings
-from app.db import service_session
+from app.db import AppSession, service_session
 from app.models import AgentKey, Check, Host, Incident, IncidentEvent, Tenant
 from app.routes import audit as audit_routes
+from app.routes import reports as report_routes
 from app.routes import v1
 from app.routes.alerts import IncidentDetail, IncidentEventOut, IncidentOut, _incident_out
 from app.routes.checks import CheckStatus, _status
@@ -56,7 +58,7 @@ from app.routes.v1 import (
     install_command_windows,
     processes_of,
 )
-from app.services import audit, checkresults, heartbeats, metrics, rollout
+from app.services import audit, checkresults, heartbeats, hostpdf, metrics, oncall, rollout
 from app.services.secrets import new_agent_key
 from app.tenancy import TenantContext
 
@@ -732,6 +734,52 @@ async def host_peers(host_id: uuid.UUID, db: ServiceDB) -> list[HostOut]:
     """The other servers in this server's account (what it can depend on)."""
     host = await _host(db, host_id)
     return await tenant_hosts(host.tenant_id, db)
+
+
+@router.delete("/hosts/{host_id}", status_code=204)
+async def delete_host(
+    host_id: uuid.UUID, db: ServiceDB, principal: Annotated[Principal, Depends(staff)]
+) -> None:
+    """Remove any account's server. Deleting needs the account's own
+    (row-level secured) role; the staff role can't delete hosts."""
+    host = await _host(db, host_id)
+    async with AppSession() as adb, adb.begin():
+        await adb.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(host.tenant_id)}
+        )
+        t = TenantContext(tenant_id=host.tenant_id, principal=principal, db=adb, role="staff")
+        await v1.delete_host(host_id, t)
+
+
+@router.get("/reports/servers.pdf", response_class=Response)
+async def servers_pdf(
+    db: ServiceDB,
+    host_id: Annotated[list[uuid.UUID], Query(min_length=1, max_length=100)],
+    start: datetime | None = None,
+    end: datetime | None = None,
+    lifetime: bool = False,
+    tz: str = "Asia/Kolkata",
+) -> Response:
+    """The servers PDF for staff; servers may come from several accounts."""
+    if oncall.zone(tz).key != tz:
+        raise HTTPException(status_code=422, detail="unknown time zone")
+    hosts = list(await db.scalars(select(Host).where(Host.id.in_(host_id)).order_by(Host.hostname)))
+    if len(hosts) != len(set(host_id)):
+        raise HTTPException(status_code=404, detail="Host not found")
+    a, b = report_routes.pdf_period(hosts, start, end, lifetime)
+    tenants = {h.tenant_id for h in hosts}
+    datas = []
+    for tenant_id in tenants:
+        mine = [h for h in hosts if h.tenant_id == tenant_id]
+        datas += await hostpdf.collect(db, tenant_id, mine, a, b)
+    datas.sort(key=lambda d: d.host.hostname)
+    account = (
+        await db.scalar(select(Tenant.email).where(Tenant.id == next(iter(tenants))))
+        if len(tenants) == 1
+        else f"{len(tenants)} accounts"
+    )
+    body = hostpdf.render(datas, a, b, account=account or "", tz_name=tz)
+    return report_routes.pdf_response(body, hosts, a)
 
 
 @router.patch("/hosts/{host_id}")

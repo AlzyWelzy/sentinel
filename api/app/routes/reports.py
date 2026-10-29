@@ -3,20 +3,48 @@ period, as JSON or CSV; and the monthly report email preference."""
 
 import csv
 import io
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
+from app.models import Host
 from app.models import Tenant as TenantRow
-from app.services import oncall
+from app.services import hostpdf, oncall
 from app.services.reports import Summary, build_summary
 from app.tenancy import Tenant, TenantContext
 
 router = APIRouter(prefix="/v1/reports")
+
+# A PDF covers at most this much (a server's whole life, up to five years).
+PDF_MAX = timedelta(days=5 * 366)
+
+
+def pdf_period(
+    hosts: list[Host], start: datetime | None, end: datetime | None, lifetime: bool
+) -> tuple[datetime, datetime]:
+    end = end or datetime.now(UTC)
+    if lifetime or start is None:
+        start = hostpdf.lifetime_start(hosts) if lifetime else end - timedelta(days=30)
+    if start >= end:
+        raise HTTPException(status_code=422, detail="start must be before end")
+    if end - start > PDF_MAX:
+        raise HTTPException(status_code=422, detail="at most five years per report")
+    return start, end
+
+
+def pdf_response(body: bytes, hosts: list[Host], start: datetime) -> Response:
+    name = hosts[0].hostname if len(hosts) == 1 else f"{len(hosts)}-servers"
+    safe = "".join(c if c.isalnum() or c in "-._" else "-" for c in name)
+    return Response(
+        body,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="report-{safe}-{start:%Y%m%d}.pdf"'},
+    )
 
 
 class ReportSettings(BaseModel):
@@ -140,3 +168,31 @@ async def put_settings(body: ReportSettings, t: Tenant) -> ReportSettings:
         body.digest_timezone,
     )
     return body
+
+
+@router.get("/servers.pdf", response_class=Response)
+async def servers_pdf(
+    t: Tenant,
+    host_id: Annotated[list[uuid.UUID], Query(min_length=1, max_length=100)],
+    start: datetime | None = None,
+    end: datetime | None = None,
+    lifetime: Annotated[bool, Query(description="from when the oldest server was added")] = False,
+    tz: str = "Asia/Kolkata",
+) -> Response:
+    """A detailed PDF for one or more servers: availability, statistics,
+    charts and incidents over the period (default the last 30 days)."""
+    if oncall.zone(tz).key != tz:
+        raise HTTPException(status_code=422, detail="unknown time zone")
+    hosts = list(
+        await t.db.scalars(
+            select(Host)
+            .where(Host.tenant_id == t.tenant_id, Host.id.in_(host_id))
+            .order_by(Host.hostname)
+        )
+    )
+    if len(hosts) != len(set(host_id)):
+        raise HTTPException(status_code=404, detail="Host not found")
+    a, b = pdf_period(hosts, start, end, lifetime)
+    account = await t.db.scalar(select(TenantRow.email).where(TenantRow.id == t.tenant_id))
+    datas = await hostpdf.collect(t.db, t.tenant_id, hosts, a, b)
+    return pdf_response(hostpdf.render(datas, a, b, account=account or "", tz_name=tz), hosts, a)

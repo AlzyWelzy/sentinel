@@ -59,7 +59,6 @@ async def test_accounts_without_servers_are_hidden_by_default(client, staff_head
 async def test_staff_routes_are_read_only(client, staff_headers, alice: User):
     host = await insert_host(await alice.tenant_id())
     for method, path in [
-        ("DELETE", f"/admin/v1/hosts/{host}"),
         ("POST", "/admin/v1/tenants"),
         ("PUT", f"/admin/v1/hosts/{host}"),
     ]:
@@ -147,3 +146,23 @@ async def test_staff_edit_pause_and_resume_a_server(client, staff_headers, alice
     missing = uuid.uuid4()
     r = await client.post(f"/admin/v1/hosts/{missing}/pause", headers=staff_headers)
     assert r.status_code == 404
+
+
+async def test_staff_remove_a_server(client, staff_headers, alice: User):
+    host = await insert_host(await alice.tenant_id(), "old-box")
+    assert (await alice.request("DELETE", f"/admin/v1/hosts/{host}")).status_code == 403
+    r = await client.delete(f"/admin/v1/hosts/{host}", headers=staff_headers)
+    assert r.status_code == 204, r.text
+    assert (await alice.request("GET", f"/v1/hosts/{host}")).status_code == 404
+
+
+async def test_staff_download_a_pdf_across_accounts(client, staff_headers, alice, bob):
+    a = await insert_host(await alice.tenant_id(), "alice-web")
+    b = await insert_host(await bob.tenant_id(), "bob-db")
+    r = await client.get(
+        "/admin/v1/reports/servers.pdf",
+        params={"host_id": [str(a), str(b)], "lifetime": "true"},
+        headers=staff_headers,
+    )
+    assert r.status_code == 200, r.text
+    assert r.content.startswith(b"%PDF") and "2-servers" in r.headers["content-disposition"]
