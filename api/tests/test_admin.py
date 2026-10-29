@@ -1,4 +1,4 @@
-"""Staff view: access across accounts (read, plus editing and pausing servers), for console staff only."""
+"""Staff view across accounts (read, plus editing and pausing servers), staff only."""
 
 import uuid
 
