@@ -727,6 +727,13 @@ async def _as_tenant(db: AsyncSession, principal: Principal, host_id: uuid.UUID)
     return TenantContext(tenant_id=host.tenant_id, principal=principal, db=db, role="staff")
 
 
+@router.get("/hosts/{host_id}/peers")
+async def host_peers(host_id: uuid.UUID, db: ServiceDB) -> list[HostOut]:
+    """The other servers in this server's account (what it can depend on)."""
+    host = await _host(db, host_id)
+    return await tenant_hosts(host.tenant_id, db)
+
+
 @router.patch("/hosts/{host_id}")
 async def update_host(
     host_id: uuid.UUID,

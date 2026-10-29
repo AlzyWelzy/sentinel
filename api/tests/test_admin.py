@@ -139,6 +139,9 @@ async def test_staff_edit_pause_and_resume_a_server(client, staff_headers, alice
     assert paused["paused"] is True and paused["paused_by"]
     mine = (await alice.request("GET", f"/v1/hosts/{host}")).json()
     assert mine["paused"] is True and mine["tags"] == ["prod"]
+    other = await insert_host(await alice.tenant_id(), "alice-db")
+    peers = (await client.get(f"/admin/v1/hosts/{host}/peers", headers=staff_headers)).json()
+    assert {p["id"] for p in peers} == {str(host), str(other)}
     resumed = (await client.post(f"/admin/v1/hosts/{host}/resume", headers=staff_headers)).json()
     assert resumed["paused"] is False
     missing = uuid.uuid4()
