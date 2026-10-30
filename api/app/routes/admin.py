@@ -36,6 +36,7 @@ from app.routes.alerts import (
     IncidentOut,
     _incident_out,
     add_recommended_to,
+    ensure_recommended,
 )
 from app.routes.checks import CheckStatus, _status
 from app.routes.fleetview import (
@@ -237,7 +238,7 @@ async def create_tenant_agent_key(
     await db.refresh(key)
     # Customers may not manage rules themselves, so their first server
     # comes with the recommended ones.
-    await add_recommended_to(tenant_id)
+    await ensure_recommended(tenant_id)
     return AgentKeyCreated(
         **_agent_key_out(key).model_dump(),
         key=plaintext,
@@ -260,6 +261,13 @@ async def add_recommended_everywhere(db: ServiceDB) -> RecommendedResult:
     rules an account already has by name. Safe to run again."""
     tenant_ids = list(await db.scalars(select(Tenant.id).where(Tenant.status == "active")))
     added = [await add_recommended_to(tid) for tid in tenant_ids]
+    await db.execute(
+        text(
+            "UPDATE tenants SET recommended_rules_at = coalesce(recommended_rules_at, now()) "
+            "WHERE id = ANY(:ids)"
+        ),
+        {"ids": tenant_ids},
+    )
     return RecommendedResult(
         accounts=len(tenant_ids),
         accounts_changed=sum(1 for n in added if n),

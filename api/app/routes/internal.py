@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.internal import verify_internal_api_key
 from app.config import settings
-from app.db import service_session
+from app.db import AppSession, service_session
 from app.models import (
     AgentKey,
     ExternalMonitor,
@@ -30,7 +30,12 @@ from app.models import (
     OutboundMessage,
     Tenant,
 )
-from app.routes.alerts import IncidentOut, _incident_out, add_recommended_to
+from app.routes.alerts import (
+    IncidentOut,
+    _incident_out,
+    ensure_recommended,
+    ensure_recommended_everywhere,
+)
 from app.routes.v1 import cloud_init, install_command, install_command_windows
 from app.services import heartbeats
 from app.services.maintenance import in_maintenance
@@ -194,13 +199,112 @@ async def provision_agent_key(
     # Customers may not manage rules themselves, so their servers come with
     # the recommended ones. After the response: the account may be new and
     # isn't committed until then.
-    tasks.add_task(add_recommended_to, row.out_tenant_id)
+    tasks.add_task(ensure_recommended, row.out_tenant_id)
     return ProvisionOut(
         key=plaintext,
         install_command=install_command(plaintext, body.tags),
         install_command_windows=install_command_windows(plaintext, body.tags),
         cloud_init=cloud_init(plaintext, body.tags),
     )
+
+
+class TeamMemberIn(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    name: str | None = Field(default=None, max_length=100)
+
+
+class TeamContactsIn(BaseModel):
+    email: str | None = None
+    name: str | None = None
+    members: list[TeamMemberIn] = Field(default_factory=list, max_length=500)
+
+
+class TeamContactsOut(BaseModel):
+    added: int
+    removed: int
+
+
+@router.put("/tenants/{external_account_id}/team-contacts")
+async def sync_team_contacts(
+    external_account_id: str, body: TeamContactsIn, db: ServiceDB, tasks: BackgroundTasks
+) -> TeamContactsOut:
+    """The console account's team members, as alert contacts that need no
+    verification (the console already verified their emails). Alerts without
+    contacts of their own reach them as well as the default contact. Members
+    who left lose theirs; contacts people added themselves are left alone.
+    Creates the account, as a first visit would, if it has none yet."""
+    row = (
+        await db.execute(
+            text("SELECT out_tenant_id, out_status FROM pulsegrid_resolve_tenant(:s, :e, :m, :n)"),
+            {
+                "s": settings.TENANT_SOURCE,
+                "e": external_account_id,
+                "m": body.email,
+                "n": body.name,
+            },
+        )
+    ).one()
+    tasks.add_task(ensure_recommended, row.out_tenant_id)
+    tasks.add_task(_apply_team_contacts, row.out_tenant_id, body.members)
+    existing = list(
+        await db.scalars(
+            select(NotificationChannel).where(
+                NotificationChannel.tenant_id == row.out_tenant_id,
+                NotificationChannel.type == "email",
+            )
+        )
+    )
+    wanted = {m.email.strip().lower() for m in body.members}
+    have = {c.target.lower() for c in existing}
+    return TeamContactsOut(
+        added=len(wanted - have),
+        removed=sum(1 for c in existing if c.source == "team" and c.target.lower() not in wanted),
+    )
+
+
+async def _apply_team_contacts(tenant_id: uuid.UUID, members: list[TeamMemberIn]) -> None:
+    """After the response: the account may be new and uncommitted until then.
+    Channels sit behind row-level security, so this uses the account's scope."""
+    wanted = {m.email.strip().lower(): m for m in members}
+    async with AppSession() as adb, adb.begin():
+        await adb.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant_id)}
+        )
+        existing = list(
+            await adb.scalars(
+                select(NotificationChannel).where(
+                    NotificationChannel.tenant_id == tenant_id, NotificationChannel.type == "email"
+                )
+            )
+        )
+        have = {c.target.lower() for c in existing}
+        for c in existing:
+            if c.source == "team" and c.target.lower() not in wanted:
+                await adb.delete(c)
+        now = datetime.now(UTC)
+        for email, m in wanted.items():
+            if email not in have:
+                adb.add(
+                    NotificationChannel(
+                        tenant_id=tenant_id,
+                        type="email",
+                        target=email,
+                        label=m.name or email,
+                        source="team",
+                        verified_at=now,
+                    )
+                )
+
+
+class RecommendedSweepOut(BaseModel):
+    rules_added: int
+
+
+@router.post("/alert-rules/recommended")
+async def recommended_everywhere() -> RecommendedSweepOut:
+    """The recommended rules for every account that hasn't had them yet (each
+    account gets them once). The console runs this every few minutes."""
+    return RecommendedSweepOut(rules_added=await ensure_recommended_everywhere())
 
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}

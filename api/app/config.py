@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     # Customers only look: staff add servers and manage rules for them, and
     # customers may change nothing but their alert contacts.
     CUSTOMERS_READ_ONLY: bool = False
+    # Every account gets the recommended alert rules once, when first seen.
+    AUTO_RECOMMENDED_RULES: bool = True
 
     # ── Service-to-service (console backend -> /internal/*) ──────────────────
     INTERNAL_API_KEY: str = "change-me-pulsegrid-internal-key"

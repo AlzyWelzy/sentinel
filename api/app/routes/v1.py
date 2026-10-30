@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -89,7 +89,12 @@ class MeOut(BaseModel):
 
 
 @router.get("/me")
-async def me(t: Tenant) -> MeOut:
+async def me(t: Tenant, tasks: BackgroundTasks) -> MeOut:
+    from app.routes.alerts import ensure_recommended
+
+    # The dashboard opens with this: a new account gets the recommended
+    # rules (after the response, once the account is committed).
+    tasks.add_task(ensure_recommended, t.tenant_id)
     row = await t.db.get_one(TenantRow, t.tenant_id)
     return MeOut(
         tenant_id=row.id,

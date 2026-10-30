@@ -17,7 +17,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import any_, delete, func, literal, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import AppSession
+from app.config import settings
+from app.db import AppSession, ServiceSession
 from app.models import (
     AlertEscalationStep,
     AlertRule,
@@ -669,6 +670,46 @@ async def add_recommended_to(tenant_id: uuid.UUID) -> int:
         return len(await add_recommended(db, tenant_id))
 
 
+async def ensure_recommended(tenant_id: uuid.UUID) -> int:
+    """The recommended rules, once per account: later deletes stick. The
+    account is claimed first so two requests can't both add them."""
+    if not settings.AUTO_RECOMMENDED_RULES:
+        return 0
+    async with ServiceSession() as sdb, sdb.begin():
+        claimed = await sdb.scalar(
+            text(
+                "UPDATE tenants SET recommended_rules_at = now() "
+                "WHERE id = :t AND recommended_rules_at IS NULL RETURNING id"
+            ),
+            {"t": tenant_id},
+        )
+    if claimed is None:
+        return 0
+    try:
+        return await add_recommended_to(tenant_id)
+    except Exception:
+        async with ServiceSession() as sdb, sdb.begin():
+            await sdb.execute(
+                text("UPDATE tenants SET recommended_rules_at = NULL WHERE id = :t"),
+                {"t": tenant_id},
+            )
+        raise
+
+
+async def ensure_recommended_everywhere() -> int:
+    """ensure_recommended for every active account still without them."""
+    async with ServiceSession() as sdb:
+        ids = list(
+            await sdb.scalars(
+                text(
+                    "SELECT id FROM tenants "
+                    "WHERE recommended_rules_at IS NULL AND status = 'active'"
+                )
+            )
+        )
+    return sum([await ensure_recommended(tid) for tid in ids])
+
+
 @router.post("/alert-rules/recommended", status_code=status.HTTP_201_CREATED)
 async def add_recommended_rules(t: Tenant) -> list[RuleOut]:
     """Adds the recommended rules for every server (current and future),
@@ -1206,10 +1247,11 @@ async def test_rule(rule_id: uuid.UUID, t: Tenant) -> dict:
     if not linked and not rule.schedule_ids:
         for c in await t.db.scalars(
             select(NotificationChannel).where(
-                NotificationChannel.tenant_id == t.tenant_id, NotificationChannel.is_default
+                NotificationChannel.tenant_id == t.tenant_id,
+                or_(NotificationChannel.is_default, NotificationChannel.source == "team"),
             )
         ):
-            recipients.append((c, "default contact"))
+            recipients.append((c, "default contact" if c.is_default else "team member"))
     seen: set[uuid.UUID] = set()
     sent = []
     for c, why in recipients:

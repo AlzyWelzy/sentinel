@@ -246,9 +246,10 @@ func (s *store) ruleChannels(ctx context.Context, tx pgx.Tx, r rule) ([]channel,
 	if linked {
 		return nil, nil // channels chosen but none verified yet: send nothing
 	}
+	// No contacts chosen: the default one and the account's team members.
 	rows, err = tx.Query(ctx, `
 		SELECT id, type, target, config, min_severity, quiet_hours FROM notification_channels
-		 WHERE tenant_id = $1 AND is_default AND verified_at IS NOT NULL`, r.TenantID)
+		 WHERE tenant_id = $1 AND (is_default OR source = 'team') AND verified_at IS NOT NULL`, r.TenantID)
 	if err != nil {
 		return nil, err
 	}

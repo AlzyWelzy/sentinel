@@ -94,3 +94,41 @@ async def test_console_provisioned_key_adds_recommended_rules(client, alice: Use
     assert r.status_code == 201, r.text
     rules = (await alice.request("GET", "/v1/alert-rules")).json()
     assert "CPU above 90%" in [x["name"] for x in rules]
+
+
+def _internal() -> dict:
+    return {"X-Internal-Api-Key": settings.INTERNAL_API_KEY}
+
+
+async def test_new_accounts_get_recommended_rules_once(client, alice: User):
+    await alice.request("GET", "/v1/me")  # first visit; rules come after it
+    rules = (await alice.request("GET", "/v1/alert-rules")).json()
+    assert "CPU above 90%" in [x["name"] for x in rules]
+    cpu = next(x for x in rules if x["name"] == "CPU above 90%")
+    assert (await alice.request("DELETE", f"/v1/alert-rules/{cpu['id']}")).status_code == 204
+    await alice.request("GET", "/v1/me")
+    await client.post("/internal/v1/alert-rules/recommended", headers=_internal())
+    names = [x["name"] for x in (await alice.request("GET", "/v1/alert-rules")).json()]
+    assert "CPU above 90%" not in names  # a delete sticks
+
+
+async def test_team_members_become_contacts_and_get_default_alerts(client, alice: User):
+    body = {
+        "email": alice.email,
+        "members": [{"email": "Ravi@Example.com", "name": "Ravi"}, {"email": "sita@example.com"}],
+    }
+    r = await client.put(
+        f"/internal/v1/tenants/{alice.uid}/team-contacts", json=body, headers=_internal()
+    )
+    assert r.status_code == 200 and r.json()["added"] == 2
+    team = [c for c in (await alice.request("GET", "/v1/channels")).json() if c["source"] == "team"]
+    assert sorted(c["target"] for c in team) == ["ravi@example.com", "sita@example.com"]
+    assert all(c["verified"] for c in team)
+    # Sita leaves the team: her contact goes; Ravi's stays.
+    body["members"] = body["members"][:1]
+    r = await client.put(
+        f"/internal/v1/tenants/{alice.uid}/team-contacts", json=body, headers=_internal()
+    )
+    assert r.json()["removed"] == 1
+    team = [c for c in (await alice.request("GET", "/v1/channels")).json() if c["source"] == "team"]
+    assert [c["target"] for c in team] == ["ravi@example.com"]
