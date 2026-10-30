@@ -21,7 +21,7 @@ from app.models import Tenant as TenantRow
 from app.services import heartbeats, metrics
 from app.services.maintenance import in_maintenance
 from app.services.secrets import new_agent_key
-from app.tenancy import Tenant, TenantContext, actor_of
+from app.tenancy import Tenant, TenantContext, actor_of, is_staff
 from app.validation import normalize_tags
 
 router = APIRouter(prefix="/v1")
@@ -83,6 +83,9 @@ class MeOut(BaseModel):
     status: str
     created_at: datetime
     role: str = Field(default="owner", description="owner, admin, operator, viewer or staff")
+    contacts_only: bool = Field(
+        default=False, description="may change only alert contacts (CUSTOMERS_READ_ONLY)"
+    )
 
 
 @router.get("/me")
@@ -95,6 +98,9 @@ async def me(t: Tenant) -> MeOut:
         status=row.status,
         created_at=row.created_at,
         role=t.role,
+        contacts_only=settings.CUSTOMERS_READ_ONLY
+        and t.role != "staff"
+        and not is_staff(t.principal),
     )
 
 

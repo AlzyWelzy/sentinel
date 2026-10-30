@@ -14,8 +14,10 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import any_, delete, func, literal, or_, select, update
+from sqlalchemy import any_, delete, func, literal, or_, select, text, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import AppSession
 from app.models import (
     AlertEscalationStep,
     AlertRule,
@@ -639,24 +641,39 @@ RECOMMENDED: list[dict] = [
 ]
 
 
-@router.post("/alert-rules/recommended", status_code=status.HTTP_201_CREATED)
-async def add_recommended_rules(t: Tenant) -> list[RuleOut]:
-    """Adds the recommended rules for every server (current and future),
-    skipping any whose name the account already uses. Returns the new ones."""
-    existing = set(
-        await t.db.scalars(select(AlertRule.name).where(AlertRule.tenant_id == t.tenant_id))
-    )
+async def add_recommended(db: AsyncSession, tenant_id: uuid.UUID) -> list[AlertRule]:
+    """Adds the recommended rules the account lacks (by name) to a session
+    already scoped to it. Returns the new, flushed rules."""
+    existing = set(await db.scalars(select(AlertRule.name).where(AlertRule.tenant_id == tenant_id)))
     created = []
     for spec in RECOMMENDED:
         if spec["name"] in existing:
             continue
         body = RuleIn(**spec)
         rule = AlertRule(
-            tenant_id=t.tenant_id, **body.model_dump(exclude={"channel_ids", "escalations"})
+            tenant_id=tenant_id, **body.model_dump(exclude={"channel_ids", "escalations"})
         )
-        t.db.add(rule)
+        db.add(rule)
         created.append(rule)
-    await t.db.flush()
+    await db.flush()
+    return created
+
+
+async def add_recommended_to(tenant_id: uuid.UUID) -> int:
+    """add_recommended in a session of its own, for callers working across
+    accounts (rules sit behind row-level security). Returns how many were added."""
+    async with AppSession() as db, db.begin():
+        await db.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant_id)}
+        )
+        return len(await add_recommended(db, tenant_id))
+
+
+@router.post("/alert-rules/recommended", status_code=status.HTTP_201_CREATED)
+async def add_recommended_rules(t: Tenant) -> list[RuleOut]:
+    """Adds the recommended rules for every server (current and future),
+    skipping any whose name the account already uses. Returns the new ones."""
+    created = await add_recommended(t.db, t.tenant_id)
     out = []
     for rule in created:
         await t.db.refresh(rule)

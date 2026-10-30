@@ -30,7 +30,13 @@ from app.models import AgentKey, Check, Host, Incident, IncidentEvent, Tenant
 from app.routes import audit as audit_routes
 from app.routes import reports as report_routes
 from app.routes import v1
-from app.routes.alerts import IncidentDetail, IncidentEventOut, IncidentOut, _incident_out
+from app.routes.alerts import (
+    IncidentDetail,
+    IncidentEventOut,
+    IncidentOut,
+    _incident_out,
+    add_recommended_to,
+)
 from app.routes.checks import CheckStatus, _status
 from app.routes.fleetview import (
     DiskOut,
@@ -229,6 +235,9 @@ async def create_tenant_agent_key(
     db.add(key)
     await db.flush()
     await db.refresh(key)
+    # Customers may not manage rules themselves, so their first server
+    # comes with the recommended ones.
+    await add_recommended_to(tenant_id)
     return AgentKeyCreated(
         **_agent_key_out(key).model_dump(),
         key=plaintext,
@@ -236,6 +245,25 @@ async def create_tenant_agent_key(
         install_command_windows=install_command_windows(plaintext, body.tags),
         cloud_init=cloud_init(plaintext, body.tags),
         docker_command=docker_command(plaintext, body.tags),
+    )
+
+
+class RecommendedResult(BaseModel):
+    accounts: int
+    accounts_changed: int
+    rules_added: int
+
+
+@router.post("/alert-rules/recommended")
+async def add_recommended_everywhere(db: ServiceDB) -> RecommendedResult:
+    """Adds the recommended alert rules to every active account, skipping
+    rules an account already has by name. Safe to run again."""
+    tenant_ids = list(await db.scalars(select(Tenant.id).where(Tenant.status == "active")))
+    added = [await add_recommended_to(tid) for tid in tenant_ids]
+    return RecommendedResult(
+        accounts=len(tenant_ids),
+        accounts_changed=sum(1 for n in added if n),
+        rules_added=sum(added),
     )
 
 

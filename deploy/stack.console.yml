@@ -67,6 +67,7 @@ services:
       PUBLIC_DASHBOARD_URL: https://${CONSOLE_HOST}/monitoring?tab=servers
       # Contact types customers can add (others already saved keep working).
       ENABLED_CHANNEL_TYPES: ${ENABLED_CHANNEL_TYPES:-email,push}
+      CUSTOMERS_READ_ONLY: ${CUSTOMERS_READ_ONLY:-true}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       # Console uids whose agents staff may make public probes.
       PROBE_ACCOUNT_IDS: ${PROBE_ACCOUNT_IDS:-}

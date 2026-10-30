@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import any_, delete, func, literal, select, text, true
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -30,7 +30,7 @@ from app.models import (
     OutboundMessage,
     Tenant,
 )
-from app.routes.alerts import IncidentOut, _incident_out
+from app.routes.alerts import IncidentOut, _incident_out, add_recommended_to
 from app.routes.v1 import cloud_init, install_command, install_command_windows
 from app.services import heartbeats
 from app.services.maintenance import in_maintenance
@@ -167,7 +167,7 @@ class ProvisionOut(BaseModel):
 
 @router.post("/tenants/{external_account_id}/agent-keys", status_code=status.HTTP_201_CREATED)
 async def provision_agent_key(
-    external_account_id: str, body: ProvisionIn, db: ServiceDB
+    external_account_id: str, body: ProvisionIn, db: ServiceDB, tasks: BackgroundTasks
 ) -> ProvisionOut:
     """An install key for a console user, made by the console itself (e.g. to
     install the agent on a VM it launches for them). Creates the tenant, as a
@@ -191,6 +191,10 @@ async def provision_agent_key(
             tenant_id=row.out_tenant_id, name=body.key_name, key_prefix=prefix, key_hash=key_hash
         )
     )
+    # Customers may not manage rules themselves, so their servers come with
+    # the recommended ones. After the response: the account may be new and
+    # isn't committed until then.
+    tasks.add_task(add_recommended_to, row.out_tenant_id)
     return ProvisionOut(
         key=plaintext,
         install_command=install_command(plaintext, body.tags),

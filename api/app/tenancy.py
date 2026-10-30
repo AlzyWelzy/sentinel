@@ -57,6 +57,8 @@ OPERATOR_WRITES = frozenset(
     }
 )
 OWNER_ONLY_PREFIXES = ("/v1/members", "/v1/api-tokens")
+# With CUSTOMERS_READ_ONLY, the only things a customer may change.
+CUSTOMER_WRITE_PREFIXES = ("/v1/channels", "/v1/saved-views")
 
 
 @dataclass(frozen=True)
@@ -183,12 +185,23 @@ async def bind_member_tenant(
 
 
 def is_staff(principal: Principal) -> bool:
-    """Console staff (admin, super_admin, ...) signed in as themselves."""
-    return (
-        principal.role in settings.STAFF_ROLES
-        and not principal.impersonated
-        and principal.api_token_id is None
-    )
+    """Console staff (admin, super_admin, ...), including a read-only
+    view-as-staff session: tenant_context refuses its writes first."""
+    return principal.role in settings.STAFF_ROLES and principal.api_token_id is None
+
+
+def check_customer_write(request: Request) -> None:
+    """With CUSTOMERS_READ_ONLY, customers (owners, members, API tokens)
+    may only manage their alert contacts and saved views."""
+    if not settings.CUSTOMERS_READ_ONLY or request.method.upper() in READ_ONLY_METHODS:
+        return
+    route = request.scope.get("route")
+    path = getattr(route, "path", request.url.path)
+    if not path.startswith(CUSTOMER_WRITE_PREFIXES):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only alert contacts can be changed here. Contact support for anything else.",
+        )
 
 
 async def bind_staff_tenant(db: AsyncSession, shared: str) -> tuple[uuid.UUID, str]:
@@ -249,6 +262,8 @@ async def tenant_context(
             check_member_write(request, role)
         else:
             tenant_id, tenant_status = await bind_tenant(db, principal)
+        if role != "staff" and not is_staff(principal):
+            check_customer_write(request)
         if tenant_status != "active":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Monitoring is suspended"

@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     ADMIN_JWT_TOKEN_ISSUER: str = ""
     ADMIN_JWT_TOKEN_AUDIENCE: str = ""
     STAFF_ROLES: Annotated[list[str], NoDecode] = ["admin", "super_admin"]
+    # Customers only look: staff add servers and manage rules for them, and
+    # customers may change nothing but their alert contacts.
+    CUSTOMERS_READ_ONLY: bool = False
 
     # ── Service-to-service (console backend -> /internal/*) ──────────────────
     INTERNAL_API_KEY: str = "change-me-pulsegrid-internal-key"
