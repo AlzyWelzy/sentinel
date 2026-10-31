@@ -27,16 +27,18 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 KEY=""
 TAGS=""
+LOGS=1
 while [ $# -gt 0 ]; do
     case "$1" in
         --key) [ $# -ge 2 ] || die "--key needs a value"; KEY="$2"; shift 2 ;;
         --key=*) KEY="${1#*=}"; shift ;;
         --tags) [ $# -ge 2 ] || die "--tags needs a value"; TAGS="$2"; shift 2 ;;
         --tags=*) TAGS="${1#*=}"; shift ;;
+        --no-logs) LOGS=0; shift ;;
         *) die "unknown option: $1" ;;
     esac
 done
-[ -n "$KEY" ] || die "usage: install.sh --key <install key> [--tags a,b]"
+[ -n "$KEY" ] || die "usage: install.sh --key <install key> [--tags a,b] [--no-logs]"
 [ "$(id -u)" -eq 0 ] || die "run as root (sudo or doas)"
 
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -149,6 +151,22 @@ apm.conf                receive OpenTelemetry traces from apps on this server:
   (and OTEL_SERVICE_NAME=<name>); traces appear under APM in the dashboard.
 PULSEGRID_README
     chmod 0644 "$CONFIG_DIR/README"
+    # System logs ship by default; the owner's own logs.conf is never touched,
+    # and --no-logs or commenting its lines out turns shipping off.
+    [ "$LOGS" = 1 ] && [ ! -e "$CONFIG_DIR/logs.conf" ] || return 0
+    {
+        echo "# What the Pulsegrid agent ships to Logs. Edit freely; comment every line out to stop"
+        echo "# file = /var/log/nginx/*.log"
+        if have journalctl && [ -d /run/systemd/system ]; then
+            echo "journal = true"
+        else
+            for f in /var/log/syslog /var/log/messages /var/log/auth.log /var/log/secure; do
+                [ -f "$f" ] && echo "file = $f"
+            done
+        fi
+    } >"$CONFIG_DIR/logs.conf"
+    chown root "$CONFIG_DIR/logs.conf"
+    chmod 0644 "$CONFIG_DIR/logs.conf"
 }
 
 install_systemd() {
