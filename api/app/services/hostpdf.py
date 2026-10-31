@@ -116,7 +116,6 @@ STATS = [
     ("network", "Network"),
     ("disk_io", "Disk throughput"),
     ("disk_latency", "Disk latency"),
-    ("tcp_connections", "TCP connections"),
     ("processes", "Processes"),
 ]
 
@@ -789,8 +788,8 @@ def _host_section(d: HostData, width: float, tz: ZoneInfo, start: datetime, end:
         _tiles(
             [
                 (
-                    "CPU avg / p95",
-                    f"{statistics.fmean(cpu):.0f}% / {p95(cpu):.0f}%" if cpu else "—",
+                    "CPU avg / peak",
+                    f"{statistics.fmean(cpu):.0f}% / {max(cpu):.0f}%" if cpu else "—",
                     _pct_color(p95(cpu) if cpu else None, 70, 85),
                 ),
                 (
