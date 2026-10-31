@@ -96,6 +96,13 @@ func cmdUpdate(args []string) error {
 		return err
 	}
 	fmt.Printf("updated %s -> %s\n", version, cfg.LatestVersion)
+	// Let the new binary set up whatever it knows about now, rather than an
+	// hour from now: as root, and only once per autoconfig revision.
+	if os.Geteuid() == 0 {
+		cmd := exec.CommandContext(ctx, self, "autoconfig", "--if-due")
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		cmd.Run()
+	}
 
 	if *restart != "" {
 		return restartService(*restart)

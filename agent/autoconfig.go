@@ -39,7 +39,12 @@ func cmdAutoconfig(args []string) error {
 	svcUser := fs.String("user", defaultServiceUser(), "the agent's user")
 	noLogs := fs.Bool("no-logs", false, "don't ship any logs")
 	off := fs.Bool("off", false, "never autoconfigure this server (updates included)")
+	ifDue := fs.Bool("if-due", false, "only if this revision hasn't run and the server isn't opted out (used by update)")
 	fs.Parse(args)
+	if *ifDue {
+		maybeAutoconfigure()
+		return nil
+	}
 	if os.Geteuid() != 0 {
 		return errors.New("run as root: sudo pulsegrid-agent autoconfig")
 	}
