@@ -194,5 +194,5 @@ async def servers_pdf(
         raise HTTPException(status_code=404, detail="Host not found")
     a, b = pdf_period(hosts, start, end, lifetime)
     account = await t.db.scalar(select(TenantRow.email).where(TenantRow.id == t.tenant_id))
-    datas = await hostpdf.collect(t.db, t.tenant_id, hosts, a, b)
+    datas = await hostpdf.collect(t.db, t.tenant_id, hosts, a, b, tz)
     return pdf_response(hostpdf.render(datas, a, b, account=account or "", tz_name=tz), hosts, a)

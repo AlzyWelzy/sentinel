@@ -807,7 +807,7 @@ async def servers_pdf(
     datas = []
     for tenant_id in tenants:
         mine = [h for h in hosts if h.tenant_id == tenant_id]
-        datas += await hostpdf.collect(db, tenant_id, mine, a, b)
+        datas += await hostpdf.collect(db, tenant_id, mine, a, b, tz)
     datas.sort(key=lambda d: d.host.hostname)
     account = (
         await db.scalar(select(Tenant.email).where(Tenant.id == next(iter(tenants))))
