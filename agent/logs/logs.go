@@ -18,10 +18,12 @@ package logs
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -37,7 +39,7 @@ const (
 	// ConfigFile is the file name in the agent's config directory.
 	ConfigFile = "logs.conf"
 	stateFile  = "logs-state.json"
-	maxFiles   = 50
+	maxFiles   = 200
 	maxLine    = 4096
 	// Per file per round, so one busy file can't starve the rest.
 	maxReadBytes = 4 << 20
@@ -46,6 +48,7 @@ const (
 // Config is what logs.conf asks for.
 type Config struct {
 	Files   []string // glob patterns
+	Dirs    []string // every readable text log under these, recursively
 	Journal bool
 }
 
@@ -84,6 +87,11 @@ func LoadConfig(dir string) (Config, bool, error) {
 				return Config{}, false, fmt.Errorf("%s line %d: bad pattern %q", ConfigFile, n, v)
 			}
 			c.Files = append(c.Files, v)
+		case "dir":
+			if !filepath.IsAbs(v) {
+				return Config{}, false, fmt.Errorf("%s line %d: %q isn't an absolute path", ConfigFile, n, v)
+			}
+			c.Dirs = append(c.Dirs, v)
 		case "journal":
 			c.Journal = v == "true" || v == "yes" || v == "1"
 		default:
@@ -112,6 +120,7 @@ type Shipper struct {
 	st       savedState
 	pending  savedState
 	now      func() time.Time
+	round    int
 }
 
 // NewShipper loads the saved offsets from stateDir.
@@ -132,11 +141,21 @@ func (s *Shipper) Collect(c Config, max int) ([]proto.LogEntry, []string) {
 	s.pending = savedState{Files: map[string]fileState{}, JournalCursor: s.st.JournalCursor}
 	var out []proto.LogEntry
 	var problems []string
-	paths, globErrs := expand(c.Files)
+	paths, globErrs := expand(c.Files, walkDirs(c.Dirs, c.Journal))
 	problems = append(problems, globErrs...)
+	// Start somewhere new each round so busy files early in the list can't
+	// starve the rest; files not reached keep their place for next time.
+	if len(paths) > 0 {
+		k := s.round % len(paths)
+		paths = append(paths[k:], paths[:k]...)
+	}
+	s.round++
 	for _, path := range paths {
 		if len(out) >= max {
-			break
+			if st, ok := s.st.Files[path]; ok {
+				s.pending.Files[path] = st
+			}
+			continue
 		}
 		entries, st, err := s.readFile(path, s.st.Files[path], max-len(out))
 		if err != nil {
@@ -178,9 +197,13 @@ func (s *Shipper) Commit() {
 	}
 }
 
-func expand(patterns []string) ([]string, []string) {
+func expand(patterns, found []string) ([]string, []string) {
 	seen := map[string]bool{}
 	var out, problems []string
+	for _, m := range found {
+		seen[m] = true
+		out = append(out, m)
+	}
 	for _, p := range patterns {
 		matches, _ := filepath.Glob(p)
 		if len(matches) == 0 {
@@ -199,6 +222,60 @@ func expand(patterns []string) ([]string, []string) {
 		out = out[:maxFiles]
 	}
 	return out, problems
+}
+
+// Copies of the journal that rsyslog writes; shipping them too would double
+// every line.
+var journalCopies = map[string]bool{
+	"syslog": true, "messages": true, "auth.log": true, "secure": true, "kern.log": true,
+	"daemon.log": true, "user.log": true, "debug": true, "mail.log": true, "cron.log": true,
+}
+
+// Binary files and the journal's own store, which aren't lines of text.
+var notText = map[string]bool{"wtmp": true, "btmp": true, "lastlog": true, "faillog": true, "journal": true, "private": true}
+
+// rotated matches log.1, log.2.gz, log-20261031, log.old and other copies
+// logrotate leaves behind: their lines were shipped while they were live.
+var rotated = regexp.MustCompile(`(\.\d+|[-.]\d{8}|\.old|\.gz|\.xz|\.bz2|\.zst|\.zip)(\.gz)?$`)
+
+// walkDirs lists the readable text logs under dirs.
+func walkDirs(dirs []string, journal bool) []string {
+	var out []string
+	for _, d := range dirs {
+		filepath.WalkDir(d, func(p string, e fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			name := e.Name()
+			if e.IsDir() {
+				if p != d && notText[name] {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !e.Type().IsRegular() || notText[name] || rotated.MatchString(name) ||
+				(journal && filepath.Dir(p) == filepath.Clean(d) && journalCopies[name]) {
+				return nil
+			}
+			if isText(p) {
+				out = append(out, p)
+			}
+			return nil
+		})
+	}
+	return out
+}
+
+// isText: readable by us, and no NUL byte in its first 512 bytes.
+func isText(p string) bool {
+	f, err := os.Open(p)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	b := make([]byte, 512)
+	n, _ := f.Read(b)
+	return !bytes.Contains(b[:n], []byte{0})
 }
 
 func (s *Shipper) readFile(path string, prev fileState, max int) ([]proto.LogEntry, fileState, error) {

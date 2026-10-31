@@ -145,7 +145,7 @@ actions.conf            actions the dashboard may run on this server. Manage wit
     sudo pulsegrid-agent allow-action --remove restart-nginx
 
 logs.conf               log files to ship for log search (nothing is shipped without it):
-    file = /var/log/nginx/*.log
+    dir = /var/log      (every text log under it; rotated copies and binary files skipped)
     file = /var/log/myapp/app.log
     journal = true      (systemd journal; the agent's user is in systemd-journal)
   New lines only, from when a file is first seen. The agent's user must be able

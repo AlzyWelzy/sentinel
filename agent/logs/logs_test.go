@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/example-org/pulsegrid/agent/plugins"
@@ -114,5 +116,35 @@ func TestDetectLevel(t *testing.T) {
 	}
 	if journalLevel("3") != "error" || journalLevel("6") != "info" {
 		t.Fatal("journal priorities")
+	}
+}
+
+func TestWalkDirsSkipsCopiesBinaryAndJournalDuplicates(t *testing.T) {
+	d := t.TempDir()
+	w := func(p, body string) {
+		os.MkdirAll(filepath.Dir(filepath.Join(d, p)), 0o755)
+		os.WriteFile(filepath.Join(d, p), []byte(body), 0o644)
+	}
+	w("nginx/access.log", "GET /\n")
+	w("nginx/access.log.1", "old\n")
+	w("nginx/error.log.2.gz", "x")
+	w("dpkg.log", "install\n")
+	w("syslog", "dup\n")
+	w("app/syslog", "nested is kept\n")
+	w("wtmp", "x")
+	w("bin.dat", "a\x00b")
+	w("apt/history.log-20261031", "old\n")
+	w("journal/abc/system.journal", "x")
+	got := walkDirs([]string{d}, true)
+	for i := range got {
+		got[i], _ = filepath.Rel(d, got[i])
+	}
+	sort.Strings(got)
+	want := []string{"app/syslog", "dpkg.log", "nginx/access.log"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	if got := walkDirs([]string{d}, false); len(got) != 4 {
+		t.Fatalf("without the journal syslog should ship too: %v", got)
 	}
 }

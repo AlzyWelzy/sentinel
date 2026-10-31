@@ -24,9 +24,9 @@ import (
 // autoconfigRev is bumped when autoconfig learns something new, so servers
 // that already ran an older revision run it again on their next update.
 const (
-	autoconfigRev    = "1"
+	autoconfigRev    = "2"
 	autoconfigMarker = ".autoconfig" // in the config dir: the revision, or "off"
-	autoconfigNote   = "# Written by pulsegrid-agent autoconfig. Edit freely; it is never overwritten."
+	autoconfigNote   = "# Written by pulsegrid-agent autoconfig. Delete this line before editing, or updates may refresh the file."
 )
 
 // cmdAutoconfig: pulsegrid-agent autoconfig [--no-logs] [--off]. Run as root.
@@ -85,7 +85,8 @@ func autoconfigure(dir, svcUser string, noLogs bool) bool {
 		}
 	}
 	if !noLogs {
-		note(writeNew(filepath.Join(dir, "logs.conf"), logsConf(), 0o644, ""), "log shipping on")
+		lc := filepath.Join(dir, "logs.conf")
+		note(writeNew(lc, logsConf(), 0o644, "") || refreshLogsConf(lc), "log shipping on: journal and /var/log")
 	}
 	if portFree("127.0.0.1:4318") {
 		note(writeNew(filepath.Join(dir, "apm.conf"), autoconfigNote+"\nlisten = 127.0.0.1:4318\n", 0o644, ""), "APM receiver on 127.0.0.1:4318")
@@ -145,28 +146,33 @@ func autoconfigure(dir, svcUser string, noLogs bool) bool {
 	return changed
 }
 
-// logsConf ships the system log plus the logs of common services found here.
+// logsConf ships the journal (where there is one) and every text log under
+// /var/log; the agent skips rotated copies, binary files and, with the
+// journal on, rsyslog's copies of it.
 func logsConf() string {
 	var b strings.Builder
 	b.WriteString(autoconfigNote + "\n# Comment every line out to stop shipping.\n")
 	if _, ok := findTool("journalctl"); ok && exists("/run/systemd/system") {
 		b.WriteString("journal = true\n")
-	} else {
-		for _, f := range []string{"/var/log/syslog", "/var/log/messages", "/var/log/auth.log", "/var/log/secure"} {
-			if exists(f) {
-				b.WriteString("file = " + f + "\n")
-			}
-		}
 	}
-	for _, g := range []string{
-		"/var/log/nginx/*.log", "/var/log/apache2/*.log", "/var/log/httpd/*_log",
-		"/var/log/mysql/*.log", "/var/log/postgresql/*.log", "/var/log/redis/*.log",
-	} {
-		if m, _ := filepath.Glob(g); len(m) > 0 {
-			b.WriteString("file = " + g + "\n")
-		}
-	}
+	b.WriteString("dir = /var/log\n")
 	return b.String()
+}
+
+// refreshLogsConf rewrites a logs.conf that autoconfig wrote and nobody
+// edited (its first line is still our note), so new revisions reach it.
+func refreshLogsConf(path string) bool {
+	b, err := os.ReadFile(path)
+	ours := strings.HasPrefix(string(b), autoconfigNote+"\n") ||
+		strings.HasPrefix(string(b), "# Written by pulsegrid-agent autoconfig. Edit freely; it is never overwritten.\n") // rev 1
+	if err != nil || !ours {
+		return false
+	}
+	want := logsConf()
+	if string(b) == want {
+		return false
+	}
+	return os.WriteFile(path, []byte(want), 0o644) == nil
 }
 
 // nginxStatus finds a stub_status page, adding a local-only one if nginx
