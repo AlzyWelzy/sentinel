@@ -72,6 +72,8 @@ func main() {
 		err = cmdAllowAction(os.Args[2:])
 	case "enable-hardware":
 		err = cmdEnableHardware(os.Args[2:])
+	case "autoconfig":
+		err = cmdAutoconfig(os.Args[2:])
 	case "plugins":
 		err = cmdPlugins(os.Args[2:])
 	case "version":
@@ -91,6 +93,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "       pulsegrid-agent update [--state-dir DIR] [--restart SERVICE]")
 	fmt.Fprintln(os.Stderr, "       pulsegrid-agent allow-action NAME [--remove] -- /absolute/command args")
 	fmt.Fprintln(os.Stderr, "       pulsegrid-agent plugins [--config-dir DIR]   (test the plugin files)")
+	fmt.Fprintln(os.Stderr, "       pulsegrid-agent autoconfig [--no-logs] [--off]   (detect services and write their config; as root)")
 	fmt.Fprintln(os.Stderr, "       pulsegrid-agent enable-hardware [--remove]   (disk SMART and IPMI sensors; as root)")
 	fmt.Fprintln(os.Stderr, "       pulsegrid-agent version")
 	os.Exit(2)

@@ -48,6 +48,10 @@ func cmdUpdate(args []string) error {
 	}
 	if cfg.LatestVersion == version {
 		fmt.Printf("already on %s\n", version)
+		// Servers installed before autoconfig get it here, as root, once.
+		if maybeAutoconfigure() && *restart != "" {
+			return restartService(*restart)
+		}
 		return nil
 	}
 
