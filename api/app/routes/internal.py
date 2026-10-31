@@ -219,6 +219,46 @@ class TeamContactsIn(BaseModel):
     members: list[TeamMemberIn] = Field(default_factory=list, max_length=500)
 
 
+class TicketContactsOut(BaseModel):
+    to: str | None = Field(description="the default email contact: the ticket's main address")
+    cc: list[str] = Field(description="the account's other email contacts")
+
+
+@router.get("/tenants/{external_account_id}/ticket-contacts")
+async def ticket_contacts(external_account_id: str, db: ServiceDB) -> TicketContactsOut:
+    """Who a monitoring ticket for this account goes to: its default email
+    contact, with the other email contacts copied. Unverified addresses are
+    left out (only console-synced and confirmed ones receive mail)."""
+    tenant_id = await db.scalar(
+        select(Tenant.id).where(
+            Tenant.source == settings.TENANT_SOURCE,
+            Tenant.external_account_id == external_account_id,
+        )
+    )
+    if tenant_id is None:
+        return TicketContactsOut(to=None, cc=[])
+    rows = list(
+        await db.scalars(
+            select(NotificationChannel)
+            .where(
+                NotificationChannel.tenant_id == tenant_id,
+                NotificationChannel.type == "email",
+                (NotificationChannel.verified_at.is_not(None))
+                | (NotificationChannel.source != "user"),
+            )
+            .order_by(NotificationChannel.is_default.desc(), NotificationChannel.created_at)
+        )
+    )
+    emails: list[str] = []
+    for c in rows:
+        e = c.target.strip().lower()
+        if e and e not in emails:
+            emails.append(e)
+    default = next((c.target.strip().lower() for c in rows if c.is_default), None)
+    to = default or (emails[0] if emails else None)
+    return TicketContactsOut(to=to, cc=[e for e in emails if e != to])
+
+
 class TeamContactsOut(BaseModel):
     added: int
     removed: int
