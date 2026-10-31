@@ -139,7 +139,8 @@ func TestWalkDirsSkipsCopiesBinaryAndJournalDuplicates(t *testing.T) {
 	w("journal/abc/system.journal", "x")
 	got := walkDirs([]string{d}, true)
 	for i := range got {
-		got[i], _ = filepath.Rel(d, got[i])
+		r, _ := filepath.Rel(d, got[i])
+		got[i] = filepath.ToSlash(r)
 	}
 	sort.Strings(got)
 	want := []string{"app/syslog", "dpkg.log", "nginx/access.log"}
