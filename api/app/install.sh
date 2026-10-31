@@ -148,6 +148,7 @@ logs.conf               log files to ship for log search (nothing is shipped wit
     dir = /var/log      (every text log under it; rotated copies and binary files skipped)
     file = /var/log/myapp/app.log
     journal = true      (systemd journal; the agent's user is in systemd-journal)
+    docker = true       (what running containers print; written when Docker is installed)
   New lines only, from when a file is first seen. The agent's user must be able
   to read the files (it's in the adm group, which covers most of /var/log).
 

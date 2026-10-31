@@ -24,7 +24,7 @@ import (
 // autoconfigRev is bumped when autoconfig learns something new, so servers
 // that already ran an older revision run it again on their next update.
 const (
-	autoconfigRev    = "2"
+	autoconfigRev    = "3"
 	autoconfigMarker = ".autoconfig" // in the config dir: the revision, or "off"
 	autoconfigNote   = "# Written by pulsegrid-agent autoconfig. Delete this line before editing, or updates may refresh the file."
 )
@@ -112,13 +112,17 @@ func autoconfigure(dir, svcUser string, noLogs bool) bool {
 		note(true, typ+" monitoring on")
 	}
 
-	if dial("127.0.0.1:6379") {
-		try("redis", "address = 127.0.0.1:6379\n", 0o644, "", true)
+	if addr, pw := redisSettings(); dial(addr) {
+		if pw == "" {
+			try("redis", "address = "+addr+"\n", 0o644, "", true)
+		} else {
+			try("redis", "address = "+addr+"\npassword = "+pw+"\n", 0o640, svcUser, true)
+		}
 	}
 	if url := nginxStatus(); url != "" {
 		try("nginx", "url = "+url+"\n", 0o644, "", true)
 	}
-	if apacheInstalled() && dial("127.0.0.1:80") {
+	if apacheInstalled() && dial("127.0.0.1:80") && apacheStatus() {
 		try("apache", "url = http://127.0.0.1/server-status?auto\n", 0o644, "", true)
 	}
 	if sock := firstExisting("/var/run/docker.sock", "/run/docker.sock"); sock != "" && !have["docker"] {
@@ -137,6 +141,9 @@ func autoconfigure(dir, svcUser string, noLogs bool) bool {
 		}
 	}
 	if !have["smart"] && !have["ipmi"] {
+		if physical() {
+			installHardwareTools()
+		}
 		_, s := findTool("smartctl")
 		_, i := findTool("ipmitool")
 		if (s || i) && cmdEnableHardware([]string{"--config-dir", dir, "--user", svcUser}) == nil {
@@ -156,6 +163,9 @@ func logsConf() string {
 		b.WriteString("journal = true\n")
 	}
 	b.WriteString("dir = /var/log\n")
+	if firstExisting("/var/run/docker.sock", "/run/docker.sock") != "" {
+		b.WriteString("docker = true\n")
+	}
 	return b.String()
 }
 
@@ -258,10 +268,25 @@ func setupMySQL(svcUser string) string {
 ALTER USER 'pulsegrid'@'localhost' IDENTIFIED BY '%[1]s';
 GRANT PROCESS, REPLICATION CLIENT ON *.* TO 'pulsegrid'@'localhost';
 `, pw)
-	cmd := exec.Command(client, "-u", "root", "--protocol=socket", "-S", sock)
-	cmd.Stdin = strings.NewReader(sql)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		fmt.Printf("autoconfig: MySQL found but root can't log in over the socket: %s\n", strings.TrimSpace(string(out)))
+	// root over the socket, else Debian's maintenance login.
+	logins := [][]string{{"-u", "root", "--protocol=socket", "-S", sock}}
+	if exists("/etc/mysql/debian.cnf") {
+		logins = append(logins, []string{"--defaults-file=/etc/mysql/debian.cnf"})
+	}
+	var last []byte
+	ok = false
+	for _, args := range logins {
+		cmd := exec.Command(client, args...)
+		cmd.Stdin = strings.NewReader(sql)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			ok = true
+			break
+		}
+		last = out
+	}
+	if !ok {
+		fmt.Printf("autoconfig: MySQL found but neither root nor debian.cnf could log in: %s\n", strings.TrimSpace(string(last)))
 		return ""
 	}
 	return fmt.Sprintf("pulsegrid:%s@unix(%s)/", pw, sock)
@@ -337,6 +362,154 @@ func addToGroup(u, g string) {
 	} else if p, ok := findTool("pw"); ok {
 		exec.Command(p, "groupmod", g, "-m", u).Run()
 	}
+}
+
+// redisSettings reads the port and requirepass from redis.conf, if any.
+func redisSettings() (addr, password string) {
+	port := "6379"
+	for _, p := range []string{"/etc/redis/redis.conf", "/etc/redis.conf", "/etc/redis/6379.conf", "/usr/local/etc/redis.conf"} {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			f := strings.Fields(line)
+			if len(f) < 2 || strings.HasPrefix(f[0], "#") {
+				continue
+			}
+			switch f[0] {
+			case "port":
+				if f[1] != "0" {
+					port = f[1]
+				}
+			case "requirepass":
+				password = strings.Trim(f[1], `"'`)
+			}
+		}
+		break
+	}
+	return "127.0.0.1:" + port, password
+}
+
+// apacheStatus makes sure Apache serves /server-status to localhost only,
+// turning mod_status on if needed. A config Apache rejects is undone.
+func apacheStatus() bool {
+	const url = "http://127.0.0.1/server-status?auto"
+	if probePluginSettings(map[string]string{"type": "apache", "url": url}) == nil {
+		return true
+	}
+	ctl, ok := findTool("apachectl")
+	if !ok {
+		if ctl, ok = findTool("apache2ctl"); !ok {
+			return false
+		}
+	}
+	var undo func()
+	switch {
+	case exists("/etc/apache2/mods-available/status.load"):
+		// Debian's status.conf already limits it to local requests.
+		if exists("/etc/apache2/mods-enabled/status.load") {
+			return false
+		}
+		a2en, ok := findTool("a2enmod")
+		if !ok || exec.Command(a2en, "-q", "status").Run() != nil {
+			return false
+		}
+		undo = func() {
+			if a2dis, ok := findTool("a2dismod"); ok {
+				exec.Command(a2dis, "-q", "status").Run()
+			}
+		}
+	case exists("/etc/httpd/conf.d"):
+		conf := "/etc/httpd/conf.d/pulsegrid-status.conf"
+		if exists(conf) {
+			return false
+		}
+		body := autoconfigNote + "\n# Local-only status page for the Pulsegrid agent.\n<Location \"/server-status\">\n    SetHandler server-status\n    Require local\n</Location>\n"
+		if os.WriteFile(conf, []byte(body), 0o644) != nil {
+			return false
+		}
+		undo = func() { os.Remove(conf) }
+	default:
+		return false
+	}
+	if exec.Command(ctl, "configtest").Run() != nil || exec.Command(ctl, "graceful").Run() != nil {
+		undo()
+		return false
+	}
+	time.Sleep(2 * time.Second)
+	return probePluginSettings(map[string]string{"type": "apache", "url": url}) == nil
+}
+
+// physical reports a bare-metal server; SMART and IPMI mean nothing in a VM.
+func physical() bool {
+	if p, ok := findTool("systemd-detect-virt"); ok {
+		out, _ := exec.Command(p).Output()
+		return strings.TrimSpace(string(out)) == "none"
+	}
+	b, _ := os.ReadFile("/sys/class/dmi/id/sys_vendor")
+	v := strings.ToLower(string(b))
+	for _, vm := range []string{"qemu", "vmware", "xen", "microsoft", "innotek", "bochs", "amazon", "google", "digitalocean", "hetzner", "openstack"} {
+		if strings.Contains(v, vm) {
+			return false
+		}
+	}
+	return len(v) > 0
+}
+
+// installHardwareTools installs smartmontools, and ipmitool where there's a
+// BMC, with the system's package manager.
+func installHardwareTools() {
+	_, haveSmart := findTool("smartctl")
+	_, haveIPMI := findTool("ipmitool")
+	if !haveIPMI {
+		if p, ok := findTool("modprobe"); ok {
+			exec.Command(p, "ipmi_devintf").Run()
+			exec.Command(p, "ipmi_si").Run()
+		}
+	}
+	var pkgs []string
+	if !haveSmart {
+		pkgs = append(pkgs, "smartmontools")
+	}
+	if !haveIPMI && hasBMC() {
+		pkgs = append(pkgs, "ipmitool")
+	}
+	if len(pkgs) == 0 {
+		return
+	}
+	var cmd *exec.Cmd
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	switch {
+	case has("apt-get"):
+		cmd = exec.CommandContext(ctx, "apt-get", append([]string{"install", "-y", "-q", "--no-install-recommends"}, pkgs...)...)
+		cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
+	case has("dnf"):
+		cmd = exec.CommandContext(ctx, "dnf", append([]string{"install", "-y", "-q"}, pkgs...)...)
+	case has("yum"):
+		cmd = exec.CommandContext(ctx, "yum", append([]string{"install", "-y", "-q"}, pkgs...)...)
+	case has("zypper"):
+		cmd = exec.CommandContext(ctx, "zypper", append([]string{"-n", "install"}, pkgs...)...)
+	case has("apk"):
+		cmd = exec.CommandContext(ctx, "apk", append([]string{"add", "-q"}, pkgs...)...)
+	case has("pkg"):
+		cmd = exec.CommandContext(ctx, "pkg", append([]string{"install", "-y"}, pkgs...)...)
+	default:
+		return
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		fmt.Printf("autoconfig: couldn't install %s: %s\n", strings.Join(pkgs, ", "), lastLine(out))
+		return
+	}
+	fmt.Printf("autoconfig: installed %s\n", strings.Join(pkgs, ", "))
+}
+
+func has(tool string) bool { _, ok := findTool(tool); return ok }
+
+func lastLine(b []byte) string {
+	l := strings.Split(strings.TrimSpace(string(b)), "\n")
+	return l[len(l)-1]
 }
 
 func apacheInstalled() bool {

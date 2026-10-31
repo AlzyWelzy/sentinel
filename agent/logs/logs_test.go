@@ -1,12 +1,14 @@
 package logs
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/example-org/pulsegrid/agent/plugins"
 )
@@ -147,4 +149,29 @@ func TestWalkDirsSkipsCopiesBinaryAndJournalDuplicates(t *testing.T) {
 	if got := walkDirs([]string{d}, false); len(got) != 4 {
 		t.Fatalf("without the journal syslog should ship too: %v", got)
 	}
+}
+
+func TestParseDockerLogsFramedAndPlain(t *testing.T) {
+	frame := func(s string) []byte {
+		b := []byte{1, 0, 0, 0, 0, 0, 0, byte(len(s))}
+		return append(b, s...)
+	}
+	in := append(frame("2026-10-31T10:00:00Z old\n"), frame("2026-10-31T10:00:02.5Z ERROR boom\n")...)
+	after := mustNs(t, "2026-10-31T10:00:01Z")
+	got, newest := parseDockerLogs(bytes.NewReader(in), "docker:web", after, 10)
+	if len(got) != 1 || got[0].Line != "ERROR boom" || got[0].Level != "error" || newest != mustNs(t, "2026-10-31T10:00:02.5Z") {
+		t.Fatalf("framed: %+v %d", got, newest)
+	}
+	got, _ = parseDockerLogs(strings.NewReader("2026-10-31T10:00:03Z hello\n"), "docker:tty", after, 10)
+	if len(got) != 1 || got[0].Line != "hello" {
+		t.Fatalf("plain: %+v", got)
+	}
+}
+
+func mustNs(t *testing.T, s string) int64 {
+	v, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v.UnixNano()
 }

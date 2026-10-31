@@ -50,6 +50,7 @@ type Config struct {
 	Files   []string // glob patterns
 	Dirs    []string // every readable text log under these, recursively
 	Journal bool
+	Docker  bool // what running containers print
 }
 
 // LoadConfig reads logs.conf. A missing file means shipping is off.
@@ -92,6 +93,8 @@ func LoadConfig(dir string) (Config, bool, error) {
 				return Config{}, false, fmt.Errorf("%s line %d: %q isn't an absolute path", ConfigFile, n, v)
 			}
 			c.Dirs = append(c.Dirs, v)
+		case "docker":
+			c.Docker = v == "true" || v == "yes" || v == "1"
 		case "journal":
 			c.Journal = v == "true" || v == "yes" || v == "1"
 		default:
@@ -112,6 +115,7 @@ type fileState struct {
 type savedState struct {
 	Files         map[string]fileState `json:"files"`
 	JournalCursor string               `json:"journal_cursor,omitempty"`
+	Docker        map[string]int64     `json:"docker,omitempty"`
 }
 
 // Shipper remembers where each source was read up to.
@@ -138,7 +142,7 @@ func NewShipper(stateDir string) *Shipper {
 // Collect reads up to max new lines. Nothing is marked as read until Commit.
 // It returns notes about sources that couldn't be read (shown in inventory).
 func (s *Shipper) Collect(c Config, max int) ([]proto.LogEntry, []string) {
-	s.pending = savedState{Files: map[string]fileState{}, JournalCursor: s.st.JournalCursor}
+	s.pending = savedState{Files: map[string]fileState{}, JournalCursor: s.st.JournalCursor, Docker: s.st.Docker}
 	var out []proto.LogEntry
 	var problems []string
 	paths, globErrs := expand(c.Files, walkDirs(c.Dirs, c.Journal))
@@ -174,6 +178,15 @@ func (s *Shipper) Collect(c Config, max int) ([]proto.LogEntry, []string) {
 			out = append(out, entries...)
 		}
 	}
+	if c.Docker {
+		entries, since, err := readDocker(s.st.Docker, max-len(out), s.now())
+		if err != nil {
+			problems = append(problems, "docker: "+err.Error())
+		} else {
+			s.pending.Docker = since
+			out = append(out, entries...)
+		}
+	}
 	return out, problems
 }
 
@@ -189,6 +202,7 @@ func (s *Shipper) Commit() {
 		}
 	}
 	s.st.JournalCursor = s.pending.JournalCursor
+	s.st.Docker = s.pending.Docker
 	if b, err := json.Marshal(s.st); err == nil {
 		tmp := filepath.Join(s.stateDir, stateFile+".tmp")
 		if os.WriteFile(tmp, b, 0o600) == nil {
