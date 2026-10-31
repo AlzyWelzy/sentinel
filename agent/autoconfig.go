@@ -24,7 +24,7 @@ import (
 // autoconfigRev is bumped when autoconfig learns something new, so servers
 // that already ran an older revision run it again on their next update.
 const (
-	autoconfigRev    = "3"
+	autoconfigRev    = "4"
 	autoconfigMarker = ".autoconfig" // in the config dir: the revision, or "off"
 	autoconfigNote   = "# Written by pulsegrid-agent autoconfig. Delete this line before editing, or updates may refresh the file."
 )
@@ -145,12 +145,18 @@ func autoconfigure(dir, svcUser string, noLogs bool) bool {
 			try("mysql", "dsn = "+dsn+"\n", 0o640, svcUser, true)
 		}
 	}
-	if !have["smart"] && !have["ipmi"] {
+	// Rev 3 wrote hardware plugins on servers without sudo (Proxmox ships
+	// none), where they can never run; redo those.
+	_, sudoErr := os.Stat(hardwareSudoers)
+	if (!have["smart"] && !have["ipmi"]) || sudoErr != nil {
 		if physical() {
 			installHardwareTools()
 		}
 		_, s := findTool("smartctl")
 		_, i := findTool("ipmitool")
+		if (s || i) && !has("sudo") {
+			installPackages([]string{"sudo"})
+		}
 		if (s || i) && cmdEnableHardware([]string{"--config-dir", dir, "--user", svcUser}) == nil {
 			changed = true
 		}
@@ -480,6 +486,11 @@ func installHardwareTools() {
 	if !haveIPMI && hasBMC() {
 		pkgs = append(pkgs, "ipmitool")
 	}
+	installPackages(pkgs)
+}
+
+// installPackages installs pkgs with the system's package manager.
+func installPackages(pkgs []string) {
 	if len(pkgs) == 0 {
 		return
 	}

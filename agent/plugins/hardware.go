@@ -148,12 +148,18 @@ func parseSmart(out []byte, device string) ([]proto.Sample, error) {
 	return s, nil
 }
 
-// SmartDevices parses "devices = /dev/sda:sat,/dev/nvme0:nvme".
+// SmartDevices parses "devices = /dev/sda:sat,/dev/bus/0:megaraid,1". A
+// type can itself hold a comma (megaraid,N), so a piece that isn't a path
+// belongs to the type before it.
 func SmartDevices(v string) [][2]string {
 	var out [][2]string
 	for _, item := range strings.Split(v, ",") {
 		item = strings.TrimSpace(item)
 		if item == "" {
+			continue
+		}
+		if !strings.HasPrefix(item, "/") && len(out) > 0 {
+			out[len(out)-1][1] += "," + item
 			continue
 		}
 		dev, typ, _ := strings.Cut(item, ":")
