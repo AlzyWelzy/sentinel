@@ -112,7 +112,9 @@ async def send_monthly_reports(now: datetime) -> int:
             payload = {
                 "subject": f"[Sentinel] Monitoring report for {start:%B %Y}",
                 "text": render_text(summary, account),
-                "html": render_html(summary, account, settings.PUBLIC_APP_URL),
+                "html": render_html(
+                    summary, account, f"{settings.PUBLIC_APP_URL.rstrip('/')}/overview"
+                ),
                 "event": {"type": "report", "month": f"{start:%Y-%m}"},
             }
             for c in channels:
@@ -256,7 +258,9 @@ async def send_digests(now: datetime) -> int:
                     f"{d.opened} incident(s), {d.open_count} open"
                 ),
                 "text": digest.render_text(d, account),
-                "html": digest.render_html(d, account, settings.PUBLIC_APP_URL),
+                "html": digest.render_html(
+                    d, account, f"{settings.PUBLIC_APP_URL.rstrip('/')}/overview"
+                ),
                 "event": {"type": "digest", "days": days},
             }
             for c in channels:
