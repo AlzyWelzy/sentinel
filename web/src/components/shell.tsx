@@ -5,36 +5,54 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { Icon, Logo, type IconName } from "@/components/icons";
 import { ThemeToggle } from "@/components/theme";
 import { Loading, cx } from "@/components/ui";
 import { endImpersonation, isImpersonating, signOut, signedOutOnPurpose } from "@/lib/api/client";
 import { orgName, useMe, useOrgs, useSession } from "@/lib/session";
 
-const NAV = [
-  { href: "/overview", label: "Overview" },
-  { href: "/servers", label: "Servers" },
-  { href: "/fleet", label: "Fleet wall" },
-  { href: "/incidents", label: "Incidents" },
-  { href: "/rules", label: "Alert rules" },
-  { href: "/checks", label: "Uptime checks" },
-  { href: "/oncall", label: "On-call" },
-  { href: "/maintenance", label: "Maintenance" },
-  { href: "/status-pages", label: "Status pages" },
-  { href: "/logs", label: "Logs" },
-  { href: "/apm", label: "APM" },
-  { href: "/dashboards", label: "Dashboards" },
-  { href: "/reports", label: "Reports" },
-  { href: "/insights", label: "Insights" },
+type Item = { href: string; label: string; icon: IconName };
+
+const NAV: { title: string; items: Item[] }[] = [
+  {
+    title: "Monitor",
+    items: [
+      { href: "/overview", label: "Overview", icon: "overview" },
+      { href: "/servers", label: "Servers", icon: "servers" },
+      { href: "/fleet", label: "Fleet wall", icon: "fleet" },
+      { href: "/checks", label: "Uptime checks", icon: "checks" },
+      { href: "/logs", label: "Logs", icon: "logs" },
+      { href: "/apm", label: "APM", icon: "apm" },
+    ],
+  },
+  {
+    title: "Respond",
+    items: [
+      { href: "/incidents", label: "Incidents", icon: "incidents" },
+      { href: "/rules", label: "Alert rules", icon: "rules" },
+      { href: "/oncall", label: "On-call", icon: "oncall" },
+      { href: "/maintenance", label: "Maintenance", icon: "maintenance" },
+    ],
+  },
+  {
+    title: "Share",
+    items: [
+      { href: "/status-pages", label: "Status pages", icon: "status" },
+      { href: "/dashboards", label: "Dashboards", icon: "dashboards" },
+      { href: "/reports", label: "Reports", icon: "reports" },
+      { href: "/insights", label: "Insights", icon: "insights" },
+    ],
+  },
 ];
-const SETTINGS = [
-  { href: "/settings/contacts", label: "Contacts" },
-  { href: "/settings/organisation", label: "Organisation" },
-  { href: "/settings/tokens", label: "API tokens" },
-  { href: "/settings/audit", label: "Audit log" },
-  { href: "/settings", label: "Your account" },
+const SETTINGS: Item[] = [
+  { href: "/settings/contacts", label: "Contacts", icon: "contacts" },
+  { href: "/settings/organisation", label: "Organisation", icon: "organisation" },
+  { href: "/settings/tokens", label: "API tokens", icon: "tokens" },
+  { href: "/settings/audit", label: "Audit log", icon: "audit" },
+  { href: "/settings", label: "Your account", icon: "account" },
 ];
 
-function NavLink({ href, label, onClick }: { href: string; label: string; onClick?: () => void }) {
+function NavLink({ href, label, icon, onClick }: Item & { onClick?: () => void }) {
   const path = usePathname();
   const active = path === href || path.startsWith(`${href}/`);
   const exact = href === "/settings" ? path === "/settings" : active;
@@ -42,13 +60,37 @@ function NavLink({ href, label, onClick }: { href: string; label: string; onClic
     <Link
       href={href}
       onClick={onClick}
+      aria-current={exact ? "page" : undefined}
       className={cx(
-        "block rounded-md px-2.5 py-1.5 text-sm",
-        exact ? "bg-panel-2 font-medium text-ink" : "text-ink-2 hover:bg-panel-2 hover:text-ink",
+        "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] transition",
+        exact
+          ? "bg-panel-2 font-medium text-ink shadow-card"
+          : "text-ink-2 hover:bg-panel-2/70 hover:text-ink",
       )}
     >
+      {exact && (
+        <span className="absolute top-1.5 bottom-1.5 -left-3 w-[3px] rounded-r-full bg-gradient-brand" />
+      )}
+      <Icon
+        name={icon}
+        className={cx(
+          "size-4 shrink-0",
+          exact ? "text-brand" : "text-ink-3 group-hover:text-ink-2",
+        )}
+      />
       {label}
     </Link>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="space-y-0.5">
+      <p className="px-2.5 pb-1.5 text-[10.5px] font-semibold tracking-[0.12em] text-ink-3 uppercase">
+        {title}
+      </p>
+      {children}
+    </div>
   );
 }
 
@@ -65,7 +107,7 @@ function OrgSwitcher() {
         if (e.target.value === "__new") router.push("/settings/organisation?new=1");
         else orgs.select(e.target.value);
       }}
-      className="h-9 w-full truncate rounded-lg border border-line bg-panel px-2 text-sm font-medium"
+      className="h-10 w-full truncate rounded-xl border border-line bg-panel-2 px-2.5 text-sm font-medium shadow-card transition hover:border-line-2"
     >
       {orgs.list.map((o) => (
         <option key={o.tenant_id} value={o.tenant_id}>
@@ -94,43 +136,50 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (status !== "signed-in") return <Loading />;
 
+  const close = () => setOpen(false);
+  const initial = (user.name || user.email).slice(0, 1).toUpperCase();
   const sidebar = (
-    <nav className="flex h-full flex-col gap-6 p-4">
-      <Link href="/overview" className="flex items-center gap-2 px-1 font-semibold">
-        <span className="inline-block size-5 rounded-md bg-brand" aria-hidden />
-        Sentinel
+    <nav className="flex h-full flex-col gap-5 overflow-y-auto px-4 py-5">
+      <Link href="/overview" className="flex items-center gap-2.5 px-1">
+        <Logo className="size-7" />
+        <span className="text-[15px] font-semibold tracking-tight">Sentinel</span>
       </Link>
       <OrgSwitcher />
-      <div className="space-y-0.5">
-        {NAV.map((n) => (
-          <NavLink key={n.href} {...n} onClick={() => setOpen(false)} />
-        ))}
-      </div>
-      <div className="space-y-0.5">
-        <p className="px-2.5 pb-1 text-xs font-medium tracking-wide text-ink-3 uppercase">
-          Settings
-        </p>
+      {NAV.map((group) => (
+        <Section key={group.title} title={group.title}>
+          {group.items.map((n) => (
+            <NavLink key={n.href} {...n} onClick={close} />
+          ))}
+        </Section>
+      ))}
+      <Section title="Settings">
         {SETTINGS.map((n) => (
-          <NavLink key={n.href} {...n} onClick={() => setOpen(false)} />
+          <NavLink key={n.href} {...n} onClick={close} />
         ))}
         {user.superadmin && !isImpersonating() && (
-          <NavLink href="/admin" label="Superadmin" onClick={() => setOpen(false)} />
+          <NavLink href="/admin" label="Superadmin" icon="shield" onClick={close} />
         )}
-      </div>
-      <div className="mt-auto space-y-2 border-t border-line pt-4">
-        <p className="truncate px-1 text-xs text-ink-3" title={user.email}>
-          {user.email}
-        </p>
-        <div className="flex items-center justify-between">
+      </Section>
+      <div className="mt-auto rounded-xl border border-line bg-panel-2/60 p-2.5">
+        <div className="flex items-center gap-2.5">
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-gradient-brand text-xs font-semibold text-white">
+            {initial}
+          </span>
+          <p className="min-w-0 flex-1 truncate text-xs text-ink-2" title={user.email}>
+            {user.email}
+          </p>
+        </div>
+        <div className="mt-2 flex items-center justify-between">
           <ThemeToggle />
           <button
             type="button"
-            className="rounded-md px-2 py-1 text-xs text-ink-3 hover:bg-panel-2 hover:text-ink"
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-ink-3 transition hover:bg-panel hover:text-ink"
             onClick={async () => {
               await signOut();
               qc.clear();
             }}
           >
+            <Icon name="logout" className="size-3.5" />
             Sign out
           </button>
         </div>
@@ -139,15 +188,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[232px_1fr]">
-      <aside className="hidden border-r border-line bg-panel lg:sticky lg:top-0 lg:block lg:h-screen">
+    <div className="app-bg min-h-screen lg:grid lg:grid-cols-[248px_1fr]">
+      <aside className="hidden border-r border-line bg-panel/70 backdrop-blur-xl lg:sticky lg:top-0 lg:block lg:h-screen">
         {sidebar}
       </aside>
       {open && (
         <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setOpen(false)}>
-          <div className="absolute inset-0 bg-black/30" />
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
           <aside
-            className="absolute inset-y-0 left-0 w-64 border-r border-line bg-panel"
+            className="absolute inset-y-0 left-0 w-72 animate-rise border-r border-line bg-panel shadow-pop"
             onClick={(e) => e.stopPropagation()}
           >
             {sidebar}
@@ -155,19 +204,20 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
       <div className="min-w-0">
-        <div className="flex items-center gap-3 border-b border-line bg-panel px-4 py-2.5 lg:hidden">
+        <div className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-panel/80 px-4 py-2.5 backdrop-blur-xl lg:hidden">
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="rounded-md border border-line px-2 py-1 text-sm"
+            className="grid size-9 place-items-center rounded-lg border border-line text-ink-2"
             aria-label="Menu"
           >
-            Menu
+            <Icon name="menu" />
           </button>
-          <span className="font-semibold">Sentinel</span>
+          <Logo className="size-6" />
+          <span className="font-semibold tracking-tight">Sentinel</span>
         </div>
         {me.data?.impersonating && (
-          <div className="flex flex-wrap items-center justify-between gap-2 bg-warn/15 px-4 py-2 text-sm text-warn">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-warn/25 bg-warn/10 px-4 py-2 text-sm text-warn">
             <span>
               Superadmin view of <b>{me.data.display_name ?? me.data.email}</b>
               {me.data.impersonation_writes ? " · changes allowed" : " · read-only"}
@@ -185,7 +235,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
           </div>
         )}
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        <main className="mx-auto max-w-[1360px] px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
+          {children}
+        </main>
       </div>
     </div>
   );

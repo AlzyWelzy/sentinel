@@ -53,19 +53,23 @@ export default async function StatusPage({ params }: { params: Promise<{ slug: s
   if (!page) notFound();
   const overall = page.status as string;
   return (
-    <main className="mx-auto max-w-3xl px-4 py-12">
-      <h1 className="text-2xl font-semibold">{page.title}</h1>
+    <main className="relative mx-auto max-w-3xl px-4 pt-16 pb-12 sm:px-6">
+      <div className="bg-grid mask-fade pointer-events-none absolute inset-x-0 top-0 -z-10 h-72" />
+      <h1 className="text-3xl font-semibold tracking-[-0.03em]">{page.title}</h1>
       {page.description && <p className="mt-2 text-ink-2">{page.description}</p>}
       <div
-        className={`mt-6 rounded-xl px-5 py-4 font-medium text-white ${overall === "up" || overall === "operational" ? "bg-ok" : overall === "degraded" || overall === "partial" ? "bg-warn" : "bg-bad"}`}
+        className={`mt-8 flex items-center gap-3 rounded-2xl px-5 py-4 font-semibold text-white shadow-card ${overall === "up" || overall === "operational" ? "bg-gradient-to-r from-emerald-500 to-teal-500" : overall === "degraded" || overall === "partial" ? "bg-gradient-to-r from-amber-500 to-orange-500" : "bg-gradient-to-r from-rose-500 to-red-500"}`}
       >
+        <span className="grid size-7 place-items-center rounded-full bg-white/20">
+          <span className="size-2.5 rounded-full bg-white" />
+        </span>
         {WORDS[overall] ?? overall}
       </div>
 
       {page.active.map((u) => (
         <section
           key={`${u.title}-${u.updated_at}`}
-          className="mt-4 rounded-xl border border-line bg-panel p-4"
+          className="mt-4 rounded-2xl border border-line bg-panel p-5 shadow-card"
         >
           <p className="text-xs font-medium tracking-wide text-ink-3 uppercase">
             {u.kind} · {u.state}
@@ -75,7 +79,7 @@ export default async function StatusPage({ params }: { params: Promise<{ slug: s
         </section>
       ))}
 
-      <section className="mt-6 divide-y divide-line rounded-xl border border-line bg-panel">
+      <section className="mt-6 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-panel shadow-card">
         {page.items.map((i) => (
           <div key={i.label} className="p-4">
             <div className="flex items-center justify-between gap-3">
@@ -110,7 +114,7 @@ export default async function StatusPage({ params }: { params: Promise<{ slug: s
             {page.incidents.map((x) => (
               <li
                 key={`${x.title}-${x.started_at}`}
-                className="rounded-lg border border-line bg-panel px-4 py-3"
+                className="rounded-xl border border-line bg-panel px-4 py-3 shadow-card"
               >
                 <p className="font-medium">{x.title}</p>
                 <p className="text-ink-3">

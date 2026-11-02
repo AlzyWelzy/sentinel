@@ -111,7 +111,7 @@ export default function WelcomePage() {
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="inline-flex rounded-lg border border-line p-0.5">
+              <div className="inline-flex rounded-[10px] border border-line bg-panel-2/70 p-0.5 shadow-[inset_0_1px_2px_rgb(0_0_0/0.05)]">
                 {PLATFORMS.map((p) => (
                   <button
                     key={p}
@@ -119,7 +119,9 @@ export default function WelcomePage() {
                     onClick={() => setPlatform(p)}
                     className={cx(
                       "rounded-md px-3 py-1 text-sm",
-                      platform === p ? "bg-panel-2 font-medium" : "text-ink-3",
+                      platform === p
+                        ? "bg-panel font-medium text-ink shadow-card ring-1 ring-line"
+                        : "text-ink-3",
                     )}
                   >
                     {p}

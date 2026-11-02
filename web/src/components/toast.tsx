@@ -44,7 +44,7 @@ export function Toasts() {
         <div
           key={t.id}
           role="alert"
-          className="flex max-w-lg items-start gap-3 rounded-lg border border-bad/30 bg-panel px-4 py-2.5 text-sm text-bad shadow-lg"
+          className="flex max-w-lg items-start gap-3 animate-rise rounded-xl border border-bad/30 bg-panel px-4 py-3 text-sm text-bad shadow-pop"
         >
           <span className="flex-1">{t.text}</span>
           <button

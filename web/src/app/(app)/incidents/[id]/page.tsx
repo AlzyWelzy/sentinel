@@ -241,7 +241,7 @@ export default function IncidentPage() {
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Add a note for the team…"
-                className="h-9 flex-1 rounded-lg border border-line bg-panel px-3 text-sm focus:border-brand focus:outline-none"
+                className="h-9 flex-1 rounded-[10px] border border-line bg-panel px-3 text-sm transition focus:border-brand focus:ring-4 focus:ring-brand/15 focus:outline-none"
               />
               <Button type="submit">Add note</Button>
             </form>

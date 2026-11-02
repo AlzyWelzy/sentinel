@@ -85,15 +85,15 @@ export default function ReportsPage() {
         subtitle="Availability, incidents and resource use over a period."
         actions={
           <>
-            <div className="inline-flex rounded-lg border border-line bg-panel p-0.5">
+            <div className="inline-flex rounded-[10px] border border-line bg-panel-2/70 p-0.5 shadow-[inset_0_1px_2px_rgb(0_0_0/0.05)]">
               {[7, 30, 90].map((d) => (
                 <button
                   key={d}
                   type="button"
                   onClick={() => setDays(d)}
                   className={cx(
-                    "rounded-md px-2.5 py-1 text-xs font-medium",
-                    days === d ? "bg-panel-2" : "text-ink-3",
+                    "rounded-lg px-2.5 py-1 text-xs font-medium transition",
+                    days === d ? "bg-panel text-ink shadow-card ring-1 ring-line" : "text-ink-3",
                   )}
                 >
                   {d} days
@@ -127,7 +127,7 @@ export default function ReportsPage() {
               ].map(([l, v]) => (
                 <Card key={l}>
                   <p className="text-xs text-ink-2">{l}</p>
-                  <p className="mt-1 text-xl font-semibold tabular">{v}</p>
+                  <p className="mt-1.5 text-2xl font-semibold tracking-tight tabular">{v}</p>
                 </Card>
               ))}
             </div>

@@ -2,6 +2,8 @@
 
 import { useSyncExternalStore } from "react";
 
+import { Icon } from "@/components/icons";
+
 type Mode = "light" | "dark" | "system";
 const listeners = new Set<() => void>();
 
@@ -38,10 +40,15 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={() => apply(next)}
-      className="rounded-md px-2 py-1 text-xs text-ink-3 hover:bg-panel-2 hover:text-ink"
+      className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-ink-3 capitalize transition hover:bg-panel hover:text-ink"
       title="Theme"
+      aria-label={`Theme: ${mode}`}
     >
-      Theme: {mode}
+      <Icon
+        name={mode === "light" ? "sun" : mode === "dark" ? "moon" : "monitor"}
+        className="size-3.5"
+      />
+      {mode}
     </button>
   );
 }

@@ -44,7 +44,7 @@ export default function InvitationsPage() {
       {pending.data.map((p) => (
         <div
           key={p.id}
-          className="flex items-center justify-between gap-3 rounded-lg border border-line p-3"
+          className="flex items-center justify-between gap-3 rounded-xl border border-line bg-panel p-3 shadow-card"
         >
           <div>
             <p className="font-medium">{p.organisation}</p>

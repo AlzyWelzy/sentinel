@@ -10,14 +10,14 @@ export type SeriesIn = { labels: Record<string, string>; points: [number, number
 
 // A palette that reads on both themes.
 const COLORS = [
-  "#6366f1",
-  "#14b8a6",
+  "#8b70ff",
+  "#22d3ee",
   "#f59e0b",
-  "#ec4899",
-  "#22c55e",
-  "#0ea5e9",
-  "#a855f7",
-  "#ef4444",
+  "#f472b6",
+  "#34d399",
+  "#60a5fa",
+  "#c084fc",
+  "#fb7185",
 ];
 
 function seriesName(labels: Record<string, string>, fallback: string): string {
@@ -66,12 +66,12 @@ export function TimeChart({
     const el = ref.current;
     if (!el) return;
     const dark = document.documentElement.classList.contains("dark");
-    const grid = dark ? "#262b36" : "#e9ecf0";
-    const axis = dark ? "#8a93a1" : "#6b7280";
+    const grid = dark ? "#1a1e2c" : "#ececf3";
+    const axis = dark ? "#6a7089" : "#8a8ea3";
     const opts: Options = {
       width: el.clientWidth,
       height,
-      cursor: { drag: { x: false, y: false } },
+      cursor: { drag: { x: false, y: false }, points: { size: 7, fill: COLORS[0] } },
       legend: { show: series.length > 1 },
       scales: {
         x: { time: true, ...(range ? { min: range.start, max: range.end } : {}) },
@@ -92,8 +92,21 @@ export function TimeChart({
         ...series.map((s, i) => ({
           label: seriesName(s.labels, fallbackName),
           stroke: COLORS[i % COLORS.length],
-          width: 1.5,
-          fill: series.length === 1 ? `${COLORS[0]}1f` : undefined,
+          width: 1.75,
+          fill:
+            series.length === 1
+              ? (u: uPlot) => {
+                  const g = u.ctx.createLinearGradient(
+                    0,
+                    u.bbox.top,
+                    0,
+                    u.bbox.top + u.bbox.height,
+                  );
+                  g.addColorStop(0, `${COLORS[0]}55`);
+                  g.addColorStop(1, `${COLORS[0]}00`);
+                  return g;
+                }
+              : undefined,
           points: { show: false },
           value: (_u: uPlot, v: number | null) => formatValue(unit, v),
         })),

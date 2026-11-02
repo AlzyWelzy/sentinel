@@ -5,12 +5,12 @@ import Link from "next/link";
 import { SeverityBadge, StatusBadge, STATUS_LABEL, STATUS_TONE } from "@/components/status";
 import {
   Card,
-  Dot,
   Empty,
   ErrorState,
   LinkButton,
   Loading,
   Meter,
+  Stat,
   PageHeader,
   Table,
 } from "@/components/ui";
@@ -68,19 +68,15 @@ export default function OverviewPage() {
         subtitle={`${servers.length} ${servers.length === 1 ? "server" : "servers"} · updated every 30 seconds`}
         actions={<LinkButton href="/welcome">Add server</LinkButton>}
       />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {ORDER.map((k) => (
-          <Link
+          <Stat
             key={k}
             href={`/servers?status=${k}`}
-            className="rounded-xl border border-line bg-panel p-4 hover:border-brand/40"
-          >
-            <div className="flex items-center gap-2 text-xs font-medium text-ink-2">
-              <Dot tone={STATUS_TONE[k] ?? "idle"} />
-              {STATUS_LABEL[k]}
-            </div>
-            <div className="mt-2 text-2xl font-semibold tabular">{counts[k] ?? 0}</div>
-          </Link>
+            tone={STATUS_TONE[k] ?? "idle"}
+            label={STATUS_LABEL[k]}
+            value={counts[k] ?? 0}
+          />
         ))}
       </div>
 

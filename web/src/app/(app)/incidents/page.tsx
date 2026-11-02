@@ -57,7 +57,7 @@ export default function IncidentsPage() {
           )
         }
       />
-      <div className="mb-4 inline-flex rounded-lg border border-line bg-panel p-0.5">
+      <div className="mb-4 inline-flex rounded-[10px] border border-line bg-panel-2/70 p-0.5 shadow-[inset_0_1px_2px_rgb(0_0_0/0.05)]">
         {(
           [
             ["open", "Open"],
@@ -71,7 +71,9 @@ export default function IncidentsPage() {
             onClick={() => setStatus(v)}
             className={cx(
               "rounded-md px-3 py-1 text-sm",
-              status === v ? "bg-panel-2 font-medium" : "text-ink-3 hover:text-ink",
+              status === v
+                ? "bg-panel font-medium text-ink shadow-card ring-1 ring-line"
+                : "text-ink-3 hover:text-ink",
             )}
           >
             {label}

@@ -16,10 +16,12 @@ export function cx(...parts: (string | false | null | undefined)[]) {
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-brand text-brand-ink hover:opacity-90",
-  secondary: "bg-panel border border-line text-ink hover:bg-panel-2",
+  primary:
+    "bg-gradient-brand text-brand-ink shadow-glow hover:brightness-110 active:brightness-95 [text-shadow:0_1px_0_rgb(0_0_0/0.15)]",
+  secondary:
+    "bg-panel border border-line text-ink shadow-card hover:border-line-2 hover:bg-panel-2",
   ghost: "text-ink-2 hover:bg-panel-2 hover:text-ink",
-  danger: "bg-bad text-white hover:opacity-90",
+  danger: "bg-bad text-white shadow-sm hover:brightness-110",
 };
 
 export function Button({
@@ -35,7 +37,7 @@ export function Button({
       {...rest}
       disabled={disabled || loading}
       className={cx(
-        "inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex h-9 items-center justify-center gap-2 rounded-[10px] px-3.5 text-sm font-medium whitespace-nowrap transition duration-150 select-none disabled:cursor-not-allowed disabled:opacity-50",
         variants[variant],
         className,
       )}
@@ -61,7 +63,7 @@ export function LinkButton({
     <Link
       href={href}
       className={cx(
-        "inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3.5 text-sm font-medium transition",
+        "inline-flex h-9 items-center justify-center gap-2 rounded-[10px] px-3.5 text-sm font-medium whitespace-nowrap transition duration-150",
         variants[variant],
         className,
       )}
@@ -76,7 +78,7 @@ export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={cx(
-        "h-9 w-full rounded-lg border border-line bg-panel px-3 text-sm text-ink placeholder:text-ink-3 focus:border-brand focus:outline-none",
+        "h-9 w-full rounded-[10px] border border-line bg-panel px-3 text-sm text-ink shadow-[inset_0_1px_2px_rgb(0_0_0/0.04)] transition placeholder:text-ink-3 hover:border-line-2 focus:border-brand focus:ring-4 focus:ring-brand/15 focus:outline-none",
         props.className,
       )}
     />
@@ -88,7 +90,7 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
     <select
       {...props}
       className={cx(
-        "h-9 rounded-lg border border-line bg-panel px-2.5 text-sm text-ink focus:border-brand focus:outline-none",
+        "h-9 rounded-[10px] border border-line bg-panel px-2.5 text-sm text-ink transition hover:border-line-2 focus:border-brand focus:ring-4 focus:ring-brand/15 focus:outline-none",
         props.className,
       )}
     />
@@ -121,7 +123,7 @@ export function Field({
     : children;
   return (
     <div className="block space-y-1.5">
-      <label htmlFor={controlId} className="block text-sm font-medium text-ink">
+      <label htmlFor={controlId} className="block text-[13px] font-medium text-ink">
         {label}
       </label>
       {control}
@@ -148,14 +150,16 @@ export function Card({
   pad?: boolean;
 }) {
   return (
-    <section className={cx("rounded-xl border border-line bg-panel", className)}>
+    <section
+      className={cx("animate-rise rounded-2xl border border-line bg-panel shadow-card", className)}
+    >
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink">{title}</h2>
+        <header className="flex min-h-12 items-center justify-between gap-3 border-b border-line px-5 py-3">
+          <h2 className="text-sm font-semibold tracking-tight text-ink">{title}</h2>
           {actions}
         </header>
       )}
-      <div className={pad ? "p-4" : undefined}>{children}</div>
+      <div className={pad ? "p-5" : undefined}>{children}</div>
     </section>
   );
 }
@@ -170,10 +174,12 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-ink-2">{subtitle}</p>}
+    <div className="mb-8 flex animate-rise flex-wrap items-end justify-between gap-4">
+      <div className="min-w-0">
+        <h1 className="text-2xl font-semibold tracking-[-0.02em] text-ink sm:text-[28px]">
+          {title}
+        </h1>
+        {subtitle && <p className="mt-1.5 text-sm text-ink-2">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -183,18 +189,18 @@ export function PageHeader({
 export type Tone = "ok" | "warn" | "bad" | "idle" | "brand";
 
 const tones: Record<Tone, string> = {
-  ok: "bg-ok/12 text-ok",
-  warn: "bg-warn/12 text-warn",
-  bad: "bg-bad/12 text-bad",
-  idle: "bg-idle/15 text-ink-2",
-  brand: "bg-brand/12 text-brand",
+  ok: "bg-ok/10 text-ok ring-1 ring-inset ring-ok/25",
+  warn: "bg-warn/10 text-warn ring-1 ring-inset ring-warn/25",
+  bad: "bg-bad/10 text-bad ring-1 ring-inset ring-bad/25",
+  idle: "bg-idle/10 text-ink-2 ring-1 ring-inset ring-idle/25",
+  brand: "bg-brand/10 text-brand ring-1 ring-inset ring-brand/25",
 };
 
 export function Badge({ tone = "idle", children }: { tone?: Tone; children: ReactNode }) {
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
         tones[tone],
       )}
     >
@@ -207,7 +213,24 @@ export function Dot({ tone }: { tone: Tone }) {
   const bg = { ok: "bg-ok", warn: "bg-warn", bad: "bg-bad", idle: "bg-idle", brand: "bg-brand" }[
     tone
   ];
-  return <span className={cx("inline-block size-2 shrink-0 rounded-full", bg)} aria-hidden />;
+  const text = {
+    ok: "text-ok",
+    warn: "text-warn",
+    bad: "text-bad",
+    idle: "text-idle",
+    brand: "text-brand",
+  }[tone];
+  return (
+    <span
+      className={cx(
+        "inline-block size-2 shrink-0 rounded-full",
+        bg,
+        text,
+        tone === "bad" && "animate-pulse-ring",
+      )}
+      aria-hidden
+    />
+  );
 }
 
 export function Spinner({ small }: { small?: boolean }) {
@@ -241,8 +264,24 @@ export function Empty({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 px-6 py-14 text-center">
-      <p className="font-medium text-ink">{title}</p>
+    <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
+      <div className="relative mb-2 grid size-12 place-items-center rounded-2xl border border-line bg-panel-2 text-ink-3 shadow-card">
+        <span className="absolute inset-0 rounded-2xl bg-gradient-brand opacity-[0.08]" />
+        <svg
+          viewBox="0 0 24 24"
+          className="size-5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          aria-hidden
+        >
+          <circle cx="12" cy="12" r="8" />
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 12l5-5" />
+        </svg>
+      </div>
+      <p className="font-semibold tracking-tight text-ink">{title}</p>
       {children && <p className="max-w-md text-sm text-ink-2">{children}</p>}
       {action && <div className="mt-3">{action}</div>}
     </div>
@@ -271,16 +310,14 @@ export function Notice({ tone = "idle", children }: { tone?: Tone; children: Rea
     brand: "border-brand/30",
   }[tone];
   return (
-    <div className={cx("rounded-lg border px-3.5 py-2.5 text-sm", border, tones[tone])}>
-      {children}
-    </div>
+    <div className={cx("rounded-xl border px-4 py-3 text-sm", border, tones[tone])}>{children}</div>
   );
 }
 
 export function Table({ children }: { children: ReactNode }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm [&_td]:px-4 [&_td]:py-2.5 [&_th]:px-4 [&_th]:py-2 [&_th]:text-xs [&_th]:font-medium [&_th]:text-ink-3 [&_tbody_tr]:border-t [&_tbody_tr]:border-line">
+      <table className="w-full text-left text-sm [&_tbody_tr]:border-t [&_tbody_tr]:border-line [&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-panel-2/50 [&_td]:px-5 [&_td]:py-3 [&_th]:bg-panel-2/40 [&_th]:px-5 [&_th]:py-2.5 [&_th]:text-[11px] [&_th]:font-semibold [&_th]:tracking-[0.06em] [&_th]:text-ink-3 [&_th]:uppercase">
         {children}
       </table>
     </div>
@@ -297,7 +334,8 @@ export function Meter({
   bad?: number;
 }) {
   if (value == null) return <span className="text-ink-3">—</span>;
-  const tone = value >= bad ? "bg-bad" : value >= warn ? "bg-warn" : "bg-ok";
+  const tone =
+    value >= bad ? "bg-bad" : value >= warn ? "bg-warn" : "bg-gradient-to-r from-brand to-brand-2";
   return (
     <div className="flex min-w-24 items-center gap-2">
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-panel-2">
@@ -311,19 +349,46 @@ export function Meter({
   );
 }
 
-export function CopyBlock({ text }: { text: string }) {
-  return (
-    <div className="group relative">
-      <pre className="overflow-x-auto rounded-lg border border-line bg-panel-2 p-3 pr-20 font-mono text-xs leading-relaxed text-ink">
-        {text}
-      </pre>
-      <button
-        type="button"
-        onClick={() => navigator.clipboard.writeText(text)}
-        className="absolute top-2 right-2 rounded-md border border-line bg-panel px-2 py-1 text-xs text-ink-2 hover:text-ink"
+export { CopyBlock } from "@/components/copy-block";
+
+/** A headline number with a label, for overview rows. */
+export function Stat({
+  label,
+  value,
+  tone,
+  href,
+  hint,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  tone?: Tone;
+  href?: string;
+  hint?: ReactNode;
+}) {
+  const body = (
+    <>
+      <div className="flex items-center gap-2 text-xs font-medium text-ink-2">
+        {tone && <Dot tone={tone} />}
+        {label}
+      </div>
+      <div
+        className={cx(
+          "mt-3 text-[28px] leading-none font-semibold tracking-tight tabular",
+          value === 0 && "text-ink-3",
+        )}
       >
-        Copy
-      </button>
-    </div>
+        {value}
+      </div>
+      {hint && <div className="mt-2 text-xs text-ink-3">{hint}</div>}
+    </>
+  );
+  const cls =
+    "group relative block animate-rise overflow-hidden rounded-2xl border border-line bg-panel p-4 shadow-card transition";
+  return href ? (
+    <Link href={href} className={cx(cls, "hover:-translate-y-0.5 hover:border-brand/40")}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }

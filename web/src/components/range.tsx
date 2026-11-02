@@ -23,7 +23,7 @@ export function RangePicker({ value, onChange }: { value: Range; onChange: (r: R
   const [to, setTo] = useState(toLocalInput(value.end));
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="inline-flex rounded-lg border border-line bg-panel p-0.5">
+      <div className="inline-flex rounded-[10px] border border-line bg-panel-2/70 p-0.5 shadow-[inset_0_1px_2px_rgb(0_0_0/0.05)]">
         {RANGES.map((r) => (
           <button
             key={r.key}
@@ -33,8 +33,10 @@ export function RangePicker({ value, onChange }: { value: Range; onChange: (r: R
               onChange(presetRange(r.key));
             }}
             className={cx(
-              "rounded-md px-2.5 py-1 text-xs font-medium",
-              value.key === r.key ? "bg-panel-2 text-ink" : "text-ink-3 hover:text-ink",
+              "rounded-lg px-2.5 py-1 text-xs font-medium transition",
+              value.key === r.key
+                ? "bg-panel text-ink shadow-card ring-1 ring-line"
+                : "text-ink-3 hover:text-ink",
             )}
           >
             {r.label}
@@ -44,8 +46,10 @@ export function RangePicker({ value, onChange }: { value: Range; onChange: (r: R
           type="button"
           onClick={() => setCustom((c) => !c)}
           className={cx(
-            "rounded-md px-2.5 py-1 text-xs font-medium",
-            value.key === "custom" ? "bg-panel-2 text-ink" : "text-ink-3 hover:text-ink",
+            "rounded-lg px-2.5 py-1 text-xs font-medium transition",
+            value.key === "custom"
+              ? "bg-panel text-ink shadow-card ring-1 ring-line"
+              : "text-ink-3 hover:text-ink",
           )}
         >
           Custom
