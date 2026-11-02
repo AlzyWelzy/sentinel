@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"mime/quotedprintable"
 	"net"
 	"net/http"
 	"net/smtp"
@@ -77,6 +78,36 @@ func (e *emailSender) send(ctx context.Context, to string, m message) error {
 
 // sendMail sends one message, with an HTML part when html isn't empty.
 // Alerts and account emails (verify, reset, invitations) both go out here.
+// buildMessage writes the email. Parts are quoted-printable, so a long log
+// line or detail can't exceed SMTP's 998-byte line limit (strict servers
+// refuse such mail), and the subject's encoded words are folded onto lines
+// of their own for the same reason.
+func buildMessage(from, to, subject, text, html string, now time.Time) *bytes.Buffer {
+	var body bytes.Buffer
+	encoded := strings.ReplaceAll(mime.QEncoding.Encode("utf-8", subject), "?= =?", "?=\r\n =?")
+	fmt.Fprintf(&body, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\n",
+		from, to, encoded, now.Format(time.RFC1123Z))
+	body.WriteString("MIME-Version: 1.0\r\n")
+	part := func(contentType, content string) {
+		fmt.Fprintf(&body, "Content-Type: %s; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n", contentType)
+		qp := quotedprintable.NewWriter(&body)
+		qp.Write([]byte(strings.ReplaceAll(content, "\n", "\r\n")))
+		qp.Close()
+	}
+	if html == "" {
+		part("text/plain", text)
+		return &body
+	}
+	const boundary = "sentinel-alternative-boundary"
+	fmt.Fprintf(&body, "Content-Type: multipart/alternative; boundary=%q\r\n\r\n", boundary)
+	fmt.Fprintf(&body, "--%s\r\n", boundary)
+	part("text/plain", text)
+	fmt.Fprintf(&body, "\r\n--%s\r\n", boundary)
+	part("text/html", html)
+	fmt.Fprintf(&body, "\r\n--%s--\r\n", boundary)
+	return &body
+}
+
 func (e *emailSender) sendMail(ctx context.Context, to, subject, text, html string) error {
 	if e.host == "" {
 		return permanent("email is not configured (SMTP_HOST)")
@@ -84,23 +115,7 @@ func (e *emailSender) sendMail(ctx context.Context, to, subject, text, html stri
 	if strings.ContainsAny(to, "\r\n") || !strings.Contains(to, "@") {
 		return permanent("invalid email address")
 	}
-	var body bytes.Buffer
-	fmt.Fprintf(&body, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\n",
-		e.from, to, mime.QEncoding.Encode("utf-8", subject), time.Now().Format(time.RFC1123Z))
-	body.WriteString("MIME-Version: 1.0\r\n")
-	if html != "" {
-		const boundary = "sentinel-alternative-boundary"
-		fmt.Fprintf(&body, "Content-Type: multipart/alternative; boundary=%q\r\n\r\n", boundary)
-		fmt.Fprintf(&body, "--%s\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n", boundary)
-		body.WriteString(strings.ReplaceAll(text, "\n", "\r\n"))
-		fmt.Fprintf(&body, "\r\n--%s\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n", boundary)
-		body.WriteString(strings.ReplaceAll(html, "\n", "\r\n"))
-		fmt.Fprintf(&body, "\r\n--%s--\r\n", boundary)
-	} else {
-		body.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-		body.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
-		body.WriteString(strings.ReplaceAll(text, "\n", "\r\n"))
-	}
+	body := buildMessage(e.from, to, subject, text, html, time.Now())
 
 	addr := net.JoinHostPort(e.host, e.port)
 	dialer := &net.Dialer{Timeout: 15 * time.Second}
@@ -264,9 +279,7 @@ func (s *smsSender) send(ctx context.Context, to string, m message) error {
 		return permanent("SMS is not configured (TWILIO_ACCOUNT_SID)")
 	}
 	_, text := m.render()
-	if len(text) > 1500 {
-		text = text[:1500]
-	}
+	text = cut(text, 1500)
 	form := url.Values{"To": {to}, "From": {s.from}, "Body": {text}}
 	endpoint := "https://api.twilio.com/2010-04-01/Accounts/" + url.PathEscape(s.accountSID) + "/Messages.json"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))

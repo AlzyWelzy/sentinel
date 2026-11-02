@@ -65,7 +65,15 @@ type slackSender struct{ client *http.Client }
 
 func (s *slackSender) send(ctx context.Context, target string, m message) error {
 	subject, text := m.render()
-	return postJSON(ctx, s.client, target, map[string]any{"text": "*" + subject + "*\n" + text})
+	// Slack reads <!channel>, <@U123> and links in &, < and >: escaped, an
+	// alert quoting a log line can't ping a whole channel.
+	return postJSON(ctx, s.client, target, map[string]any{
+		"text": "*" + slackEscape(subject) + "*\n" + slackEscape(cut(text, 35000)),
+	})
+}
+
+func slackEscape(s string) string {
+	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
 }
 
 // ── Microsoft Teams ──────────────────────────────────────────────────────────
@@ -82,7 +90,8 @@ func (s *teamsSender) send(ctx context.Context, target string, m message) error 
 		"version": "1.4",
 		"body": []map[string]any{
 			{"type": "TextBlock", "text": subject, "weight": "Bolder", "size": "Medium", "wrap": true},
-			{"type": "TextBlock", "text": text, "wrap": true},
+			// Cards are refused over about 28 KB.
+			{"type": "TextBlock", "text": cut(text, 20000), "wrap": true},
 		},
 	}
 	return postJSON(ctx, s.client, target, map[string]any{
@@ -99,11 +108,12 @@ type discordSender struct{ client *http.Client }
 
 func (s *discordSender) send(ctx context.Context, target string, m message) error {
 	subject, text := m.render()
-	content := "**" + subject + "**\n" + text
-	if len(content) > 1990 {
-		content = content[:1990]
-	}
-	return postJSON(ctx, s.client, target, map[string]any{"content": content, "username": "Sentinel"})
+	// Discord's limit is 2000 characters; no mentions are parsed, so an
+	// "@everyone" in a log line stays text.
+	content := cut("**"+subject+"**\n"+text, 1990)
+	return postJSON(ctx, s.client, target, map[string]any{
+		"content": content, "username": "Sentinel", "allowed_mentions": map[string]any{"parse": []string{}},
+	})
 }
 
 // ── Telegram ─────────────────────────────────────────────────────────────────
@@ -123,8 +133,10 @@ func (s *telegramSender) send(ctx context.Context, target string, m message) err
 	subject, text := m.render()
 	// HTML mode, escaped, so alert text can't be read as markup.
 	body := map[string]any{
-		"chat_id":                  chat,
-		"text":                     "<b>" + html.EscapeString(subject) + "</b>\n" + html.EscapeString(text),
+		"chat_id": chat,
+		// Telegram refuses more than 4096 characters; entities count once
+		// each, so 3500 bytes of text always fit after escaping.
+		"text":                     "<b>" + html.EscapeString(cut(subject, 300)) + "</b>\n" + html.EscapeString(cut(text, 3500)),
 		"parse_mode":               "HTML",
 		"disable_web_page_preview": true,
 	}

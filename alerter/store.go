@@ -472,9 +472,7 @@ func (s *store) queueRuleAction(ctx context.Context, tx pgx.Tx, r rule, h host, 
 }
 
 func addEvent(ctx context.Context, tx pgx.Tx, tenantID, incidentID, kind, message, actor string) error {
-	if len(message) > 5000 {
-		message = message[:5000]
-	}
+	message = cut(message, 5000)
 	_, err := tx.Exec(ctx, `
 		INSERT INTO incident_events (tenant_id, incident_id, kind, message, actor, created_at)
 		VALUES ($1, $2, $3, $4, $5, clock_timestamp())`, tenantID, incidentID, kind, message, actor)
@@ -783,7 +781,7 @@ func (s *store) failingPlugins(ctx context.Context, hostID, target string) (name
 			continue
 		}
 		if len(e) > 400 {
-			e = e[:400] + "…"
+			e = cut(e, 400) + "…"
 		}
 		ns = append(ns, n)
 		ds = append(ds, n+": "+e)

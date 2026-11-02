@@ -114,9 +114,7 @@ func pushContent(m message) pushPayload {
 	if !p.Resolved {
 		p.AckURL = extractLink(m.Text, "Acknowledge (stops escalation): ")
 	}
-	if len(p.Body) > 1000 {
-		p.Body = p.Body[:1000]
-	}
+	p.Body = cut(p.Body, 1000)
 	return p
 }
 

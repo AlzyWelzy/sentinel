@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 )
 
 type recorder struct {
@@ -192,4 +193,52 @@ func errorsAs(err error, target **permanentError) bool {
 		err = u.Unwrap()
 	}
 	return false
+}
+
+// Alert text can quote customers' log lines: they mustn't ping a whole
+// channel, and long or multi-byte text must still be accepted (a 400 from
+// these services drops the alert for good).
+func TestChatTextIsSafeAndFits(t *testing.T) {
+	rec := &recorder{}
+	srv := rec.server(t)
+	client := newWebhookSender("", true).client
+	m := message{
+		Subject: "[Sentinel] FIRING: log pattern on web-1",
+		Text:    "matched: <!channel> @everyone " + strings.Repeat("ошибка ", 2000),
+		Event:   map[string]any{"type": "alert_firing", "incident_id": "inc-1"},
+	}
+	for _, s := range []sender{&slackSender{client}, &discordSender{client}} {
+		if err := s.send(context.Background(), srv.URL+"/hook", m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tg := &telegramSender{client: client, baseURL: srv.URL}
+	if err := tg.send(context.Background(), "123:abc/42", m); err != nil {
+		t.Fatal(err)
+	}
+	slack := rec.bodies[0]["text"].(string)
+	if strings.Contains(slack, "<!channel>") || !strings.Contains(slack, "&lt;!channel&gt;") {
+		t.Errorf("slack mention not escaped: %.80s", slack)
+	}
+	discord := rec.bodies[1]
+	if am, _ := discord["allowed_mentions"].(map[string]any); am == nil || len(am["parse"].([]any)) != 0 {
+		t.Errorf("discord parses mentions: %v", discord["allowed_mentions"])
+	}
+	for i, field := range []string{"content", "text"} {
+		s := rec.bodies[i+1][field].(string)
+		if !utf8.ValidString(s) {
+			t.Errorf("%s: invalid UTF-8 after cutting", field)
+		}
+		if n := utf8.RuneCountInString(s); n > 4096 || (field == "content" && n > 2000) {
+			t.Errorf("%s: %d characters is over the limit", field, n)
+		}
+	}
+}
+
+func TestCutKeepsCharactersWhole(t *testing.T) {
+	for n := range 12 {
+		if got := cut("aé🚨b", n); !utf8.ValidString(got) || len(got) > n {
+			t.Errorf("cut(%d) = %q", n, got)
+		}
+	}
 }
