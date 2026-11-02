@@ -74,37 +74,37 @@ export function Icon({
   );
 }
 
-/** Sentinel's mark: a radar sweep inside a rounded square. */
+/** Sentinel's mark: a radar sweep inside a rounded square. The gradient is
+ * CSS, not an SVG <linearGradient>, whose id would clash between copies (the
+ * hidden sidebar's would win and the visible one would render blank). */
 export function Logo({ className = "size-6" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" aria-hidden className={className}>
-      <defs>
-        <linearGradient id="sentinel-mark" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="var(--brand)" />
-          <stop offset="1" stopColor="var(--brand-2)" />
-        </linearGradient>
-      </defs>
-      <rect width="32" height="32" rx="9" fill="url(#sentinel-mark)" />
-      <circle
-        cx="16"
-        cy="16"
-        r="8.5"
-        fill="none"
-        stroke="#fff"
-        strokeOpacity=".45"
-        strokeWidth="1.6"
-      />
-      <circle
-        cx="16"
-        cy="16"
-        r="4"
-        fill="none"
-        stroke="#fff"
-        strokeOpacity=".7"
-        strokeWidth="1.6"
-      />
-      <path d="M16 16 L22.5 9.5" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
-      <circle cx="16" cy="16" r="1.8" fill="#fff" />
-    </svg>
+    <span
+      aria-hidden
+      className={`inline-grid shrink-0 place-items-center rounded-[28%] bg-gradient-brand ${className}`}
+    >
+      <svg viewBox="0 0 32 32" className="size-full">
+        <circle
+          cx="16"
+          cy="16"
+          r="8.5"
+          fill="none"
+          stroke="#fff"
+          strokeOpacity=".45"
+          strokeWidth="1.6"
+        />
+        <circle
+          cx="16"
+          cy="16"
+          r="4"
+          fill="none"
+          stroke="#fff"
+          strokeOpacity=".7"
+          strokeWidth="1.6"
+        />
+        <path d="M16 16 L22.5 9.5" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
+        <circle cx="16" cy="16" r="1.8" fill="#fff" />
+      </svg>
+    </span>
   );
 }

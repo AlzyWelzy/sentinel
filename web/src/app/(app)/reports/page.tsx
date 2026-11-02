@@ -149,7 +149,11 @@ export default function ReportsPage() {
                   <tbody>
                     {s.hosts?.map((h) => (
                       <tr key={h.host_id}>
-                        <td className="font-medium">{h.hostname}</td>
+                        <td className="font-medium">
+                          <span title={h.hostname} className="block max-w-[18rem] truncate">
+                            {h.hostname}
+                          </span>
+                        </td>
                         <td className="text-right tabular">{pct(h.availability)}</td>
                         <td className="text-right tabular">{h.incidents}</td>
                         <td className="text-right tabular">

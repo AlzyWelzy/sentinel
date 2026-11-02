@@ -132,7 +132,11 @@ export default function OverviewPage() {
                       </Link>
                       {i.detail && <p className="truncate text-xs text-ink-3">{i.detail}</p>}
                     </td>
-                    <td className="text-ink-2">{i.hostname}</td>
+                    <td className="text-ink-2">
+                      <span title={i.hostname} className="block max-w-[18rem] truncate">
+                        {i.hostname}
+                      </span>
+                    </td>
                     <td className="text-right whitespace-nowrap text-ink-3">
                       {duration(i.duration_seconds)}
                     </td>
@@ -163,7 +167,11 @@ export default function OverviewPage() {
               .map((s) => (
                 <tr key={s.id}>
                   <td>
-                    <Link href={`/servers/${s.id}`} className="font-medium hover:text-brand">
+                    <Link
+                      href={`/servers/${s.id}`}
+                      title={s.hostname}
+                      className="block max-w-[18rem] truncate font-medium hover:text-brand"
+                    >
                       {s.hostname}
                     </Link>
                   </td>

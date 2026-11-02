@@ -90,7 +90,7 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
     <select
       {...props}
       className={cx(
-        "h-9 rounded-[10px] border border-line bg-panel px-2.5 text-sm text-ink transition hover:border-line-2 focus:border-brand focus:ring-4 focus:ring-brand/15 focus:outline-none",
+        "h-9 max-w-full truncate rounded-[10px] border border-line bg-panel px-2.5 text-sm text-ink transition hover:border-line-2 focus:border-brand focus:ring-4 focus:ring-brand/15 focus:outline-none",
         props.className,
       )}
     />
@@ -151,7 +151,10 @@ export function Card({
 }) {
   return (
     <section
-      className={cx("animate-rise rounded-2xl border border-line bg-panel shadow-card", className)}
+      className={cx(
+        "min-w-0 animate-rise rounded-2xl border border-line bg-panel shadow-card",
+        className,
+      )}
     >
       {(title || actions) && (
         <header className="flex min-h-12 items-center justify-between gap-3 border-b border-line px-5 py-3">
@@ -176,10 +179,12 @@ export function PageHeader({
   return (
     <div className="mb-8 flex animate-rise flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-[-0.02em] text-ink sm:text-[28px]">
+        <h1 className="text-2xl font-semibold tracking-[-0.02em] [overflow-wrap:anywhere] text-ink sm:text-[28px]">
           {title}
         </h1>
-        {subtitle && <p className="mt-1.5 text-sm text-ink-2">{subtitle}</p>}
+        {subtitle && (
+          <p className="mt-1.5 text-sm [overflow-wrap:anywhere] text-ink-2">{subtitle}</p>
+        )}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -282,21 +287,54 @@ export function Empty({
         </svg>
       </div>
       <p className="font-semibold tracking-tight text-ink">{title}</p>
-      {children && <p className="max-w-md text-sm text-ink-2">{children}</p>}
+      {children && (
+        <p className="max-w-md text-sm [overflow-wrap:anywhere] text-ink-2">{children}</p>
+      )}
       {action && <div className="mt-3">{action}</div>}
     </div>
   );
 }
 
 export function ErrorState({ message, retry }: { message: string; retry?: () => void }) {
+  const missing = /not found|nothing here/i.test(message);
   return (
-    <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
-      <p className="text-sm text-bad">{message}</p>
-      {retry && (
-        <Button onClick={retry} variant="secondary">
-          Try again
-        </Button>
-      )}
+    <div className="flex animate-rise flex-col items-center gap-3 px-6 py-20 text-center">
+      <div
+        className={cx(
+          "grid size-12 place-items-center rounded-2xl border shadow-card",
+          missing ? "border-line bg-panel-2 text-ink-3" : "border-bad/25 bg-bad/10 text-bad",
+        )}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className="size-5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          aria-hidden
+        >
+          {missing ? (
+            <path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" />
+          ) : (
+            <path d="M12 8v5M12 16.5h.01M12 3l9.5 17h-19z" />
+          )}
+        </svg>
+      </div>
+      <p className="font-semibold tracking-tight text-ink">
+        {missing ? "We couldn't find that" : "Something went wrong"}
+      </p>
+      <p className="max-w-md text-sm text-ink-2">{message}</p>
+      <div className="mt-2 flex gap-2">
+        {retry && !missing && (
+          <Button onClick={retry} variant="secondary">
+            Try again
+          </Button>
+        )}
+        <LinkButton href="/overview" variant={missing ? "secondary" : "ghost"}>
+          Back to overview
+        </LinkButton>
+      </div>
     </div>
   );
 }

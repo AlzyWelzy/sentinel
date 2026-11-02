@@ -143,8 +143,9 @@ export default function ServerPage() {
       </div>
       <PageHeader
         title={
-          <span className="flex items-center gap-3">
-            {h.hostname} {health && <StatusBadge status={health.status} />}
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="min-w-0">{h.hostname}</span>{" "}
+            {health && <StatusBadge status={health.status} />}
           </span>
         }
         subtitle={[
@@ -192,7 +193,7 @@ export default function ServerPage() {
       )}
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-line">
-        <div className="flex gap-1 overflow-x-auto">
+        <div className="flex max-w-full min-w-0 gap-1 overflow-x-auto">
           {TABS.map((t) => (
             <button
               key={t}

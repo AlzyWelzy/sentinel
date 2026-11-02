@@ -130,7 +130,11 @@ export default function IncidentsPage() {
                     </Link>
                     <p className="truncate text-xs text-ink-3">{i.rule_name}</p>
                   </td>
-                  <td className="text-ink-2">{i.hostname}</td>
+                  <td className="text-ink-2">
+                    <span title={i.hostname} className="block max-w-[18rem] truncate">
+                      {i.hostname}
+                    </span>
+                  </td>
                   <td>
                     <div className="flex flex-wrap gap-1">
                       <Badge tone={i.status === "open" ? "bad" : "ok"}>{i.status}</Badge>

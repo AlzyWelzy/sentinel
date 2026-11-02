@@ -132,10 +132,14 @@ function Servers() {
                 return (
                   <tr key={s.id} className="hover:bg-panel-2/50">
                     <td>
-                      <Link href={`/servers/${s.id}`} className="font-medium hover:text-brand">
+                      <Link
+                        href={`/servers/${s.id}`}
+                        title={s.hostname}
+                        className="block max-w-[18rem] truncate font-medium hover:text-brand"
+                      >
                         {s.hostname}
                       </Link>
-                      <p className="text-xs text-ink-3">
+                      <p className="max-w-[18rem] truncate text-xs text-ink-3">
                         {[h?.platform, h?.platform_version].filter(Boolean).join(" ") || h?.os}
                         {h?.ip_addresses?.[0] ? ` · ${h.ip_addresses[0]}` : ""}
                       </p>

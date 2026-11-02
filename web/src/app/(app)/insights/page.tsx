@@ -137,7 +137,11 @@ export default function InsightsPage() {
                   <tbody>
                     {q.data.hosts.map((h) => (
                       <tr key={h.host_id}>
-                        <td className="font-medium">{h.hostname}</td>
+                        <td className="font-medium">
+                          <span title={h.hostname} className="block max-w-[18rem] truncate">
+                            {h.hostname}
+                          </span>
+                        </td>
                         <td className="text-right tabular">
                           {pct(h.cpu_avg)} / {pct(h.cpu_p95)}
                         </td>

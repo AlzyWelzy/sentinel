@@ -218,7 +218,10 @@ export function errorText(error: unknown, fallback = "Something went wrong"): st
     return String((detail as { message: unknown }).message);
   }
   if (Array.isArray(detail) && detail[0] && typeof detail[0] === "object" && "msg" in detail[0]) {
-    return String((detail[0] as { msg: unknown }).msg).replace(/^Value error, /, "");
+    const msg = String((detail[0] as { msg: unknown }).msg).replace(/^Value error, /, "");
+    // A mistyped or truncated link: the id in the address isn't one.
+    if (/valid UUID/i.test(msg)) return "Nothing here: the link may be mistyped or cut short";
+    return msg;
   }
   return fallback;
 }

@@ -185,3 +185,14 @@ body {
 .u-select {
   background: color-mix(in srgb, var(--brand) 14%, transparent);
 }
+
+/* Grid and flex children default to min-width: auto, so one long hostname
+   or table would widen the whole column past a phone's screen. */
+@layer base {
+  .grid > * {
+    min-width: 0;
+  }
+  label {
+    overflow-wrap: anywhere;
+  }
+}
