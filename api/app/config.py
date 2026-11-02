@@ -18,15 +18,15 @@ class Settings(BaseSettings):
     # ── Postgres ─────────────────────────────────────────────────────────────
     # Customer requests run as the app role, so row-level security always applies.
     DATABASE_APP_URL: str = (
-        "postgresql+asyncpg://pulsegrid_app:pulsegrid_app@localhost:5432/pulsegrid"
+        "postgresql+asyncpg://pulsegrid_app:pulsegrid_app@localhost:5442/pulsegrid"
     )
     # Internal routes work across tenants, so they use the BYPASSRLS service role.
     DATABASE_SERVICE_URL: str = (
-        "postgresql+asyncpg://pulsegrid_service:pulsegrid_service@localhost:5432/pulsegrid"
+        "postgresql+asyncpg://pulsegrid_service:pulsegrid_service@localhost:5442/pulsegrid"
     )
 
-    REDIS_URL: str = "redis://localhost:6379/0"
-    VICTORIAMETRICS_URL: str = "http://localhost:8428"
+    REDIS_URL: str = "redis://localhost:6389/0"
+    VICTORIAMETRICS_URL: str = "http://localhost:8438"
     # Long-term store of hourly rollups (written by the jobs worker). Empty:
     # no rollups, and charts only reach back as far as raw retention.
     VICTORIAMETRICS_LONG_URL: str = ""
@@ -44,9 +44,9 @@ class Settings(BaseSettings):
 
     # ── Public URLs ──────────────────────────────────────────────────────────
     # Never hardcode these anywhere else: moving domains is a config change.
-    PUBLIC_API_URL: str = "http://localhost:8000"
-    PUBLIC_INGEST_URL: str = "http://localhost:8080"
-    PUBLIC_DOWNLOAD_URL: str = "http://localhost:8000"
+    PUBLIC_API_URL: str = "http://localhost:8010"
+    PUBLIC_INGEST_URL: str = "http://localhost:8090"
+    PUBLIC_DOWNLOAD_URL: str = "http://localhost:8010"
     # The agent version this release ships (agent/VERSION). A newer one than
     # the rollout's stable version starts as a candidate for this share of
     # servers; staff promote it (or the health gate rolls it back).

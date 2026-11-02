@@ -18,7 +18,7 @@ from app.services.logs import BadQuery, LogFilter, build_query, escape
 from .conftest import User, insert_host
 
 H = uuid.UUID("11111111-2222-3333-4444-555555555555")
-VLOGS = "http://localhost:9428"
+VLOGS = "http://localhost:9438"
 
 
 def test_build_query():
@@ -83,7 +83,7 @@ async def push(tenant_id, host_id, line, level="error", source="/var/log/app.log
     assert r.status_code == 200, r.text
 
 
-@pytest.mark.skipif(not vlogs_up(), reason="needs VictoriaLogs on localhost:9428")
+@pytest.mark.skipif(not vlogs_up(), reason="needs VictoriaLogs on localhost:9438")
 async def test_search_is_per_account(alice: User, bob: User, monkeypatch):
     monkeypatch.setattr(settings, "VICTORIALOGS_URL", VLOGS)
     a_tid, b_tid = await alice.tenant_id(), await bob.tenant_id()
@@ -180,7 +180,7 @@ async def test_log_rules(alice: User):
     assert (await alice.request("POST", "/v1/alert-rules", json=regex)).status_code == 422
 
 
-@pytest.mark.skipif(not vlogs_up(), reason="needs VictoriaLogs on localhost:9428")
+@pytest.mark.skipif(not vlogs_up(), reason="needs VictoriaLogs on localhost:9438")
 async def test_log_rule_preview(alice: User, monkeypatch):
     monkeypatch.setattr(settings, "VICTORIALOGS_URL", VLOGS)
     tid = await alice.tenant_id()

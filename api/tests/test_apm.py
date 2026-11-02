@@ -13,8 +13,8 @@ from app.services.apm import q, selector
 
 from .conftest import User, insert_host
 
-TEMPO = "http://localhost:3200"
-OTLP = "http://localhost:4319"
+TEMPO = "http://localhost:3210"
+OTLP = "http://localhost:4329"
 
 
 def test_traceql_quoting():
@@ -78,7 +78,7 @@ async def send(tenant_id, host_id, service, spans):
     assert r.status_code == 200, r.text
 
 
-@pytest.mark.skipif(not tempo_up(), reason="needs Tempo on localhost:3200")
+@pytest.mark.skipif(not tempo_up(), reason="needs Tempo on localhost:3210")
 async def test_apm_is_per_account(alice: User, bob: User, monkeypatch):
     monkeypatch.setattr(settings, "TEMPO_URL", TEMPO)
     a_tid, b_tid = await alice.tenant_id(), await bob.tenant_id()

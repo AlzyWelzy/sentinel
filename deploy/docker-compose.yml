@@ -1,10 +1,10 @@
 # Local development stack. Run from the repo root:
 #   docker compose -f deploy/docker-compose.yml up -d --build
 #
-# The project name must differ from the production stack's: Docker names
-# volumes <project>_<volume>, so a shared name would point both at the same
-# Postgres data directory.
-name: pulsegrid-dev
+# The project name must differ from the production stack's and from any
+# other checkout's (Docker names volumes <project>_<volume>), and the host
+# ports are offset (+10) so this stack can run next to another one.
+name: beyond-dev
 
 services:
   postgres:
@@ -19,7 +19,7 @@ services:
       - postgres-data:/var/lib/postgresql
       - ./postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro
     ports:
-      - "127.0.0.1:${PG_PORT:-5432}:5432"
+      - "127.0.0.1:${PG_PORT:-5442}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pulsegrid -d pulsegrid"]
       interval: 5s
@@ -29,7 +29,7 @@ services:
   redis:
     image: redis:8.10.3-alpine
     ports:
-      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6389}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -45,7 +45,7 @@ services:
     volumes:
       - vm-data:/storage
     ports:
-      - "127.0.0.1:${VM_PORT:-8428}:8428"
+      - "127.0.0.1:${VM_PORT:-8438}:8428"
 
   victoriametrics-long:
     image: victoriametrics/victoria-metrics:v1.155.0
@@ -56,7 +56,7 @@ services:
     volumes:
       - vm-long-data:/storage
     ports:
-      - "127.0.0.1:${VM_LONG_PORT:-8429}:8428"
+      - "127.0.0.1:${VM_LONG_PORT:-8439}:8428"
 
   victorialogs:
     image: victoriametrics/victoria-logs:v1.53.0
@@ -67,7 +67,7 @@ services:
     volumes:
       - vlogs-data:/vlogs
     ports:
-      - "127.0.0.1:${VLOGS_PORT:-9428}:9428"
+      - "127.0.0.1:${VLOGS_PORT:-9438}:9428"
 
   tempo:
     image: grafana/tempo:3.1.1
@@ -77,8 +77,8 @@ services:
       - ./tempo/tempo.yml:/etc/tempo/tempo.yml:ro
       - tempo-data:/var/tempo
     ports:
-      - "127.0.0.1:${TEMPO_PORT:-3200}:3200"
-      - "127.0.0.1:${TEMPO_OTLP_PORT:-4319}:4318"
+      - "127.0.0.1:${TEMPO_PORT:-3210}:3200"
+      - "127.0.0.1:${TEMPO_OTLP_PORT:-4329}:4318"
 
   migrate:
     build:
@@ -102,9 +102,9 @@ services:
       DATABASE_SERVICE_URL: postgresql+asyncpg://pulsegrid_service:pulsegrid_service@postgres:5432/pulsegrid
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
-      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8000}
-      PUBLIC_INGEST_URL: ${PUBLIC_INGEST_URL:-http://localhost:8080}
-      PUBLIC_DOWNLOAD_URL: ${PUBLIC_DOWNLOAD_URL:-http://localhost:8000}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8010}
+      PUBLIC_INGEST_URL: ${PUBLIC_INGEST_URL:-http://localhost:8090}
+      PUBLIC_DOWNLOAD_URL: ${PUBLIC_DOWNLOAD_URL:-http://localhost:8010}
       AGENT_VERSION: ${AGENT_VERSION:-dev}
       INTERNAL_API_KEY: change-me-pulsegrid-internal-key
       ACK_SIGNING_SECRET: change-me-ack-secret
@@ -124,7 +124,7 @@ services:
     volumes:
       - ../api/dist:/app/dist:ro   # `make agent` output, served at /agent/
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "${API_PORT:-8010}:8000"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -141,11 +141,11 @@ services:
       VICTORIAMETRICS_URL: http://victoriametrics:8428
       VICTORIALOGS_URL: http://victorialogs:9428
       TEMPO_URL: http://tempo:4318
-      PUBLIC_INGEST_URL: ${PUBLIC_INGEST_URL:-http://localhost:8080}
-      PUBLIC_DOWNLOAD_URL: ${PUBLIC_DOWNLOAD_URL:-http://localhost:8000}
+      PUBLIC_INGEST_URL: ${PUBLIC_INGEST_URL:-http://localhost:8090}
+      PUBLIC_DOWNLOAD_URL: ${PUBLIC_DOWNLOAD_URL:-http://localhost:8010}
       AGENT_VERSION: ${AGENT_VERSION:-dev}
     ports:
-      - "${INGEST_PORT:-8080}:8080"
+      - "${INGEST_PORT:-8090}:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -170,7 +170,7 @@ services:
       SMTP_FROM: Pulsegrid <alerts@pulsegrid.local>
       WEBHOOK_SIGNING_SECRET: change-me-webhook-secret
       ACK_SIGNING_SECRET: change-me-ack-secret
-      PUBLIC_API_URL: http://localhost:${API_PORT:-8000}
+      PUBLIC_API_URL: http://localhost:${API_PORT:-8010}
       ALLOW_PRIVATE_WEBHOOKS: "true"   # local only: lets webhooks reach localhost test receivers
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
@@ -202,7 +202,7 @@ services:
   mailpit:
     image: axllent/mailpit:v1.21.8
     ports:
-      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+      - "127.0.0.1:${MAILPIT_PORT:-8035}:8025"
 
 volumes:
   postgres-data:

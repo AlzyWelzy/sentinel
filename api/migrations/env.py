@@ -14,7 +14,7 @@ if config.config_file_name is not None:
 # Migrations run as the owner role: it owns the tables, so it's the only role
 # that can create them, change RLS policies and grant to the other roles.
 OWNER_URL = os.environ.get(
-    "DATABASE_OWNER_URL", "postgresql+asyncpg://pulsegrid:pulsegrid@localhost:5432/pulsegrid"
+    "DATABASE_OWNER_URL", "postgresql+asyncpg://pulsegrid:pulsegrid@localhost:5442/pulsegrid"
 )
 
 
