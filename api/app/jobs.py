@@ -192,6 +192,11 @@ async def cleanup(now: datetime) -> None:
 
 def digest_due(t: Tenant, now: datetime) -> bool:
     local = now.astimezone(oncall.zone(t.digest_timezone))
+    # A new organisation waits for a full period: a digest of its first
+    # hour says nothing.
+    days = 1 if t.digest == "daily" else 7
+    if t.created_at is not None and now - t.created_at < timedelta(days=days):
+        return False
     if t.digest == "off" or local.hour < t.digest_hour:
         return False
     if t.digest == "weekly" and local.weekday() != 0:  # Mondays

@@ -105,6 +105,15 @@ async def test_digest(alice: User, monkeypatch):
     async with ServiceSession() as db:
         t = await db.get(Tenant, tid)
         assert t is not None
+        # Brand new: nothing until it has a full day behind it.
+        assert not jobs.digest_due(t, now)
+    async with ServiceSession() as db, db.begin():
+        t = await db.get(Tenant, tid)
+        assert t is not None
+        t.created_at = now - timedelta(days=2)
+    async with ServiceSession() as db:
+        t = await db.get(Tenant, tid)
+        assert t is not None
         assert jobs.digest_due(t, now)
     await jobs.send_digests(now)
     async with ServiceSession() as db:

@@ -18,6 +18,10 @@ const NAV = [
   { href: "/checks", label: "Uptime checks" },
   { href: "/maintenance", label: "Maintenance" },
   { href: "/status-pages", label: "Status pages" },
+  { href: "/logs", label: "Logs" },
+  { href: "/apm", label: "APM" },
+  { href: "/dashboards", label: "Dashboards" },
+  { href: "/reports", label: "Reports" },
 ];
 const SETTINGS = [
   { href: "/settings/contacts", label: "Contacts" },
