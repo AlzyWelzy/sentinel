@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -73,8 +74,19 @@ func maybeAutoconfigure() bool {
 		return false
 	}
 	if m == autoconfigRev {
-		// Already ran; still keep hardware monitoring runnable every hour.
-		return repairHardware(dir, defaultServiceUser())
+		// Already ran. Every hour: pick up services installed since, keep
+		// logs.conf current (Docker installed later) and hardware runnable.
+		changed := false
+		note := func(ok bool, what string) {
+			if ok {
+				changed = true
+				fmt.Println("autoconfig: " + what)
+			}
+		}
+		lc := filepath.Join(dir, "logs.conf")
+		note(refreshLogsConf(lc), "log shipping updated")
+		detectServices(dir, defaultServiceUser(), note)
+		return repairHardware(dir, defaultServiceUser()) || changed
 	}
 	changed := autoconfigure(dir, defaultServiceUser(), false)
 	os.WriteFile(marker, []byte(autoconfigRev+"\n"), 0o644)
@@ -160,54 +172,8 @@ func autoconfigure(dir, svcUser string, noLogs bool) bool {
 		note(writeNew(filepath.Join(dir, "apm.conf"), autoconfigNote+"\nlisten = 127.0.0.1:4318\n", 0o644, ""), "APM receiver on 127.0.0.1:4318")
 	}
 
-	have := pluginTypes(pdir)
-	try := func(typ, conf string, mode os.FileMode, group string, check bool) {
-		if have[typ] {
-			return
-		}
-		path := filepath.Join(pdir, typ+".conf")
-		if !writeNew(path, autoconfigNote+"\ntype = "+typ+"\n"+conf, mode, group) {
-			return
-		}
-		if check {
-			if err := probePlugin(path); err != nil {
-				os.Remove(path)
-				fmt.Printf("autoconfig: %s found but not readable (%v); skipped\n", typ, err)
-				return
-			}
-		}
-		have[typ] = true
-		note(true, typ+" monitoring on")
-	}
+	have := detectServices(dir, svcUser, note)
 
-	if addr, pw := redisSettings(); dial(addr) {
-		if pw == "" {
-			try("redis", "address = "+addr+"\n", 0o644, "", true)
-		} else {
-			try("redis", "address = "+addr+"\npassword = "+pw+"\n", 0o640, svcUser, true)
-		}
-	}
-	if url := nginxStatus(); url != "" {
-		try("nginx", "url = "+url+"\n", 0o644, "", true)
-	}
-	if apacheInstalled() && dial("127.0.0.1:80") && apacheStatus() {
-		try("apache", "url = http://127.0.0.1/server-status?auto\n", 0o644, "", true)
-	}
-	if sock := firstExisting("/var/run/docker.sock", "/run/docker.sock"); sock != "" && !have["docker"] {
-		// The docker group is root-equivalent; the agent only reads container stats.
-		addToGroup(svcUser, "docker")
-		try("docker", "socket = "+sock+"\n", 0o644, "", false)
-	}
-	if !have["postgres"] {
-		if dsn := setupPostgres(svcUser); dsn != "" {
-			try("postgres", "dsn = "+dsn+"\n", 0o644, "", false)
-		}
-	}
-	if !have["mysql"] {
-		if dsn := setupMySQL(svcUser); dsn != "" {
-			try("mysql", "dsn = "+dsn+"\n", 0o640, svcUser, true)
-		}
-	}
 	// Rev 3 wrote hardware plugins on servers without the sudo binary
 	// (Proxmox ships none, though /etc/sudoers.d can exist), where they can
 	// never run; redo those.
@@ -665,3 +631,86 @@ func probePluginSettings(s map[string]string) error {
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+// autoconfigTried, in the config dir, lists the services autoconfig has
+// already tried to set up. Each gets one attempt when it's first seen: that
+// can reload Apache or create a database login, and a plugin file someone
+// deleted must stay deleted.
+const autoconfigTried = ".autoconfig-tried"
+
+// detectServices writes plugin files for services found on this server that
+// have none yet, once per service. It returns the plugin types present.
+func detectServices(dir, svcUser string, note func(bool, string)) map[string]bool {
+	pdir := filepath.Join(dir, "plugins.d")
+	have := pluginTypes(pdir)
+	tried := map[string]bool{}
+	triedFile := filepath.Join(dir, autoconfigTried)
+	if b, err := os.ReadFile(triedFile); err == nil {
+		for _, t := range strings.Fields(string(b)) {
+			tried[t] = true
+		}
+	}
+	for t := range have {
+		tried[t] = true // configured already, by us or by hand
+	}
+	attempt := func(typ string) bool {
+		if tried[typ] {
+			return false
+		}
+		tried[typ] = true
+		return true
+	}
+	try := func(typ, conf string, mode os.FileMode, group string, check bool) {
+		path := filepath.Join(pdir, typ+".conf")
+		if !writeNew(path, autoconfigNote+"\ntype = "+typ+"\n"+conf, mode, group) {
+			return
+		}
+		if check {
+			if err := probePlugin(path); err != nil {
+				os.Remove(path)
+				fmt.Printf("autoconfig: %s found but not readable (%v); skipped\n", typ, err)
+				return
+			}
+		}
+		have[typ] = true
+		note(true, typ+" monitoring on")
+	}
+
+	if addr, pw := redisSettings(); !tried["redis"] && dial(addr) && attempt("redis") {
+		if pw == "" {
+			try("redis", "address = "+addr+"\n", 0o644, "", true)
+		} else {
+			try("redis", "address = "+addr+"\npassword = "+pw+"\n", 0o640, svcUser, true)
+		}
+	}
+	if !tried["nginx"] && has("nginx") && attempt("nginx") {
+		if url := nginxStatus(); url != "" {
+			try("nginx", "url = "+url+"\n", 0o644, "", true)
+		}
+	}
+	if !tried["apache"] && apacheInstalled() && dial("127.0.0.1:80") && attempt("apache") && apacheStatus() {
+		try("apache", "url = http://127.0.0.1/server-status?auto\n", 0o644, "", true)
+	}
+	if sock := firstExisting("/var/run/docker.sock", "/run/docker.sock"); sock != "" && attempt("docker") {
+		// The docker group is root-equivalent; the agent only reads container stats.
+		addToGroup(svcUser, "docker")
+		try("docker", "socket = "+sock+"\n", 0o644, "", false)
+	}
+	if !tried["postgres"] && has("psql") && attempt("postgres") {
+		if dsn := setupPostgres(svcUser); dsn != "" {
+			try("postgres", "dsn = "+dsn+"\n", 0o644, "", false)
+		}
+	}
+	if !tried["mysql"] && (has("mysql") || has("mariadb")) && attempt("mysql") {
+		if dsn := setupMySQL(svcUser); dsn != "" {
+			try("mysql", "dsn = "+dsn+"\n", 0o640, svcUser, true)
+		}
+	}
+	var list []string
+	for t := range tried {
+		list = append(list, t)
+	}
+	sort.Strings(list)
+	os.WriteFile(triedFile, []byte(strings.Join(list, "\n")+"\n"), 0o644)
+	return have
+}

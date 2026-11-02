@@ -2,9 +2,11 @@ package logs
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -175,4 +177,26 @@ func mustNs(t *testing.T, s string) int64 {
 		t.Fatal(err)
 	}
 	return v.UnixNano()
+}
+
+func TestExpandKeepsRecentFilesOverCap(t *testing.T) {
+	d := t.TempDir()
+	var found []string
+	old := time.Now().Add(-48 * time.Hour)
+	for i := 0; i < maxFiles+20; i++ {
+		p := filepath.Join(d, fmt.Sprintf("a%03d.log", i))
+		os.WriteFile(p, []byte("x\n"), 0o644)
+		os.Chtimes(p, old, old)
+		found = append(found, p)
+	}
+	live := filepath.Join(d, "zzz-live.log")
+	os.WriteFile(live, []byte("x\n"), 0o644)
+	found = append(found, live)
+	got, problems := expand(nil, found)
+	if len(got) != maxFiles || len(problems) != 1 {
+		t.Fatalf("got %d files, problems %v", len(got), problems)
+	}
+	if !slices.Contains(got, live) {
+		t.Fatal("the recently written file was dropped")
+	}
 }

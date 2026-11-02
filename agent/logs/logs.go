@@ -260,11 +260,29 @@ func expand(patterns, found []string) ([]string, []string) {
 			}
 		}
 	}
-	sort.Strings(out)
 	if len(out) > maxFiles {
-		problems = append(problems, fmt.Sprintf("only the first %d files are shipped", maxFiles))
+		// Keep the files named in logs.conf, then the most recently written
+		// of those found under dir = ..., so live logs win over stale ones.
+		named := map[string]bool{}
+		for _, m := range out[len(found):] {
+			named[m] = true
+		}
+		mtime := map[string]int64{}
+		for _, m := range out {
+			if fi, err := os.Stat(m); err == nil {
+				mtime[m] = fi.ModTime().UnixNano()
+			}
+		}
+		sort.SliceStable(out, func(i, j int) bool {
+			if named[out[i]] != named[out[j]] {
+				return named[out[i]]
+			}
+			return mtime[out[i]] > mtime[out[j]]
+		})
+		problems = append(problems, fmt.Sprintf("%d log files found; shipping the %d most recently written", len(out), maxFiles))
 		out = out[:maxFiles]
 	}
+	sort.Strings(out)
 	return out, problems
 }
 
