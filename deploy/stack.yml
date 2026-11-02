@@ -212,6 +212,8 @@ services:
     configs:
       - source: backup_script
         target: /backup.sh
+      - source: restore_check
+        target: /restore-check.sh
     volumes:
       - pg-backups:/backups
     networks: [backend]
@@ -282,6 +284,9 @@ configs:
   backup_script:
     name: sentinel-backup-${BACKUP_SCRIPT:-v1}
     file: ./postgres/backup.sh
+  restore_check:
+    name: sentinel-restore-check-${RESTORE_CHECK:-v1}
+    file: ./postgres/restore-check.sh
   tempo:
     # Swarm configs can't change in place: name each version by its content
     # (set by the deploy, e.g. TEMPO_CONFIG=$(sha256sum tempo/tempo.yml | cut -c1-8)).
@@ -308,4 +313,6 @@ networks:
     driver: overlay
   backend:
     driver: overlay
-    # Nothing on this network is published.
+    # Nothing on this network is published. Attachable so one-off jobs
+    # (migrations, vm-backup.sh) can reach the stores.
+    attachable: true
