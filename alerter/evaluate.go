@@ -122,6 +122,12 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 	for _, h := range hosts {
 		prev := states[h.ID]
 		o := obs[h.ID]
+		// A plugin whose file was removed stops reporting at all; on a host
+		// that's still reporting, that's a recovery, or its alert would never
+		// close.
+		if r.Kind == "plugin_down" && !o.HasData && !silent[h.ID] && prev.State != "" && prev.State != stateOK {
+			o = observation{HasData: true, Value: 1}
+		}
 		// Hysteresis: once firing, stay firing until the value is back past
 		// the recovery threshold, not merely back under the alert threshold.
 		if prev.State == stateFiring && o.HasData && r.RecoveryThreshold != nil {
