@@ -150,6 +150,7 @@ type Inventory struct {
 type LogsStatus struct {
 	Files    []string `json:"files,omitempty"`
 	Journal  bool     `json:"journal,omitempty"`
+	EventLog []string `json:"eventlog,omitempty"`
 	Problems []string `json:"problems,omitempty"`
 }
 

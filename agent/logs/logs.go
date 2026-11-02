@@ -10,6 +10,7 @@
 //	file = /var/log/nginx/*.log
 //	file = /var/log/app/app.log
 //	journal = true
+//	eventlog = System, Application   (Windows)
 //
 // A file seen for the first time is shipped from its end (no backfill).
 // Offsets advance only after ingest has accepted the lines, and are kept in
@@ -51,6 +52,8 @@ type Config struct {
 	Dirs    []string // every readable text log under these, recursively
 	Journal bool
 	Docker  bool // what running containers print
+	// Windows Event Log channels, e.g. System and Application
+	EventLog []string
 }
 
 // LoadConfig reads logs.conf. A missing file means shipping is off.
@@ -97,6 +100,12 @@ func LoadConfig(dir string) (Config, bool, error) {
 			c.Docker = v == "true" || v == "yes" || v == "1"
 		case "journal":
 			c.Journal = v == "true" || v == "yes" || v == "1"
+		case "eventlog":
+			for _, ch := range strings.Split(v, ",") {
+				if ch = strings.TrimSpace(ch); ch != "" {
+					c.EventLog = append(c.EventLog, ch)
+				}
+			}
 		default:
 			return Config{}, false, fmt.Errorf("%s line %d: unknown key %q", ConfigFile, n, k)
 		}
@@ -116,6 +125,7 @@ type savedState struct {
 	Files         map[string]fileState `json:"files"`
 	JournalCursor string               `json:"journal_cursor,omitempty"`
 	Docker        map[string]int64     `json:"docker,omitempty"`
+	EventLog      map[string]int64     `json:"eventlog,omitempty"` // channel: last record ID
 }
 
 // Shipper remembers where each source was read up to.
@@ -142,7 +152,7 @@ func NewShipper(stateDir string) *Shipper {
 // Collect reads up to max new lines. Nothing is marked as read until Commit.
 // It returns notes about sources that couldn't be read (shown in inventory).
 func (s *Shipper) Collect(c Config, max int) ([]proto.LogEntry, []string) {
-	s.pending = savedState{Files: map[string]fileState{}, JournalCursor: s.st.JournalCursor, Docker: s.st.Docker}
+	s.pending = savedState{Files: map[string]fileState{}, JournalCursor: s.st.JournalCursor, Docker: s.st.Docker, EventLog: map[string]int64{}}
 	var out []proto.LogEntry
 	var problems []string
 	paths, globErrs := expand(c.Files, walkDirs(c.Dirs, c.Journal))
@@ -187,6 +197,25 @@ func (s *Shipper) Collect(c Config, max int) ([]proto.LogEntry, []string) {
 			out = append(out, entries...)
 		}
 	}
+	for _, ch := range c.EventLog {
+		last, known := s.st.EventLog[ch]
+		if len(out) >= max {
+			if known {
+				s.pending.EventLog[ch] = last
+			}
+			continue
+		}
+		entries, next, err := readEventLog(ch, last, known, max-len(out))
+		if err != nil {
+			problems = append(problems, "eventlog: "+err.Error())
+			if known {
+				s.pending.EventLog[ch] = last
+			}
+			continue
+		}
+		s.pending.EventLog[ch] = next
+		out = append(out, entries...)
+	}
 	return out, problems
 }
 
@@ -203,6 +232,7 @@ func (s *Shipper) Commit() {
 	}
 	s.st.JournalCursor = s.pending.JournalCursor
 	s.st.Docker = s.pending.Docker
+	s.st.EventLog = s.pending.EventLog
 	if b, err := json.Marshal(s.st); err == nil {
 		tmp := filepath.Join(s.stateDir, stateFile+".tmp")
 		if os.WriteFile(tmp, b, 0o600) == nil {

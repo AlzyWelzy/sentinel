@@ -333,7 +333,7 @@ func (a *agent) logLoop(ctx context.Context) {
 			continue
 		}
 		entries, problems := shipper.Collect(cfg, maxLogLinesPerPush)
-		a.setLogStatus(&proto.LogsStatus{Files: cfg.Files, Journal: cfg.Journal, Problems: problems})
+		a.setLogStatus(&proto.LogsStatus{Files: cfg.Files, Journal: cfg.Journal, EventLog: cfg.EventLog, Problems: problems})
 		if len(entries) == 0 {
 			shipper.Commit()
 			continue
