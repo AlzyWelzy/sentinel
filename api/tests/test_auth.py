@@ -1,7 +1,6 @@
 """Beyond's own accounts, end to end through the HTTP API: sign-up, the
 emailed link, sign-in, refresh rotation, reset, two-factor, sessions."""
 
-import re
 import uuid
 
 import pyotp
@@ -9,22 +8,10 @@ from sqlalchemy import text
 
 from app.db import ServiceSession
 
+from .conftest import emailed_token
+
 CSRF = {"X-Requested-With": "pulsegrid"}
 PASSWORD = "a long enough password"
-
-
-async def emailed_token(email: str, kind: str) -> str:
-    async with ServiceSession() as db:
-        body = await db.scalar(
-            text(
-                "SELECT payload->>'text' FROM account_emails WHERE to_address = :e AND kind = :k "
-                "ORDER BY created_at DESC LIMIT 1"
-            ),
-            {"e": email, "k": kind},
-        )
-    match = re.search(r"token=([A-Za-z0-9_%-]+)", body or "")
-    assert match, body
-    return match.group(1)
 
 
 async def emails_to(email: str) -> list[str]:

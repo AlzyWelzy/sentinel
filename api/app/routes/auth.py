@@ -7,6 +7,7 @@ X-Requested-With header, which a cross-site form can't send.
 """
 
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
@@ -65,23 +66,44 @@ async def signed_in_user(
 User = Annotated[Principal, Depends(signed_in_user)]
 
 
+class UserOut(BaseModel):
+    id: uuid.UUID
+    email: str
+    name: str | None
+    email_verified: bool
+    totp_enabled: bool
+    superadmin: bool
+    created_at: datetime
+
+
 class SessionOut(BaseModel):
     access_token: str
     token_type: str = "bearer"  # noqa: S105 (the scheme, not a secret)
     expires_in: int
-    user: dict
+    user: UserOut
 
 
 def _signed_in(response: Response, s: accounts.SignedIn) -> SessionOut:
     _set_refresh(response, s.refresh_token)
     return SessionOut(
-        access_token=s.access_token, expires_in=settings.ACCESS_TOKEN_TTL_SECONDS, user=s.user
+        access_token=s.access_token,
+        expires_in=settings.ACCESS_TOKEN_TTL_SECONDS,
+        user=UserOut(**s.user),
     )
 
 
 class Accepted(BaseModel):
     ok: bool = True
     message: str
+
+
+class SessionRow(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    last_used_at: datetime
+    ip: str | None
+    user_agent: str | None
+    current: bool
 
 
 class AuthConfig(BaseModel):
@@ -229,8 +251,8 @@ async def change_password(body: ChangePasswordIn, user: User, response: Response
 
 
 @router.get("/me")
-async def me(user: User) -> dict:
-    return await accounts.get_user(str(user.user_id))
+async def me(user: User) -> UserOut:
+    return UserOut(**await accounts.get_user(str(user.user_id)))
 
 
 class ProfileIn(BaseModel):
@@ -238,13 +260,14 @@ class ProfileIn(BaseModel):
 
 
 @router.patch("/me")
-async def update_me(body: ProfileIn, user: User) -> dict:
-    return await accounts.update_profile(str(user.user_id), body.name)
+async def update_me(body: ProfileIn, user: User) -> UserOut:
+    return UserOut(**await accounts.update_profile(str(user.user_id), body.name))
 
 
 @router.get("/sessions")
-async def sessions(user: User, request: Request) -> list[dict]:
-    return await accounts.list_sessions(str(user.user_id), request.state.session_id)
+async def sessions(user: User, request: Request) -> list[SessionRow]:
+    rows = await accounts.list_sessions(str(user.user_id), request.state.session_id)
+    return [SessionRow(**r) for r in rows]
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

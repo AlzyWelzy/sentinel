@@ -125,6 +125,41 @@ def bob(client) -> User:
     return _new_user(client, "bob")
 
 
+MAILPIT = os.environ.get("MAILPIT_URL", "http://localhost:8035")
+
+
+async def emailed_token(email: str, kind: str) -> str:
+    """The token in the newest account email of that kind, as the recipient
+    would click it. A dev alerter running next to the tests may already
+    have sent it (and cleared the payload): then it's read from Mailpit."""
+    import asyncio
+    import re
+
+    for _ in range(20):
+        async with ServiceSession() as db:
+            row = (
+                await db.execute(
+                    text(
+                        "SELECT status, payload->>'text' AS body FROM account_emails "
+                        "WHERE to_address = :e AND kind = :k ORDER BY created_at DESC LIMIT 1"
+                    ),
+                    {"e": email.lower(), "k": kind},
+                )
+            ).one_or_none()
+        body = row.body if row else None
+        if row and row.status == "sent" and not body:
+            async with httpx.AsyncClient(base_url=MAILPIT, timeout=5) as m:
+                found = (await m.get("/api/v1/search", params={"query": f"to:{email}"})).json()
+                if found["messages"]:
+                    msg = await m.get(f"/api/v1/message/{found['messages'][0]['ID']}")
+                    body = msg.json()["Text"]
+        match = re.search(r"token=([A-Za-z0-9_%-]+)", body or "")
+        if match:
+            return match.group(1)
+        await asyncio.sleep(0.25)
+    raise AssertionError(f"no {kind} email with a link for {email}")
+
+
 async def insert_host(tenant_id: uuid.UUID, hostname: str = "web-1") -> uuid.UUID:
     """Create a host the way ingest does: as the service role."""
     async with ServiceSession() as db, db.begin():

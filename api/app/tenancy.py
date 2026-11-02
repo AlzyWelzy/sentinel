@@ -62,6 +62,7 @@ ANY_MEMBER_WRITES = frozenset(
 OPERATOR_WRITES = frozenset(
     {
         "/v1/incidents/{incident_id}/acknowledge",
+        "/v1/incidents/{incident_id}/assign",
         "/v1/incidents/{incident_id}/notes",
         "/v1/incidents/{incident_id}/resolve",
         "/v1/incidents/{incident_id}/reopen",

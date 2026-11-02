@@ -253,6 +253,9 @@ class Incident(TenantScoped):
     snoozed_until: Mapped[datetime | None]
     snoozed_by: Mapped[str | None] = mapped_column(Text)
     merged_into: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    assigned_to: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    assigned_name: Mapped[str | None] = mapped_column(Text)
+    assigned_at: Mapped[datetime | None]
 
 
 class IncidentEvent(TenantScoped):

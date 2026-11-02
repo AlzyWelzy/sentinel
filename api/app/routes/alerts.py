@@ -32,6 +32,7 @@ from app.models import (
     OncallOverride,
     OncallSchedule,
     OutboundMessage,
+    TenantMember,
 )
 from app.routes.channels import mask_target
 from app.services import backtest, oncall
@@ -321,6 +322,8 @@ class IncidentOut(BaseModel):
     opened_at: datetime
     acknowledged_at: datetime | None
     acknowledged_by: str | None
+    assigned_to: uuid.UUID | None = None
+    assigned_name: str | None = None
     resolved_at: datetime | None
     escalation_level: int
     severity: str
@@ -383,6 +386,8 @@ def _incident_out(i: Incident) -> IncidentOut:
         else None,
         snoozed_by=i.snoozed_by,
         merged_into=i.merged_into,
+        assigned_to=i.assigned_to,
+        assigned_name=i.assigned_name,
     )
 
 
@@ -843,6 +848,38 @@ async def acknowledge(incident_id: uuid.UUID, t: Tenant) -> IncidentDetail:
         incident.acknowledged_at = datetime.now(UTC)
         incident.acknowledged_by = _actor(t)
         _event(t, incident, "acknowledged", "Acknowledged: escalation stopped")
+    await t.db.flush()
+    return await _detail(t, incident)
+
+
+class AssignIn(BaseModel):
+    user_id: uuid.UUID | None = Field(description="a member of the organisation; null to unassign")
+
+
+@router.post("/incidents/{incident_id}/assign")
+async def assign(incident_id: uuid.UUID, body: AssignIn, t: Tenant) -> IncidentDetail:
+    """Who's looking into it. Only members of the organisation can be assigned."""
+    incident = await _get_incident(t, incident_id)
+    if body.user_id is None:
+        if incident.assigned_to is not None:
+            _event(t, incident, "assigned", f"Unassigned (was {incident.assigned_name})")
+        incident.assigned_to = incident.assigned_name = incident.assigned_at = None
+    else:
+        member = (
+            await t.db.execute(
+                select(TenantMember.display_name, TenantMember.email).where(
+                    TenantMember.tenant_id == t.tenant_id,
+                    TenantMember.user_id == body.user_id,
+                    TenantMember.joined_at.is_not(None),
+                )
+            )
+        ).one_or_none()
+        if member is None:
+            raise HTTPException(status_code=422, detail="Not a member of this organisation")
+        incident.assigned_to = body.user_id
+        incident.assigned_name = member.display_name or member.email
+        incident.assigned_at = datetime.now(UTC)
+        _event(t, incident, "assigned", f"Assigned to {incident.assigned_name}")
     await t.db.flush()
     return await _detail(t, incident)
 

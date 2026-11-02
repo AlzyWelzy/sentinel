@@ -45,6 +45,7 @@ class MemberPatch(BaseModel):
 
 class MemberOut(BaseModel):
     id: uuid.UUID
+    user_id: uuid.UUID | None
     email: str
     role: str
     name: str | None
@@ -65,6 +66,7 @@ class AccountOut(BaseModel):
 def _out(m: TenantMember, t: TenantContext) -> MemberOut:
     return MemberOut(
         id=m.id,
+        user_id=m.user_id,
         email=m.email,
         role=m.role,
         name=m.display_name,

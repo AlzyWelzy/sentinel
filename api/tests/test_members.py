@@ -1,14 +1,9 @@
 """Organisation members: invitations, and the viewer, operator and admin roles."""
 
-import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import text
-
-from app.db import ServiceSession
-
-from .conftest import User, _new_user, insert_host
+from .conftest import User, _new_user, emailed_token, insert_host
 
 CPU_RULE = {
     "name": "High CPU",
@@ -41,25 +36,10 @@ async def invite(owner: User, email: str, role: str) -> dict:
     return r.json()
 
 
-async def emailed_token(email: str, kind: str = "invitation") -> str:
-    """The token in the newest email of that kind, as the recipient would click it."""
-    async with ServiceSession() as db:
-        body = await db.scalar(
-            text(
-                "SELECT payload->>'text' FROM account_emails WHERE to_address = :e AND kind = :k "
-                "ORDER BY created_at DESC LIMIT 1"
-            ),
-            {"e": email.lower(), "k": kind},
-        )
-    match = re.search(r"token=([A-Za-z0-9_%-]+)", body or "")
-    assert match, body
-    return match.group(1)
-
-
 async def join(owner: User, member: User, role: str) -> dict:
     m = await invite(owner, member.email, role)
     r = await member.request(
-        "POST", f"/auth/invitations/{await emailed_token(member.email)}/accept"
+        "POST", f"/auth/invitations/{await emailed_token(member.email, 'invitation')}/accept"
     )
     assert r.status_code == 200, r.text
     return m
@@ -74,7 +54,7 @@ async def test_roles(client, alice: User, bob: User):
     as_bob = acting_for(bob, tid)
     # Invited isn't joined: nothing until the invitation is accepted.
     assert (await bob.request("GET", "/v1/hosts", headers=as_bob)).status_code == 403
-    token = await emailed_token(bob.email)
+    token = await emailed_token(bob.email, "invitation")
     preview = (await bob.request("GET", f"/auth/invitations/{token}")).json()
     assert preview["role"] == "read-only" and preview["email"] == bob.email
     accepted = await bob.request("POST", f"/auth/invitations/{token}/accept")
@@ -151,7 +131,7 @@ async def test_strangers_and_invitations_for_someone_else(client, alice: User, b
     ).status_code == 400
 
     await invite(alice, bob.email, "viewer")
-    token = await emailed_token(bob.email)
+    token = await emailed_token(bob.email, "invitation")
     # Carol has the link but isn't bob: refused, and the invitation still works.
     assert (await carol.request("POST", f"/auth/invitations/{token}/accept")).status_code == 403
     assert (await bob.request("POST", f"/auth/invitations/{token}/accept")).status_code == 200
@@ -215,3 +195,22 @@ async def test_an_invited_user_without_an_organisation_lands_in_the_shared_one(a
     await join(alice, bob, "operator")
     me = (await bob.request("GET", "/v1/me")).json()
     assert me["tenant_id"] == str(tid) and me["role"] == "operator"
+
+
+async def test_incidents_are_assigned_to_members_only(alice: User, bob: User, client):
+    from .test_incident_tools import _incident  # noqa: PLC0415
+
+    tid = await alice.tenant_id()
+    await join(alice, bob, "operator")
+    incident = await _incident(tid, await insert_host(tid, "db-1"), "Disk full")
+    as_bob = acting_for(bob, tid)
+    r = await bob.request(
+        "POST", f"/v1/incidents/{incident}/assign", json={"user_id": bob.uid}, headers=as_bob
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["assigned_name"] and r.json()["events"][-1]["kind"] == "assigned"
+    stranger = str(uuid.uuid4())
+    r = await alice.request("POST", f"/v1/incidents/{incident}/assign", json={"user_id": stranger})
+    assert r.status_code == 422
+    r = await alice.request("POST", f"/v1/incidents/{incident}/assign", json={"user_id": None})
+    assert r.json()["assigned_to"] is None

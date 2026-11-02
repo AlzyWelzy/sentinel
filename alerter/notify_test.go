@@ -58,4 +58,3 @@ func TestCodeRendering(t *testing.T) {
 		t.Fatal(text)
 	}
 }
-
