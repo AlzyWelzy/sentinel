@@ -13,6 +13,7 @@ import { orgName, useMe, useOrgs, useSession } from "@/lib/session";
 const NAV = [
   { href: "/overview", label: "Overview" },
   { href: "/servers", label: "Servers" },
+  { href: "/fleet", label: "Fleet wall" },
   { href: "/incidents", label: "Incidents" },
   { href: "/rules", label: "Alert rules" },
   { href: "/checks", label: "Uptime checks" },

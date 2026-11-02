@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo } from "react";
 
+import { SavedViews } from "@/components/saved-views";
 import { StatusBadge, STATUS_LABEL } from "@/components/status";
 import {
   Badge,
@@ -78,9 +79,10 @@ function Servers() {
           </LinkButton>
         }
       />
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <Input
           placeholder="Search hostname, IP, tag…"
+          key={q}
           defaultValue={q}
           onChange={(e) => set("q", e.target.value)}
           className="max-w-xs"
@@ -101,6 +103,11 @@ function Servers() {
             ))}
           </Select>
         )}
+        <SavedViews
+          kind="servers"
+          params={Object.fromEntries(params.entries())}
+          onApply={(v) => router.replace(`/servers?${new URLSearchParams(v)}`)}
+        />
       </div>
       <Card pad={false}>
         {rows.length === 0 ? (

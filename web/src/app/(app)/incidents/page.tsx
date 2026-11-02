@@ -1,20 +1,62 @@
 "use client";
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 
 import { SeverityBadge } from "@/components/status";
-import { Badge, Card, Empty, ErrorState, Loading, PageHeader, Table, cx } from "@/components/ui";
-import { errorText } from "@/lib/api/client";
+import {
+  Badge,
+  Button,
+  Card,
+  Empty,
+  ErrorState,
+  Loading,
+  PageHeader,
+  Table,
+  cx,
+} from "@/components/ui";
+import { api, errorText } from "@/lib/api/client";
 import { dateTime, duration } from "@/lib/format";
-import { useIncidents } from "@/lib/queries";
+import { unwrap, useIncidents } from "@/lib/queries";
 
 export default function IncidentsPage() {
   const [status, setStatus] = useState<"open" | "resolved" | undefined>("open");
   const q = useIncidents(status);
+  const qc = useQueryClient();
+  const [picked, setPicked] = useState<string[]>([]);
+  const merge = useMutation({
+    mutationFn: async () => {
+      // Into the one that opened first: the others are its echoes.
+      const chosen = (q.data ?? []).filter((i) => picked.includes(i.id));
+      const into = [...chosen].sort((a, b) => a.opened_at.localeCompare(b.opened_at))[0]!;
+      return unwrap(
+        await api.POST("/v1/incidents/merge", {
+          body: {
+            into: into.id,
+            incident_ids: chosen.filter((i) => i.id !== into.id).map((i) => i.id),
+          },
+        }),
+      );
+    },
+    onSuccess: () => {
+      setPicked([]);
+      qc.invalidateQueries({ queryKey: ["incidents"] });
+    },
+  });
   return (
     <>
-      <PageHeader title="Incidents" subtitle="Alerts that fired, with their timelines." />
+      <PageHeader
+        title="Incidents"
+        subtitle="Alerts that fired, with their timelines."
+        actions={
+          picked.length > 1 && (
+            <Button variant="primary" loading={merge.isPending} onClick={() => merge.mutate()}>
+              Merge {picked.length} into the first
+            </Button>
+          )
+        }
+      />
       <div className="mb-4 inline-flex rounded-lg border border-line bg-panel p-0.5">
         {(
           [
@@ -51,6 +93,7 @@ export default function IncidentsPage() {
           <Table>
             <thead>
               <tr>
+                <th className="w-8" />
                 <th>Severity</th>
                 <th>Incident</th>
                 <th>Server</th>
@@ -62,6 +105,20 @@ export default function IncidentsPage() {
             <tbody>
               {q.data.map((i) => (
                 <tr key={i.id}>
+                  <td>
+                    {i.status === "open" && !i.merged_into && (
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${i.summary}`}
+                        checked={picked.includes(i.id)}
+                        onChange={(e) =>
+                          setPicked(
+                            e.target.checked ? [...picked, i.id] : picked.filter((x) => x !== i.id),
+                          )
+                        }
+                      />
+                    )}
+                  </td>
                   <td>
                     <SeverityBadge severity={i.severity} />
                   </td>

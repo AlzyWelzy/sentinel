@@ -40,6 +40,7 @@ removed.
   7-day preview and test alerts, quiet hours and minimum severity per
   contact, incident snooze and a list of every notification sent, server
   tags, dependencies, notes and allowed actions, insights.
+- Incident merge, saved views and a fleet wall (TV mode).
 - A public site: landing page, terms, privacy and a setup guide. The
   dashboard moved to `/overview`.
 - Data export per organisation (JSON, secrets masked), ownership transfer,

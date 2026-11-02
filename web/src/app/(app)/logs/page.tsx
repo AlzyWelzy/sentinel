@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { presetRange, RangePicker } from "@/components/range";
+import { SavedViews } from "@/components/saved-views";
 import {
   Badge,
   Card,
@@ -78,6 +79,16 @@ export default function LogsPage() {
           ))}
         </Select>
         <RangePicker value={range} onChange={setRange} />
+        <SavedViews
+          kind="logs"
+          params={{ q: search, host, level }}
+          onApply={(v) => {
+            setQ(v.q ?? "");
+            setSearch(v.q ?? "");
+            setHost(v.host ?? "");
+            setLevel(v.level ?? "");
+          }}
+        />
       </form>
       <Card pad={false}>
         {logs.isLoading ? (

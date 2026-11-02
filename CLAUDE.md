@@ -146,7 +146,8 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - [x] Superadmin panel: organisations, impersonation, users, agent rollout.
 - [x] On-call rotations and overrides, escalation steps, rule edit, 7-day preview and test alerts, quiet hours and minimum severity per contact, incident snooze and the delivery list, server tags, dependencies, notes and allowed actions, insights (noisy rules, sizing, SLOs).
 - [x] Public site in `web/`: landing page at `/` (the dashboard is `/overview`), terms, privacy, and a setup and troubleshooting guide (`/help`), all rendered on the server.
-- [ ] Not in the UI yet (the API has them): incident merge, saved views, the fleet wall. Pricing, if it's ever paid.
+- [x] Incident merge, saved views (servers and logs), and a fleet wall with a full-screen TV mode.
+- [ ] Pricing and billing, if it's ever paid (the roadmap keeps room for it; nothing is built).
 - [x] Served on one origin: Caddy sends `/api/*` to the API and everything else to `web`.
 
 ### Phase 6: Polish and operations
