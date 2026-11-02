@@ -15,7 +15,9 @@ package plugins
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,7 +64,8 @@ func runPrivileged(ctx context.Context, args []string) ([]byte, error) {
 			}
 		}
 		if err != nil {
-			return nil, errors.New("sudo isn't installed; run pulsegrid-agent enable-hardware as root")
+			// No sudo: a root timer runs these commands and caches the output.
+			return readHardwareCache(args)
 		}
 		cmd = exec.CommandContext(ctx, sudo, append([]string{"-n"}, args...)...)
 	}
@@ -85,6 +88,31 @@ func runPrivileged(ctx context.Context, args []string) ([]byte, error) {
 		return nil, errors.New("not allowed to run it; run: sudo pulsegrid-agent enable-hardware")
 	}
 	return stdout.Bytes(), err
+}
+
+// HardwareCacheDir is where `pulsegrid-agent hardware-cache`, run as root by
+// a timer on servers without sudo, leaves each command's output.
+var HardwareCacheDir = "/var/lib/pulsegrid/hardware"
+
+// HardwareCacheFile names the cached output of one command line.
+func HardwareCacheFile(args []string) string {
+	sum := sha256.Sum256([]byte(strings.Join(args, "\x00")))
+	return filepath.Join(HardwareCacheDir, hex.EncodeToString(sum[:12])+".out")
+}
+
+// hardwareCacheMaxAge: older output means the timer stopped.
+const hardwareCacheMaxAge = 10 * time.Minute
+
+func readHardwareCache(args []string) ([]byte, error) {
+	path := HardwareCacheFile(args)
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, errors.New("sudo isn't installed and the hardware timer hasn't run yet; run pulsegrid-agent enable-hardware as root")
+	}
+	if age := time.Since(fi.ModTime()); age > hardwareCacheMaxAge {
+		return nil, fmt.Errorf("the hardware timer last ran %s ago; check: systemctl status pulsegrid-agent-hardware.timer", age.Round(time.Minute))
+	}
+	return os.ReadFile(path)
 }
 
 // refused holds, per command line, when sudo may be asked again after

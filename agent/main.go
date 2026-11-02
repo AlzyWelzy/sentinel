@@ -72,6 +72,8 @@ func main() {
 		err = cmdAllowAction(os.Args[2:])
 	case "enable-hardware":
 		err = cmdEnableHardware(os.Args[2:])
+	case "hardware-cache":
+		err = cmdHardwareCache(os.Args[2:])
 	case "autoconfig":
 		err = cmdAutoconfig(os.Args[2:])
 	case "plugins":

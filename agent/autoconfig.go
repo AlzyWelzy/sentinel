@@ -92,12 +92,16 @@ func repairHardware(dir, svcUser string) bool {
 	if want == nil {
 		return false
 	}
-	rules, _ := os.ReadFile(hardwareSudoers())
-	ok := has("sudo")
-	for _, c := range want {
-		if !strings.Contains(string(rules), sudoersEscape(strings.Join(c, " "))) {
-			ok = false
+	ok := true
+	if has("sudo") {
+		rules, _ := os.ReadFile(hardwareSudoers())
+		for _, c := range want {
+			if !strings.Contains(string(rules), sudoersEscape(strings.Join(c, " "))) {
+				ok = false
+			}
 		}
+	} else if _, err := os.Stat(hardwareTimerFile); err != nil {
+		ok = false // neither sudo nor the root timer: nothing can run them
 	}
 	if ok {
 		// Rules match; a SMART list whose disks all fail (one was pulled or
@@ -107,13 +111,10 @@ func repairHardware(dir, svcUser string) bool {
 			return false
 		}
 	}
-	if !has("sudo") {
-		installPackages([]string{"sudo"})
-		if !has("sudo") {
-			return false // try again next hour
-		}
-	}
 	before := hardwareFiles(pdir)
+	if !has("sudo") {
+		installPackages([]string{"sudo"}) // else enable-hardware falls back to the root timer
+	}
 	if err := cmdEnableHardware([]string{"--config-dir", dir, "--user", svcUser}); err != nil {
 		fmt.Println("autoconfig: hardware monitoring:", err)
 	}
@@ -124,45 +125,11 @@ func repairHardware(dir, svcUser string) bool {
 // hardwareFiles is the content of everything enable-hardware writes.
 func hardwareFiles(pdir string) string {
 	var b strings.Builder
-	for _, p := range []string{filepath.Join(pdir, "smart.conf"), filepath.Join(pdir, "ipmi.conf"), hardwareSudoers(), dropInFile} {
+	for _, p := range []string{filepath.Join(pdir, "smart.conf"), filepath.Join(pdir, "ipmi.conf"), hardwareSudoers(), dropInFile, hardwareTimerFile} {
 		c, _ := os.ReadFile(p)
 		b.WriteString(p + "\x00" + string(c) + "\x00")
 	}
 	return b.String()
-}
-
-// hardwareCommands lists the privileged commands that enable-hardware's
-// plugin files will run; nil when there are none.
-func hardwareCommands(pdir string) [][]string {
-	var out [][]string
-	for _, name := range []string{"smart.conf", "ipmi.conf"} {
-		f, err := os.Open(filepath.Join(pdir, name))
-		if err != nil {
-			continue
-		}
-		kv, err := plugins.ParseKV(f)
-		f.Close()
-		if err != nil {
-			continue
-		}
-		switch kv["type"] {
-		case "smart":
-			tool := kv["smartctl"]
-			if tool == "" {
-				tool = "/usr/sbin/smartctl"
-			}
-			for _, d := range plugins.SmartDevices(kv["devices"]) {
-				out = append(out, plugins.SmartArgs(tool, d[0], d[1]))
-			}
-		case "ipmi":
-			tool := kv["ipmitool"]
-			if tool == "" {
-				tool = "/usr/bin/ipmitool"
-			}
-			out = append(out, plugins.IPMIArgs(tool))
-		}
-	}
-	return out
 }
 
 func autoconfigure(dir, svcUser string, noLogs bool) bool {
@@ -618,10 +585,13 @@ func installPackages(pkgs []string) {
 		// refresh (ignoring repos that refuse, like Proxmox's enterprise
 		// one without a subscription), wait a little, and try once more.
 		time.Sleep(20 * time.Second)
-		exec.CommandContext(ctx, "apt-get", "update", "-q").Run()
+		upd, uerr := exec.CommandContext(ctx, "apt-get", "update", "-q", "-o", "Acquire::AllowReleaseInfoChange=true").CombinedOutput()
 		retry := exec.CommandContext(ctx, "apt-get", cmd.Args[1:]...)
 		retry.Env = cmd.Env
 		out, err = retry.CombinedOutput()
+		if err != nil && uerr != nil {
+			out = append(out, []byte("\n(apt-get update: "+lastLine(upd)+")")...)
+		}
 	}
 	if err != nil {
 		fmt.Printf("autoconfig: couldn't install %s: %s\n", strings.Join(pkgs, ", "), lastLine(out))
