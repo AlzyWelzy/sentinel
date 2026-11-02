@@ -165,13 +165,15 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - Migrations run up, down to base and up again; the API suite passes (197 tests); the typed web client matches the API.
 - A browser journey (Playwright, scratch script, not in the repo) through the production web image behind Caddy's production routing: landing and legal pages, sign-up and the emailed link, onboarding, a real agent arriving, every screen, rule edit, preview and test, contacts and quiet hours, on-call, status pages (public, rendered on the server, no hostnames), dashboards, PDF report, API tokens, data export, invitations, roles, an outage with the alert and recovery emails, acknowledge, assign, notes, snooze, deliveries, two-factor, password reset signing other browsers out, superadmin impersonation, account deletion, mobile width and dark mode.
 - `install.sh` and `--uninstall` on Ubuntu 24.04 with systemd as PID 1: user, units, timers, autoconfig, registration, spool drained once ingest was reachable, then nothing left behind.
+- The `installers` workflow passes on Linux, Windows (`install.ps1` and `-Uninstall`), FreeBSD, OpenBSD and NetBSD: install, the service runs, a metrics push arrives, uninstall leaves nothing.
+- The redesigned web app passes the browser journey (41 steps) and the extras (fleet wall, saved views, incident merge).
 - Backups: a real dump restores (`restore-check.sh`), a truncated one is caught, and the nightly loop runs both; `vm-backup.sh` brings back a series deleted after the backup.
 - The journey script lives outside the repo (Playwright in a scratch folder). Before rerunning it on the dev stack, clear `pg:rl:*` in Redis (it signs up several accounts from one address and trips the hourly sign-up limit) and delete the `superadmin@example.com` user it creates.
 
 ### Not verified here
 
-- `install.sh` on FreeBSD, OpenBSD and NetBSD, and `install.ps1` (install and `-Uninstall`) on Windows: no such machines here. The scripts' paths for them are unchanged from the inherited, fleet-tested installer except the uninstall branch.
 - Anything needing the real domain and accounts: TLS issuance, SMTP delivery to outside mailboxes, Turnstile, Web Push.
+- The installers on BSD and Windows run in CI (`installers` workflow, against `deploy/testing/installer-stub`), not on customer-like machines with real services for autoconfig to find.
 
 ## Lessons from the production fleet
 

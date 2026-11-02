@@ -3,7 +3,7 @@
 Sentinel's releases. Agent versions are separate (`agent/VERSION`) and noted
 where they change.
 
-## Unreleased: 0.9.0 (agent 0.9.0)
+## 0.9.0 (agent 0.9.0), 2026-11-02
 
 The first release of Sentinel as a product of its own, at
 sentinel.rajpoot.app. It started from a copy of Pulsegrid v0.8.27 (agent
@@ -48,6 +48,16 @@ removed.
 - After confirming their email, invited people see their invitations
   before an organisation of their own is created.
 - `ARCHITECTURE.md`, `SECURITY.md`, `DEPLOYMENT.md`.
+- **A new design** for the whole web app and public site: Sentinel's own
+  mark and violet-to-cyan colours, Geist type, a sidebar with icons in
+  sections, sign-in pages with a brand panel, a landing page with a product
+  preview, terminal-style command blocks, and refined cards, tables, charts,
+  status pages and dark mode.
+- **Installer tests on every platform** (`installers` workflow): the real
+  `install.sh` on Linux, FreeBSD, OpenBSD and NetBSD and `install.ps1` on
+  Windows install the agent, check it runs and sends metrics, uninstall it
+  and check nothing is left. A stand-in API (`deploy/testing/installer-stub`)
+  means no secrets are needed.
 
 ### Changed
 
