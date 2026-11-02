@@ -144,8 +144,8 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 		}
 		if act != actionNone {
 			o.Detail = e.checkDetail(ctx, r, h)
-			if r.Kind == "plugin_down" && act == actionOpen {
-				o.Plugins, o.Detail = e.store.failingPlugins(ctx, h.ID, r.Target)
+			if r.Kind == "plugin_down" {
+				o.Plugins, o.Detail = e.pluginDetail(ctx, r, h, act)
 			}
 		}
 		msg := func(kind, incidentID string) message { return e.message(r, h, o, kind, incidentID) }
@@ -656,4 +656,73 @@ func (e *evaluator) escalationMessage(esc escalation, now time.Time) message {
 			"step":        esc.Level + 1,
 		},
 	}
+}
+
+// pluginDetail names the plugins a plugin_down alert is about. Opening, it
+// asks VictoriaMetrics which plugins report down right now (fresher than the
+// inventory) and takes each one's error from the inventory; resolving, it
+// reuses the names the incident opened with.
+func (e *evaluator) pluginDetail(ctx context.Context, r rule, h host, act action) (names, detail string) {
+	if act == actionResolve {
+		return e.store.openPluginNames(ctx, r.ID, h.ID), ""
+	}
+	if act != actionOpen {
+		return "", ""
+	}
+	q := fmt.Sprintf("last_over_time(pulsegrid_plugin_up%s[3m]) == 0",
+		matchers(fmt.Sprintf("host_id=%q", h.ID), map[bool]string{true: "", false: "plugin=" + strconv.Quote(r.Target)}[r.Target == ""]))
+	down, _ := e.queryLabel(ctx, r.TenantID, q, "plugin")
+	invNames, invDetail := e.store.failingPlugins(ctx, h.ID, r.Target)
+	if len(down) == 0 {
+		return invNames, invDetail
+	}
+	errs := map[string]string{}
+	for _, line := range strings.Split(invDetail, "\n") {
+		if n, msg, ok := strings.Cut(line, ": "); ok {
+			errs[n] = msg
+		}
+	}
+	var lines []string
+	for _, n := range down {
+		msg := errs[n]
+		if msg == "" {
+			msg = "not collecting (no error reported yet)"
+		}
+		lines = append(lines, n+": "+msg)
+	}
+	return strings.Join(down, ", "), strings.Join(lines, "\n")
+}
+
+// queryLabel runs an instant query and returns one label's sorted values.
+func (e *evaluator) queryLabel(ctx context.Context, tenantID, query, label string) ([]string, error) {
+	params := url.Values{"query": {query}, "extra_label": {"tenant_id=" + tenantID}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.vmURL+"/api/v1/query?"+params.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := e.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Data struct {
+			Result []struct {
+				Metric map[string]string `json:"metric"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, res := range body.Data.Result {
+		if v := res.Metric[label]; v != "" && !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }

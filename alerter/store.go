@@ -740,3 +740,24 @@ func (s *store) failingPlugins(ctx context.Context, hostID, target string) (name
 	}
 	return strings.Join(ns, ", "), strings.Join(ds, "\n")
 }
+
+// openPluginNames recovers the plugin names a still-open plugin incident
+// was opened with ("Plugin smart, ipmi is failing on ..."), so the recovery
+// names them too.
+func (s *store) openPluginNames(ctx context.Context, ruleID, hostID string) string {
+	var summary string
+	if s.pool.QueryRow(ctx, `
+		SELECT summary FROM incidents WHERE rule_id = $1 AND host_id = $2 AND status = 'open'
+		ORDER BY opened_at DESC LIMIT 1`, ruleID, hostID).Scan(&summary) != nil {
+		return ""
+	}
+	rest, ok := strings.CutPrefix(summary, "Plugin ")
+	if !ok {
+		return ""
+	}
+	names, _, ok := strings.Cut(rest, " is failing on ")
+	if !ok {
+		return ""
+	}
+	return names
+}
