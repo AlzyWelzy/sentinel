@@ -104,6 +104,110 @@ The v0.8.27 alerter changes were verified on a demo fleet. Three servers were st
 - Alerts for two servers went to each contact as one grouped email, and the three recoveries went out together.
 - Alerts whose servers were back within the hold were skipped, along with their recoveries.
 
+## Roadmap: a fully standalone app
+
+The goal is for Beyond to be a complete product of its own: its own frontend, backend, accounts, email, infrastructure and domain. It should run with nothing from Example.
+
+Today the backend (agent, ingest, alerter, API, jobs) is Beyond's, but three things live in the console:
+- the user interface (the console's Monitoring pages)
+- who users are (sign-up, login, staff)
+- how email is sent
+
+Work through these phases in order. Each phase ends with something that runs. Tick items off here as they land.
+
+### Phase 1: Own infrastructure, so nothing can touch company systems
+
+- [ ] Point images at Beyond's own registry (`ghcr.io/alzywelzy/pulsegrid-beyond-*` or similar):
+  - `.github/workflows/release.yml`
+  - `deploy/stack*.yml`
+  - `deploy/sentinel/`
+  - the agent self-update and download URLs
+- [ ] Choose a product name and domain. Replace `CONSOLE_HOST`, the dashboard and ack links (`dashboardLink`, `ackURL`), status page hosts, and the installer URLs in `api/app/install.sh` and `install.ps1`.
+- [ ] Set up Beyond's own server or servers, DNS, TLS (Caddy is in `deploy/caddy`), backups and GitHub Actions secrets.
+- [ ] Delete `deploy/stack.console.yml`, `deploy/console.env.example` and the sentinel Kuma/gateway files that are specific to the console.
+- [ ] Remove `CONSOLE_INTERNAL_API_KEY` and `CONSOLE_EMAIL_URL` from every env example.
+
+### Phase 2: Own accounts and login (backend)
+
+The design already allows this. `api/app/auth/console.py` is the only module that knows what a console token looks like, and everything else uses a `Principal`. Add a native identity source next to it, then delete the console one.
+
+- [ ] Add a `users` table: email, password hash (argon2), verified, created. Then:
+  - email verification
+  - password reset
+  - optional TOTP 2FA
+  - later, optional Google or GitHub login
+- [ ] Add `api/app/auth/native.py`, which issues and verifies Beyond's own tokens: short-lived access tokens plus a rotating refresh token in an httpOnly cookie. It returns the same `Principal`.
+- [ ] Remove the console settings from `config.py`:
+  - `TENANT_SOURCE = "console"`
+  - `JWKS_URI`, `JWT_TOKEN_ISSUER`, `JWT_TOKEN_AUDIENCE`
+  - `ADMIN_JWT_*`
+- [ ] Tenants are keyed `(source, external_account_id)` = console uid. Make the native user or organisation the tenant: a migration that sets `source='beyond'` and a uid.
+- [ ] Add organisations so a company has several users. Replace "team members" (`routes/members.py`, which shares between console users) with real invites and roles: owner, admin, member, read-only.
+- [ ] **Staff and admin:** `routes/admin.py` and `admin_verifier` trust console staff roles, and staff "view-as" comes from the console's impersonation claim (`imp`). Replace these with a Beyond superadmin role, plus an impersonation flow that is audited and read-only by default.
+- [ ] **Sign-up protection:** rate limits, Turnstile or hCaptcha on sign-up, and lockout after failed logins.
+
+### Phase 3: Own email and notifications
+
+- [ ] Make SMTP or a provider API (SES, Postmark, Resend) the only email path: `emailSender` in `alerter/notify.go`. Delete `consoleMailer` and its setting.
+- [ ] Move all email to Beyond's own branded templates:
+  - alerts (`alerter/emailhtml.go`)
+  - verification codes
+  - digests
+  - reports
+  - sign-up, verification and reset emails from Phase 2
+- [ ] Set up SPF, DKIM and DMARC for the sending domain, plus bounce and complaint handling that marks a contact undeliverable.
+- [ ] Web Push (`alerter/push.go`): generate Beyond's own VAPID keys and set its subject to Beyond's domain.
+- [ ] SMS and voice: Beyond's own provider account, or switch the channels off until there is one.
+
+### Phase 4: Remove the console-only API surface
+
+`api/app/routes/internal.py` (guarded by `auth/internal.py`) exists only so the console backend can drive Beyond:
+- usage
+- incidents for ticket rules
+- suspending, resuming and deleting tenants
+- staff-made agent keys
+- ticket contacts and team contacts
+- recommended rules
+- notify
+- maintenance
+- external monitors (Uptime Kuma checks synced from the console)
+
+For each one, either:
+- **expose it in Beyond's own API and UI**, for example tenant suspension in the admin panel, maintenance and recommended rules in settings, and external monitors replaced by Beyond's own uptime checks (probes already exist), or
+- **delete it**: ticket rules and ticket contacts belong to the console's helpdesk, and usage was for console billing.
+
+Then delete `routes/internal.py` and `auth/internal.py`, and update the migrations' comments where they describe the console.
+
+### Phase 5: Own frontend (the big one)
+
+The whole UI currently lives in the Example console repo (React + Vite, Monitoring → Servers and its many sections). Beyond needs its own web app in this repo, for example `web/`.
+
+- [ ] **Stack:** React + TypeScript + Vite, TanStack Query for the API, a router, a component library, and a chart library for time series.
+- [ ] Generate a typed API client from the FastAPI OpenAPI schema, so the frontend can't drift from the API.
+- [ ] Rebuild the screens. Use the console's Monitoring section as the feature list, not as code to copy. In rough priority:
+  1. Login, sign-up, verify, reset, 2FA, invite acceptance.
+  2. Onboarding: create the organisation, show the install command (Linux/BSD/Windows/Docker), and wait for the first server.
+  3. Server list (live CPU, memory, disk, load, status, tags), plus server detail with the Overview, Disks, Processes, Memory, Network, System, Forecast and Activity tabs, time ranges and a date picker.
+  4. Alerts: rules (every kind), incidents with timeline, ack and snooze, merging, and maintenance windows.
+  5. Contacts and channels, quiet hours, on-call schedules and escalation.
+  6. Checks and uptime monitors, probes and regions, plus status pages (public pages served by Beyond itself).
+  7. Logs search, APM and traces, dashboards, fleet view, insights and anomalies.
+  8. Reports (PDF), digests, audit log, API tokens, organisation settings and members.
+  9. Superadmin panel: tenants, suspend and resume, impersonation, agent rollout (promote and rollback), and fleet health.
+  10. Help and setup guide pages (the old Field Guide content can seed these).
+- [ ] A marketing and landing site, docs, and pricing if it will ever be paid. These can be a separate static site.
+- [ ] Serve `web/` from Caddy or as its own container, on the same domain as the API (`/api`), so cookies stay first-party.
+
+### Phase 6: Polish and operations
+
+- [ ] Monitor Beyond with Beyond, plus one external uptime monitor.
+- [ ] Backups with tested restores (Postgres plus VictoriaMetrics snapshots), and a runbook in `deploy/`.
+- [ ] Terraform provider (`terraform-provider-pulsegrid/`): rename it and point it at Beyond's API.
+- [ ] Rename the binaries, service names and paths (`pulsegrid-agent`, `/etc/pulsegrid`) if the product name changes. Ship a migration path for already-installed agents.
+- [ ] Legal and product basics: terms, privacy, data deletion and export per tenant.
+
+**Done means:** a stranger can open Beyond's domain, sign up, install the agent, get an alert email from Beyond's own domain, and manage everything in Beyond's own UI, with no Example service running anywhere.
+
 ## Lessons from the production fleet
 
 - **Shared NAT:** many servers sit behind one public IP. A short network drop there silences a group of them at once. That's real downtime from the monitor's point of view, but customers shouldn't get one email per server, so the grouping and blip suppression exist.
