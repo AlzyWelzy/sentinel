@@ -36,6 +36,13 @@ func (e *statusError) permanent() bool {
 	return e.Code == http.StatusBadRequest || e.Code == http.StatusRequestEntityTooLarge
 }
 
+// refused reports whether ingest no longer accepts this server's token: the
+// server was removed, or its organisation suspended. Retrying every tick
+// can't help until someone acts, so callers back off.
+func (e *statusError) refused() bool {
+	return e.Code == http.StatusUnauthorized || e.Code == http.StatusForbidden
+}
+
 func (c *client) do(ctx context.Context, method, url, token string, in, out any) error {
 	var body io.Reader
 	var gzipped bool

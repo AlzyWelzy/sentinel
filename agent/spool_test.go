@@ -91,3 +91,63 @@ func TestFlushSplitsOnTooLarge(t *testing.T) {
 		t.Fatalf("%d batches left in the spool", len(left))
 	}
 }
+
+// A removed server (or a suspended organisation) gets 401 from ingest. The
+// agent keeps its data but stops re-sending it every tick, and resumes as
+// soon as a push is accepted again.
+func TestFlushBacksOffWhenTokenRefused(t *testing.T) {
+	var calls int
+	status := http.StatusUnauthorized
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if status != http.StatusOK {
+			http.Error(w, "invalid host token", status)
+			return
+		}
+		_, _ = io.Copy(io.Discard, r.Body)
+		_, _ = w.Write([]byte(`{"accepted":1}`))
+	}))
+	defer srv.Close()
+
+	sp, err := newSpool(t.TempDir(), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sp.add(proto.Batch{TimestampMs: 1, Samples: []proto.Sample{{Name: "x", Value: 1}}})
+	a := &agent{
+		st:     state{IngestURL: srv.URL, HostToken: "pgh_test"},
+		spool:  sp,
+		client: newClient(),
+		log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		checks: checks.NewRunner("test"),
+		meta:   &proto.HostMeta{}, metaAt: time.Now(),
+		refreshNow: make(chan struct{}, 1),
+	}
+	a.flush(context.Background())
+	a.flush(context.Background())
+	a.flush(context.Background())
+	if calls != 1 {
+		t.Fatalf("refused pushes were retried at once: %d requests", calls)
+	}
+	if b, _, _ := sp.oldest(10); len(b) != 1 {
+		t.Fatalf("refused data was dropped: %d batches left", len(b))
+	}
+	if got := time.Until(a.retryAt); got < 50*time.Second || got > time.Minute {
+		t.Fatalf("first backoff %v, want about a minute", got)
+	}
+
+	status = http.StatusOK
+	a.retryAt = time.Now().Add(-time.Second)
+	a.flush(context.Background())
+	if b, _, _ := sp.oldest(10); len(b) != 0 || a.refusedPushes != 0 {
+		t.Fatalf("after recovery: %d batches left, %d refusals counted", len(b), a.refusedPushes)
+	}
+}
+
+func TestRefusedBackoffGrowsToHalfAnHour(t *testing.T) {
+	for n, want := range map[int]time.Duration{1: time.Minute, 2: 2 * time.Minute, 5: 16 * time.Minute, 6: 30 * time.Minute, 50: 30 * time.Minute} {
+		if got := refusedBackoff(n); got != want {
+			t.Errorf("refusedBackoff(%d) = %v, want %v", n, got, want)
+		}
+	}
+}

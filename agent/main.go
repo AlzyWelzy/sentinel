@@ -229,6 +229,17 @@ type agent struct {
 	running       map[string]bool
 	doneActions   []string
 	refreshNow    chan struct{}
+	// Pushes refused (401/403) in a row, and when to try again. Used only by
+	// flush, which runs on the tick goroutine.
+	refusedPushes int
+	retryAt       time.Time
+}
+
+// refusedBackoff is how long to wait after n refused pushes in a row: 1, 2,
+// 4 … minutes, at most 30. The data stays spooled (up to 24 h), so an
+// organisation that's resumed still gets it.
+func refusedBackoff(n int) time.Duration {
+	return min(time.Minute<<min(n-1, 5), 30*time.Minute)
 }
 
 // saveState writes the state, with the done-action list taken under the lock.
@@ -356,6 +367,9 @@ func (a *agent) logLoop(ctx context.Context) {
 		case errors.As(err, &se) && se.permanent():
 			a.log.Warn("ingest rejected log lines; skipping them", "err", err)
 			shipper.Commit()
+		case errors.As(err, &se) && se.refused():
+			a.log.Warn("ingest refused this server's token; trying logs again later", "err", err)
+			wait = 10 * time.Minute
 		default:
 			a.log.Warn("log push failed; will retry", "err", err)
 		}
@@ -553,6 +567,9 @@ func (a *agent) tick(ctx context.Context) {
 
 // flush sends spooled batches oldest first until the spool is empty or a push fails.
 func (a *agent) flush(ctx context.Context) {
+	if time.Now().Before(a.retryAt) {
+		return
+	}
 	n := maxBatchesPerPush
 	for ctx.Err() == nil {
 		batches, files, err := a.spool.oldest(n)
@@ -570,6 +587,7 @@ func (a *agent) flush(ctx context.Context) {
 		var se *statusError
 		switch {
 		case err == nil:
+			a.refusedPushes, a.retryAt = 0, time.Time{}
 			a.spool.remove(files)
 			a.checks.Ack(results)
 			a.mu.Lock()
@@ -592,6 +610,13 @@ func (a *agent) flush(ctx context.Context) {
 		case errors.As(err, &se) && se.permanent():
 			a.log.Error("ingest rejected batches; dropping them", "err", err)
 			a.spool.remove(files)
+		case errors.As(err, &se) && se.refused():
+			a.refusedPushes++
+			wait := refusedBackoff(a.refusedPushes)
+			a.retryAt = time.Now().Add(wait)
+			a.log.Warn("ingest refused this server's token (removed in Sentinel, or the organisation "+
+				"is suspended); keeping data and trying again later", "err", err, "retry_in", wait)
+			return
 		default:
 			// Network trouble, 5xx, or a revoked/suspended credential: keep the
 			// data and try again next tick.
