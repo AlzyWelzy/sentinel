@@ -3,13 +3,16 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"time"
 )
 
 // Retry schedule for transient failures; after the last one the message is
-// marked failed. Roughly 1m, 5m, 15m, 1h, 3h.
-var retryBackoff = []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour, 3 * time.Hour}
+// marked failed. The short first steps ride out a console redeploy.
+var retryBackoff = []time.Duration{20 * time.Second, 40 * time.Second, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour, 3 * time.Hour}
 
 type dispatcher struct {
 	store   *store
@@ -35,12 +38,18 @@ func (d *dispatcher) dispatchOnce(ctx context.Context) int {
 	} else if n > 0 {
 		d.log.Info("held messages skipped: incidents resolved during quiet hours", "count", n)
 	}
-	items, err := d.store.claim(ctx, 50)
+	if n, err := d.store.skipBlips(ctx); err != nil {
+		d.log.Warn("skipping brief outages", "err", err)
+	} else if n > 0 {
+		d.log.Info("not-reporting alerts skipped: servers were back within the hold", "count", n)
+	}
+	claimed, err := d.store.claim(ctx, 50)
 	if err != nil {
 		d.log.Error("claiming outbound messages", "err", err)
 		return 0
 	}
-	for _, it := range items {
+	for _, g := range groupHostDown(claimed) {
+		it := g.item
 		s, ok := d.senders[it.Channel.Type]
 		var sendErr error
 		if !ok {
@@ -55,17 +64,23 @@ func (d *dispatcher) dispatchOnce(ctx context.Context) int {
 			cancel()
 		}
 		if sendErr == nil {
-			if err := d.store.markSent(ctx, it.ID); err != nil {
-				d.log.Error("marking message sent", "id", it.ID, "err", err)
+			for _, id := range g.ids {
+				if err := d.store.markSent(ctx, id); err != nil {
+					d.log.Error("marking message sent", "id", id, "err", err)
+				}
 			}
-			d.log.Info("message sent", "id", it.ID, "kind", it.Kind, "channel_type", it.Channel.Type)
+			d.log.Info("message sent", "id", it.ID, "kind", it.Kind, "channel_type", it.Channel.Type, "grouped", len(g.ids))
 			continue
 		}
 		var retryIn time.Duration
 		if it.Attempts < len(retryBackoff) {
 			retryIn = retryBackoff[it.Attempts]
 		}
-		d.log.Warn("message not sent", "id", it.ID, "kind", it.Kind, "attempt", it.Attempts+1, "err", sendErr)
+		level := slog.LevelWarn
+		if it.Attempts == 0 && !isPermanent(sendErr) {
+			level = slog.LevelInfo // the first retry usually gets it through
+		}
+		d.log.Log(ctx, level, "message not sent", "id", it.ID, "kind", it.Kind, "attempt", it.Attempts+1, "err", sendErr)
 		var gone *goneError
 		if errors.As(sendErr, &gone) {
 			// The browser dropped this subscription: remove the contact so
@@ -74,9 +89,77 @@ func (d *dispatcher) dispatchOnce(ctx context.Context) int {
 				d.log.Error("removing expired push subscription", "channel_id", it.Channel.ID, "err", err)
 			}
 		}
-		if err := d.store.markFailed(ctx, it.ID, sendErr, retryIn); err != nil {
-			d.log.Error("recording send failure", "id", it.ID, "err", err)
+		for _, id := range g.ids {
+			if err := d.store.markFailed(ctx, id, sendErr, retryIn); err != nil {
+				d.log.Error("recording send failure", "id", id, "err", err)
+			}
 		}
 	}
-	return len(items)
+	return len(claimed)
+}
+
+func isPermanent(err error) bool {
+	var p *permanentError
+	return errors.As(err, &p)
+}
+
+// outgoing is one send: a message, or several merged, and the outbox rows
+// it settles.
+type outgoing struct {
+	item outboxItem
+	ids  []string
+}
+
+// groupHostDown merges "not reporting" (or "reporting again") emails bound
+// for the same contact into one, so servers that drop together, usually a
+// network problem in front of them, don't send a message each. Everything
+// else goes out as is.
+func groupHostDown(items []outboxItem) []outgoing {
+	var out []outgoing
+	at := map[string]int{}
+	for _, it := range items {
+		k, _ := it.Payload.Event["kind"].(string)
+		groupable := it.Channel.Type == "email" && k == "host_down" &&
+			(it.Kind == "alert_firing" || it.Kind == "alert_resolved") && it.Attempts == 0
+		key := it.Channel.ID + "|" + it.Kind
+		if i, ok := at[key]; ok && groupable {
+			out[i].ids = append(out[i].ids, it.ID)
+			out[i].item.Payload = mergeHostDown(out[i].item.Payload, it.Payload)
+			continue
+		}
+		if groupable {
+			at[key] = len(out)
+		}
+		out = append(out, outgoing{item: it, ids: []string{it.ID}})
+	}
+	return out
+}
+
+func mergeHostDown(a, b message) message {
+	hosts := func(m message) []string {
+		if hs, ok := m.Event["hosts"].([]string); ok {
+			return hs
+		}
+		h, _ := m.Event["hostname"].(string)
+		return []string{h}
+	}
+	all := append(append([]string{}, hosts(a)...), hosts(b)...)
+	sort.Strings(all)
+	resolved := a.Event["type"] == "alert_resolved"
+	state, summary := "FIRING", fmt.Sprintf("%d servers are not reporting", len(all))
+	condition := "They stopped sending data at the same time, which usually means a network problem in front of them."
+	if resolved {
+		state, summary = "RESOLVED", fmt.Sprintf("%d servers are reporting again", len(all))
+		condition = "They are all sending data again."
+	}
+	ev := map[string]any{}
+	for k, v := range a.Event {
+		ev[k] = v
+	}
+	ev["summary"], ev["condition"], ev["hosts"] = summary, condition, all
+	ev["hostname"], ev["detail"] = strings.Join(all, ", "), strings.Join(all, "\n")
+	ev["incident_id"], ev["url"] = "", ""
+	text := fmt.Sprintf("%s: %s\n\n%s\n\nServers:\n- %s\n\nTime: %s\n",
+		state, summary, condition, strings.Join(all, "\n- "), time.Now().UTC().Format(time.RFC1123))
+	return message{Subject: "[Pulsegrid] " + state + ": " + summary, Text: text, Event: ev}
 }

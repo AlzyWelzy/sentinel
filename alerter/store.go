@@ -390,7 +390,11 @@ func (s *store) apply(
 		if err != nil {
 			return err
 		}
-		held, err := enqueue(ctx, tx, r.TenantID, wanted, *incidentID, kind, r.Severity, payload)
+		var delay time.Duration
+		if r.Kind == "host_down" && kind == "alert_firing" {
+			delay = hostDownGather
+		}
+		held, err := enqueue(ctx, tx, r.TenantID, wanted, *incidentID, kind, r.Severity, payload, delay)
 		if err != nil {
 			return err
 		}
@@ -505,9 +509,15 @@ func describeChannels(chans []channel) string {
 	return strings.Join(parts, ", ")
 }
 
-// enqueue queues one message per contact. A contact in its quiet hours gets
-// it when they end (next_attempt_at, held_until); returns how many were held.
-func enqueue(ctx context.Context, tx pgx.Tx, tenantID string, chans []channel, incidentID, kind, severity string, payload []byte) (int, error) {
+// hostDownGather holds a "not reporting" alert briefly before it goes out:
+// a server that's back by then sends nothing (skipBlips), and servers that
+// drop together go out as one message per contact (groupHostDown).
+const hostDownGather = 60 * time.Second
+
+// enqueue queues one message per contact, due after delay. A contact in its
+// quiet hours gets it when they end (next_attempt_at, held_until); returns
+// how many were held.
+func enqueue(ctx context.Context, tx pgx.Tx, tenantID string, chans []channel, incidentID, kind, severity string, payload []byte, delay time.Duration) (int, error) {
 	held := 0
 	now := time.Now()
 	for _, c := range chans {
@@ -518,7 +528,8 @@ func enqueue(ctx context.Context, tx pgx.Tx, tenantID string, chans []channel, i
 		}
 		_, err := tx.Exec(ctx, `
 			INSERT INTO outbound_messages (tenant_id, channel_id, incident_id, kind, payload, held_until, next_attempt_at)
-			VALUES ($1, $2, $3, $4, $5, $6, coalesce($6, now()))`, tenantID, c.ID, incidentID, kind, payload, heldUntil)
+			VALUES ($1, $2, $3, $4, $5, $6, coalesce($6, now() + make_interval(secs => $7)))`,
+			tenantID, c.ID, incidentID, kind, payload, heldUntil, delay.Seconds())
 		if err != nil {
 			return held, err
 		}
@@ -608,7 +619,7 @@ func (s *store) escalate(ctx context.Context, e escalation, payload []byte) (boo
 	chans = mergeChannels(chans, onCall)
 	// Escalations are for when nobody answered: they go out even in quiet
 	// hours, like critical alerts.
-	if _, err := enqueue(ctx, tx, e.TenantID, chans, e.IncidentID, "alert_escalation", "critical", payload); err != nil {
+	if _, err := enqueue(ctx, tx, e.TenantID, chans, e.IncidentID, "alert_escalation", "critical", payload, 0); err != nil {
 		return false, err
 	}
 	text := fmt.Sprintf("Escalated to step %d of %d: notified %s", e.Level+1, e.Steps, describeChannels(chans))
@@ -651,6 +662,35 @@ func (s *store) skipStaleHeld(ctx context.Context) (int64, error) {
 		               AND f.held_until IS NOT NULL)))`)
 	return tag.RowsAffected(), err
 }
+
+// skipBlips drops a "not reporting" alert whose server came back while it
+// was being held (hostDownGather), and then its "reporting again". A firing
+// message not yet claimed still has next_attempt_at within the hold: a
+// claim pushes it past that, so one being sent right now is left alone.
+func (s *store) skipBlips(ctx context.Context) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE outbound_messages m
+		   SET status = 'skipped', last_error = $1
+		  FROM incidents i
+		 WHERE m.incident_id = i.id AND m.tenant_id = i.tenant_id
+		   AND m.status = 'pending' AND m.kind = 'alert_firing' AND m.attempts = 0
+		   AND m.held_until IS NULL AND m.payload->'event'->>'kind' = 'host_down'
+		   AND m.next_attempt_at <= m.created_at + make_interval(secs => $2)
+		   AND i.status = 'resolved'`, blipSkipped, hostDownGather.Seconds()+1)
+	if err != nil {
+		return 0, err
+	}
+	_, err = s.pool.Exec(ctx, `
+		UPDATE outbound_messages m
+		   SET status = 'skipped', last_error = $1
+		 WHERE m.status = 'pending' AND m.kind = 'alert_resolved'
+		   AND EXISTS (SELECT 1 FROM outbound_messages f
+		                WHERE f.incident_id = m.incident_id AND f.channel_id = m.channel_id
+		                  AND f.kind = 'alert_firing' AND f.status = 'skipped' AND f.last_error = $1)`, blipSkipped)
+	return tag.RowsAffected(), err
+}
+
+const blipSkipped = "Server was back before the alert went out: not sent"
 
 // claim leases pending messages by pushing next_attempt_at forward, so a
 // crashed sender's messages come back on their own and two dispatchers never
