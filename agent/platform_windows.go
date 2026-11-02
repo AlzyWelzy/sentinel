@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 )
@@ -119,3 +120,6 @@ func restartService(name string) error {
 	}
 	return s.Start()
 }
+
+// privileged: elevated, as the SYSTEM update task runs.
+func privileged() bool { return windows.GetCurrentProcessToken().IsElevated() }

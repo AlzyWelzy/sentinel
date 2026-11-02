@@ -8,8 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/sys/windows"
 )
 
 // On Windows, autoconfig turns on Event Log shipping (System and
@@ -31,7 +29,7 @@ func cmdAutoconfig(args []string) error {
 		maybeAutoconfigure()
 		return nil
 	}
-	if !elevated() {
+	if !privileged() {
 		return errors.New("run as Administrator")
 	}
 	marker := filepath.Join(*configDir, autoconfigMarker)
@@ -45,7 +43,7 @@ func cmdAutoconfig(args []string) error {
 }
 
 func maybeAutoconfigure() bool {
-	if !elevated() {
+	if !privileged() {
 		return false
 	}
 	dir := defaultConfigDir()
@@ -87,8 +85,4 @@ func autoconfigure(dir string) bool {
 		fmt.Println("autoconfig: the agent's account may read the event logs")
 	}
 	return changed
-}
-
-func elevated() bool {
-	return windows.GetCurrentProcessToken().IsElevated()
 }

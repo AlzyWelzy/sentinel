@@ -74,3 +74,6 @@ func defaultServiceUser() string {
 	}
 	return "pulsegrid"
 }
+
+// privileged: root, as the update job runs.
+func privileged() bool { return os.Geteuid() == 0 }

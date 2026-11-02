@@ -84,7 +84,10 @@ func cmdEnableHardware(args []string) error {
 		fmt.Println("smartctl isn't installed (package smartmontools); skipping disk health.")
 	}
 
-	if ipmitool, ok := findTool("ipmitool"); ok && hasBMC() {
+	if ipmitool, ok := findTool("ipmitool"); ok && hasBMC() && !ipmiReads(ipmitool) {
+		os.Remove(filepath.Join(dir, "ipmi.conf"))
+		fmt.Println("The BMC returns no sensor readings; skipping board sensors.")
+	} else if ok && hasBMC() {
 		commands = append(commands, plugins.IPMIArgs(ipmitool))
 		conf := fmt.Sprintf("# Board sensors. Written by pulsegrid-agent enable-hardware.\ntype = ipmi\nipmitool = %s\n", ipmitool)
 		if err := os.WriteFile(filepath.Join(dir, "ipmi.conf"), []byte(conf), 0o644); err != nil {
@@ -319,4 +322,10 @@ func hardwareCommands(pdir string) [][]string {
 		}
 	}
 	return out
+}
+
+// ipmiReads reports whether the BMC returns any sensor readings (as root).
+func ipmiReads(ipmitool string) bool {
+	r := plugins.Collect(context.Background(), []plugins.Config{{Name: "probe", Type: "ipmi", Settings: map[string]string{"ipmitool": ipmitool}}})
+	return r[0].Status.OK
 }

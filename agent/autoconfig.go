@@ -107,7 +107,14 @@ func repairHardware(dir, svcUser string) bool {
 		// Rules match; a SMART list whose disks all fail (one was pulled or
 		// renumbered) still needs a rescan.
 		smart := filepath.Join(pdir, "smart.conf")
-		if _, err := os.Stat(smart); err != nil || probePlugin(smart) == nil {
+		ipmi := filepath.Join(pdir, "ipmi.conf")
+		smartBad := fileExists(smart) && probePlugin(smart) != nil
+		ipmiBad := false
+		if fileExists(ipmi) {
+			err := probePlugin(ipmi)
+			ipmiBad = err != nil && strings.Contains(err.Error(), "no sensor readings")
+		}
+		if !smartBad && !ipmiBad {
 			return false
 		}
 	}
@@ -656,3 +663,5 @@ func probePluginSettings(s map[string]string) error {
 	}
 	return nil
 }
+
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
