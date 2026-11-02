@@ -100,7 +100,12 @@ func repairHardware(dir, svcUser string) bool {
 		}
 	}
 	if ok {
-		return false
+		// Rules match; a SMART list whose disks all fail (one was pulled or
+		// renumbered) still needs a rescan.
+		smart := filepath.Join(pdir, "smart.conf")
+		if _, err := os.Stat(smart); err != nil || probePlugin(smart) == nil {
+			return false
+		}
 	}
 	if !has("sudo") {
 		installPackages([]string{"sudo"})
@@ -108,11 +113,22 @@ func repairHardware(dir, svcUser string) bool {
 			return false // try again next hour
 		}
 	}
+	before := hardwareFiles(pdir)
 	if err := cmdEnableHardware([]string{"--config-dir", dir, "--user", svcUser}); err != nil {
 		fmt.Println("autoconfig: hardware monitoring:", err)
-		return false
 	}
-	return true
+	// Restart the agent only when something actually changed.
+	return hardwareFiles(pdir) != before
+}
+
+// hardwareFiles is the content of everything enable-hardware writes.
+func hardwareFiles(pdir string) string {
+	var b strings.Builder
+	for _, p := range []string{filepath.Join(pdir, "smart.conf"), filepath.Join(pdir, "ipmi.conf"), hardwareSudoers(), dropInFile} {
+		c, _ := os.ReadFile(p)
+		b.WriteString(p + "\x00" + string(c) + "\x00")
+	}
+	return b.String()
 }
 
 // hardwareCommands lists the privileged commands that enable-hardware's
