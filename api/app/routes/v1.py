@@ -22,7 +22,7 @@ from app.services import heartbeats, metrics
 from app.services.maintenance import in_maintenance
 from app.services.secrets import new_agent_key
 from app.tenancy import Tenant, TenantContext, actor_of
-from app.validation import normalize_tags
+from app.validation import Trimmed, normalize_tags
 
 router = APIRouter(prefix="/v1")
 
@@ -111,7 +111,7 @@ async def me(t: Tenant, tasks: BackgroundTasks) -> MeOut:
 
 
 class AgentKeyIn(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
     tags: list[str] = Field(default_factory=list, description="added to servers installed with it")
 
     @field_validator("tags")

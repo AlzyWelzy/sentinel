@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import SavedView
 from app.tenancy import Tenant, TenantContext
+from app.validation import Trimmed
 
 router = APIRouter(prefix="/v1/saved-views", tags=["saved views"])
 
@@ -21,7 +22,7 @@ MAX_PER_KIND = 100
 
 class ViewIn(BaseModel):
     kind: Kind
-    name: str = Field(min_length=1, max_length=100)
+    name: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
     # The page's own filter keys (q, level, tag, status...): small, flat values.
     params: dict[str, str | int | float | bool | list[str] | None] = Field(default_factory=dict)
 

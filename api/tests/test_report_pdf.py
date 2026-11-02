@@ -79,3 +79,22 @@ def test_findings_flag_what_matters():
     assert "full in about 5 days" in text and "CPU was busy" in text
     healthy = HostData(host=host, availability=100, incidents=[])
     assert findings(healthy) == [("good", "Nothing needs attention in this period.")]
+
+
+async def test_pdf_with_markup_and_non_ascii_names(alice: User):
+    # Hostnames come from customers' servers: ReportLab must not parse them as
+    # markup (its <img> could load files), and headers must stay Latin-1.
+    tid = await alice.tenant_id()
+    for name in ["<img src=x onerror=alert(1)>", "сервер-1 & <b>", 'quote"name']:
+        host = await insert_host(tid, name)
+        r = await alice.request("GET", "/v1/reports/servers.pdf", params={"host_id": str(host)})
+        assert r.status_code == 200, (name, r.text)
+        assert r.headers["content-disposition"].isascii()
+
+
+async def test_summary_csv_neutralises_formulas(alice: User):
+    tid = await alice.tenant_id()
+    await insert_host(tid, '=HYPERLINK("http://evil")')
+    r = await alice.request("GET", "/v1/reports/summary.csv")
+    assert r.status_code == 200, r.text
+    assert "'=HYPERLINK" in r.text and "\n=HYPERLINK" not in r.text and ",=HYPERLINK" not in r.text

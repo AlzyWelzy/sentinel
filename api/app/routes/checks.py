@@ -27,7 +27,7 @@ from app.services import checkresults
 from app.services.heartbeats import is_online, last_seen
 from app.services.metrics import MetricsUnavailable, query_instant, query_series
 from app.tenancy import Tenant, TenantContext
-from app.validation import normalize_tag
+from app.validation import Trimmed, normalize_tag
 
 router = APIRouter(prefix="/v1")
 
@@ -91,9 +91,9 @@ def _is_private(host: str) -> bool:
 
 
 class CheckIn(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
     type: CheckType
-    target: str = Field(min_length=1, max_length=2048)
+    target: Annotated[str, Trimmed, Field(min_length=1, max_length=2048)]
     params: dict[str, str] = Field(default_factory=dict)
     interval_seconds: int = Field(default=60, ge=10, le=3600)
     host_id: uuid.UUID | None = None

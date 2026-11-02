@@ -37,9 +37,16 @@ def pdf_period(
     return start, end
 
 
+def csv_text(value: str) -> str:
+    """A name a spreadsheet would run as a formula ("=HYPERLINK(...)") is
+    written with a leading apostrophe, which spreadsheets show as text."""
+    return f"'{value}" if value[:1] in ("=", "+", "-", "@", "\t", "\r") else value
+
+
 def pdf_response(body: bytes, hosts: list[Host], start: datetime) -> Response:
     name = hosts[0].hostname if len(hosts) == 1 else f"{len(hosts)}-servers"
-    safe = "".join(c if c.isalnum() or c in "-._" else "-" for c in name)
+    # Headers are Latin-1: an "сервер-1" in the filename would fail the response.
+    safe = "".join(c if (c.isascii() and c.isalnum()) or c in "-._" else "-" for c in name)
     return Response(
         body,
         media_type="application/pdf",
@@ -117,7 +124,7 @@ async def summary_csv(
         w.writerow(
             [
                 "server",
-                h.hostname,
+                csv_text(h.hostname),
                 h.availability,
                 h.incidents,
                 h.cpu_avg,
@@ -131,7 +138,19 @@ async def summary_csv(
         )
     for c in s.checks:
         w.writerow(
-            ["check", c.name, c.uptime, c.incidents, "", "", "", "", "", "", c.avg_latency_ms]
+            [
+                "check",
+                csv_text(c.name),
+                c.uptime,
+                c.incidents,
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                c.avg_latency_ms,
+            ]
         )
     name = f"sentinel-report-{s.start:%Y%m%d}-{s.end:%Y%m%d}.csv"
     return PlainTextResponse(

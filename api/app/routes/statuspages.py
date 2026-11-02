@@ -13,7 +13,7 @@ import html
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import HTMLResponse
@@ -36,6 +36,7 @@ from app.services import checkresults
 from app.services.heartbeats import is_online, last_seen
 from app.services.metrics import MetricsUnavailable, query_instant, query_series
 from app.tenancy import Tenant, TenantContext
+from app.validation import Trimmed
 
 router = APIRouter(prefix="/v1/status-pages")
 public = APIRouter()
@@ -48,14 +49,14 @@ PUSH_SECONDS = 30
 
 
 class ItemIn(BaseModel):
-    label: str = Field(min_length=1, max_length=100)
+    label: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
     host_id: uuid.UUID | None = None
     check_id: uuid.UUID | None = None
 
 
 class PageIn(BaseModel):
     slug: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{2,62}$")
-    title: str = Field(min_length=1, max_length=100)
+    title: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
     description: str | None = Field(default=None, max_length=2000)
     show_values: bool = True
     published: bool = True
@@ -244,7 +245,7 @@ MAX_UPDATES = 200
 class UpdateIn(BaseModel):
     kind: UpdateKind
     state: UpdateState
-    title: str = Field(min_length=1, max_length=200)
+    title: Annotated[str, Trimmed, Field(min_length=1, max_length=200)]
     body: str = Field(default="", max_length=5000)
     starts_at: datetime | None = None
     ends_at: datetime | None = None

@@ -39,7 +39,7 @@ from app.services import backtest, oncall
 from app.services import logs as logstore
 from app.services.metrics import MetricsUnavailable
 from app.tenancy import Tenant, TenantContext
-from app.validation import normalize_tag, validate_target
+from app.validation import Trimmed, normalize_tag, validate_target
 
 router = APIRouter(prefix="/v1")
 
@@ -124,7 +124,7 @@ class LogFilterIn(BaseModel):
 
 
 class RuleIn(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
     kind: Kind
     metric: Metric | None = None
     operator: Literal[">", "<"] | None = None
@@ -351,7 +351,7 @@ class IncidentDetail(IncidentOut):
 
 
 class NoteIn(BaseModel):
-    message: str = Field(min_length=1, max_length=5000)
+    message: Annotated[str, Trimmed, Field(min_length=1, max_length=5000)]
 
 
 class SnoozeIn(BaseModel):

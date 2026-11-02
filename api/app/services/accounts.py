@@ -62,6 +62,12 @@ def check_password_rules(password: str) -> None:
             detail=f"Use a password of {native.MIN_PASSWORD_LENGTH} to "
             f"{native.MAX_PASSWORD_LENGTH} characters",
         )
+    # Long but trivially guessable: all spaces, or "aaaaaaaaaa".
+    if not password.strip() or len(set(password)) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="That password is too easy to guess: use a mix of characters",
+        )
 
 
 def user_out(row) -> dict:

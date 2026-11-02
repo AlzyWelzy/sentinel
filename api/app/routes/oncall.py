@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.services import oncall
 from app.tenancy import Tenant, TenantContext
+from app.validation import Trimmed
 
 router = APIRouter(prefix="/v1/oncall", tags=["on-call"])
 
@@ -29,12 +30,12 @@ MAX_RESPONDERS = 20
 
 
 class Responder(BaseModel):
-    name: str = Field(min_length=1, max_length=60)
+    name: Annotated[str, Trimmed, Field(min_length=1, max_length=60)]
     channel_ids: list[uuid.UUID] = Field(min_length=1, max_length=5)
 
 
 class ScheduleIn(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
     timezone: str = "UTC"
     start_at: datetime = Field(description="when the first shift starts (a handoff time)")
     shift_hours: int = Field(ge=1, le=2160, description="24 daily, 168 weekly")

@@ -5,6 +5,7 @@ only GET. The token itself is shown once, at creation."""
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
@@ -13,6 +14,7 @@ from sqlalchemy import func, select
 from app.models import ApiToken
 from app.services.secrets import hash_secret
 from app.tenancy import API_TOKEN_PREFIX, UserTenant
+from app.validation import Trimmed
 
 router = APIRouter(prefix="/v1/api-tokens")
 
@@ -20,7 +22,7 @@ MAX_TOKENS = 20
 
 
 class TokenIn(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
     read_only: bool = True
     expires_in_days: int | None = Field(default=None, ge=1, le=730)
 

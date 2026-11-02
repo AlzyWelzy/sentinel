@@ -7,6 +7,12 @@ that can never see data.
 
 import re
 
+from pydantic import StringConstraints
+
+# For names and titles people type: surrounding spaces are dropped before
+# the length is checked, so "   " is refused rather than saved as blank.
+Trimmed = StringConstraints(strip_whitespace=True)
+
 TAG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,39}$")
 MAX_TAGS = 20
 

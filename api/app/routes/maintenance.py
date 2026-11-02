@@ -4,7 +4,7 @@ window alerts as soon as the window ends."""
 
 import uuid
 from datetime import UTC, datetime, time, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, status
@@ -14,7 +14,7 @@ from sqlalchemy import select
 from app.models import Host, MaintenanceWindow
 from app.services.maintenance import active_at
 from app.tenancy import Tenant, TenantContext
-from app.validation import normalize_tag
+from app.validation import Trimmed, normalize_tag
 
 router = APIRouter(prefix="/v1/maintenance")
 
@@ -22,7 +22,7 @@ MAX_ONCE = timedelta(days=31)
 
 
 class WindowIn(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
     host_id: uuid.UUID | None = None
     tag: str | None = None
     schedule: Literal["once", "weekly"]

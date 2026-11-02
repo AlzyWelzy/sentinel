@@ -158,13 +158,17 @@ async def test_password_reset_signs_every_browser_out(client):
     known = await client.post("/auth/password/forgot", json={"email": email})
     assert unknown.json() == known.json()
     token = await emailed_token(email, "reset_password")
-    r = await client.post("/auth/password/reset", json={"token": token, "password": "x" * 12})
+    r = await client.post(
+        "/auth/password/reset", json={"token": token, "password": "new password one"}
+    )
     assert r.status_code == 204
     client.cookies.set("pg_refresh", old, path="/auth")
     assert (await client.post("/auth/refresh", headers=CSRF)).status_code == 401
     assert "password_changed" in await emails_to(email)
     # Used once.
-    r = await client.post("/auth/password/reset", json={"token": token, "password": "y" * 12})
+    r = await client.post(
+        "/auth/password/reset", json={"token": token, "password": "new password two"}
+    )
     assert r.status_code == 400
 
 
@@ -272,3 +276,19 @@ async def test_api_tokens_cannot_use_account_routes(client, alice):
     assert (
         await client.post("/v1/organisations", headers=h, json={"name": "x"})
     ).status_code == 403
+
+
+async def test_trivial_passwords_are_refused(client):
+    for weak in [" " * 12, "a" * 12, "abababababab"]:
+        r = await client.post("/auth/signup", json={"email": new_email(), "password": weak})
+        assert r.status_code == 422, weak
+
+
+async def test_blank_names_and_nul_characters_are_refused(client, alice):
+    r = await alice.request("POST", "/v1/organisations", json={"name": "   "})
+    assert r.status_code == 422
+    r = await alice.request("POST", "/v1/organisations", json={"name": "  Trimmed  "})
+    assert r.status_code < 300 and r.json()["name"] == "Trimmed"
+    # Postgres can't store NUL: the request is refused, not failed.
+    r = await alice.request("PATCH", "/auth/me", json={"name": "bad\x00name"})
+    assert r.status_code == 422

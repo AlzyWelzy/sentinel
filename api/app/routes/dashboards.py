@@ -19,7 +19,7 @@ from app.models import Dashboard, Host
 from app.routes.v1 import MetricName
 from app.services import metrics
 from app.tenancy import Tenant, TenantContext
-from app.validation import normalize_tag
+from app.validation import Trimmed, normalize_tag
 
 router = APIRouter(prefix="/v1", tags=["dashboards"])
 
@@ -28,7 +28,7 @@ MAX_PANELS = 24
 
 
 class Panel(BaseModel):
-    title: str = Field(min_length=1, max_length=100)
+    title: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
     metric: MetricName
     host_ids: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_COMPARE)
     tag: str | None = None
@@ -49,7 +49,7 @@ class Panel(BaseModel):
 
 
 class DashboardIn(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
     panels: list[Panel] = Field(default_factory=list, max_length=MAX_PANELS)
 
 

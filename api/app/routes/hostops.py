@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 
 from app.models import Host, HostAction, HostInventory
 from app.tenancy import Tenant, TenantContext
+from app.validation import Trimmed
 
 router = APIRouter(prefix="/v1/hosts")
 
@@ -25,7 +26,7 @@ MAX_PENDING_PER_HOST = 5
 
 
 class ActionIn(BaseModel):
-    name: str = Field(min_length=1, max_length=63)
+    name: Annotated[str, Trimmed, Field(min_length=1, max_length=63)]
 
 
 class ActionOut(BaseModel):

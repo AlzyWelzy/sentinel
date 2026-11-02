@@ -1,5 +1,8 @@
-from fastapi import FastAPI
+import asyncpg
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError
 
 from app.config import settings
 from app.routes import (
@@ -40,6 +43,21 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Sentinel-Account", "X-Requested-With"],
     allow_credentials=True,
 )
+
+
+@app.exception_handler(DBAPIError)
+async def _unstorable_text(request: Request, exc: DBAPIError) -> JSONResponse:
+    """Text Postgres can't store (a NUL character, anywhere in a body or a
+    query) is the client's mistake: answer 422 instead of failing the request."""
+    cause = getattr(exc.orig, "__cause__", None)
+    if isinstance(
+        cause, asyncpg.CharacterNotInRepertoireError | asyncpg.UntranslatableCharacterError
+    ):
+        return JSONResponse(
+            status_code=422, content={"detail": "Text can't contain NUL characters"}
+        )
+    raise exc
+
 
 app.include_router(auth.router)
 app.include_router(tools.router)

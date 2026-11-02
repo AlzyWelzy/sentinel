@@ -17,6 +17,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from xml.sax.saxutils import escape as esc
 from zoneinfo import ZoneInfo
 
 from reportlab.graphics.charts.barcharts import VerticalBarChart
@@ -587,13 +588,17 @@ def _tiles(items: list[tuple[str, str, Any]], width: float, sub: list[str] | Non
     return t
 
 
-def _findings_box(items: list[tuple[str, str]], width: float, limit: int = 12) -> Table:
+def _findings_box(
+    items: list[tuple[str, str]], width: float, limit: int = 12, markup: bool = False
+) -> Table:
+    """Findings are plain text (mount and check names come from customers'
+    servers) unless the caller built escaped markup itself."""
     rows = [
         [
             Paragraph(
                 f'<font color="{_hex(LEVEL[level])}"><b>{LEVEL_WORD[level]}</b></font>', BODY
             ),
-            Paragraph(text, BODY),
+            Paragraph(text if markup else esc(text), BODY),
         ]
         for level, text in items[:limit]
     ]
@@ -752,7 +757,7 @@ def _pair_rows(drawings: list, width: float) -> list:
 
 def _host_section(d: HostData, width: float, tz: ZoneInfo, start: datetime, end: datetime) -> list:
     h = d.host
-    story: list = [Paragraph(h.hostname, H2)]
+    story: list = [Paragraph(esc(h.hostname), H2)]
     facts = " · ".join(
         x
         for x in (
@@ -767,7 +772,7 @@ def _host_section(d: HostData, width: float, tz: ZoneInfo, start: datetime, end:
         )
         if x
     )
-    story += [Paragraph(facts, SMALL), Spacer(1, 4 * mm)]
+    story += [Paragraph(esc(facts), SMALL), Spacer(1, 4 * mm)]
     down = sum(b - a for a, b in d.downtimes)
     resolved = [(i.resolved_at - i.opened_at).total_seconds() for i in d.incidents if i.resolved_at]
     story.append(
@@ -910,7 +915,8 @@ def _host_section(d: HostData, width: float, tz: ZoneInfo, start: datetime, end:
             rows.append(
                 [
                     Paragraph(
-                        f"{c['name']}<br/><font color='#64748b' size='7'>{c['target'][:60]}</font>",
+                        f"{esc(c['name'])}<br/><font color='#64748b' size='7'>"
+                        f"{esc(c['target'][:60])}</font>",
                         BODY,
                     ),
                     c["type"],
@@ -947,7 +953,7 @@ def _host_section(d: HostData, width: float, tz: ZoneInfo, start: datetime, end:
             rows.append(
                 [
                     f"{i.opened_at.astimezone(tz):%d %b %Y %H:%M}",
-                    Paragraph(i.rule_name or i.summary, BODY),
+                    Paragraph(esc(i.rule_name or i.summary), BODY),
                     i.severity,
                     fmt_duration(dur) + ("" if i.resolved_at else " (open)"),
                     (i.resolved_by or ("—" if i.resolved_at else "open"))[:24],
@@ -1015,7 +1021,7 @@ def render(
     )
     story: list = [
         Paragraph("Server report", H1),
-        Paragraph(f"<b>{title}</b> · {account}", BODY),
+        Paragraph(f"<b>{esc(title)}</b> · {esc(account)}", BODY),
         Paragraph(f"{when} · generated {made:%d %b %Y, %H:%M}", SMALL),
         Spacer(1, 7 * mm),
     ]
@@ -1054,7 +1060,7 @@ def render(
         )
     )
     attention = [
-        (lvl, f"<b>{d.host.hostname}</b>: {text}")
+        (lvl, f"<b>{esc(d.host.hostname)}</b>: {esc(text)}")
         for d in datas
         for lvl, text in d.findings
         if lvl != "good"
@@ -1063,7 +1069,7 @@ def render(
     attention.sort(key=lambda f: order[f[0]])
     story.append(Paragraph("Needs attention", H3))
     story.append(
-        _findings_box(attention, width, limit=25)
+        _findings_box(attention, width, limit=25, markup=True)
         if attention
         else _findings_box([("good", "Every server was healthy in this period.")], width)
     )

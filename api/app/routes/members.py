@@ -15,7 +15,7 @@ the client.
 
 import uuid
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -28,6 +28,7 @@ from app.models import Tenant as TenantRow
 from app.models import TenantMember
 from app.services import export, invitations, tenants
 from app.tenancy import Tenant, TenantContext, UserTenant
+from app.validation import Trimmed
 
 router = APIRouter(prefix="/v1")
 
@@ -98,7 +99,7 @@ async def my_accounts(t: Tenant) -> list[AccountOut]:
 
 
 class OrganisationIn(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
 
 
 @router.post("/organisations", status_code=status.HTTP_201_CREATED)
