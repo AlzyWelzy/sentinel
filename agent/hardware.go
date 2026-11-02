@@ -44,8 +44,11 @@ func cmdEnableHardware(args []string) error {
 		fmt.Println("Hardware monitoring removed.")
 		return nil
 	}
+	// Without sudo the plugins could never run; don't leave them failing.
+	if _, ok := findTool("sudo"); !ok {
+		return errors.New("sudo isn't installed; install it first")
+	}
 	if _, err := os.Stat(filepath.Dir(hardwareSudoers)); err != nil {
-		// Without sudo the plugins could never run; don't leave them failing.
 		return fmt.Errorf("%s doesn't exist; install sudo first", filepath.Dir(hardwareSudoers))
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {

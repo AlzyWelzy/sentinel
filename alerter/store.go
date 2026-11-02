@@ -712,3 +712,31 @@ func (s *store) deleteChannel(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM notification_channels WHERE id = $1 AND type = 'push'`, id)
 	return err
 }
+
+// failingPlugins reads which plugins the host's agent last reported as
+// failing, and why, so a plugin alert names them instead of "A plugin".
+// target limits it to one plugin.
+func (s *store) failingPlugins(ctx context.Context, hostID, target string) (names, detail string) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT p->>'name', coalesce(p->>'error', '')
+		FROM host_inventory i, jsonb_array_elements(coalesce(i.data->'plugins', '[]'::jsonb)) p
+		WHERE i.host_id = $1 AND p->>'ok' = 'false' AND ($2 = '' OR p->>'name' = $2)
+		ORDER BY 1`, hostID, target)
+	if err != nil {
+		return "", ""
+	}
+	defer rows.Close()
+	var ns, ds []string
+	for rows.Next() {
+		var n, e string
+		if rows.Scan(&n, &e) != nil {
+			continue
+		}
+		if len(e) > 400 {
+			e = e[:400] + "…"
+		}
+		ns = append(ns, n)
+		ds = append(ds, n+": "+e)
+	}
+	return strings.Join(ns, ", "), strings.Join(ds, "\n")
+}

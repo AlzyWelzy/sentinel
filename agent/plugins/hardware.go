@@ -54,6 +54,12 @@ func runPrivileged(ctx context.Context, args []string) ([]byte, error) {
 	if os.Geteuid() != 0 {
 		sudo, err := exec.LookPath("sudo")
 		if err != nil {
+			sudo, err = "/usr/bin/sudo", nil
+			if _, serr := os.Stat(sudo); serr != nil {
+				err = serr
+			}
+		}
+		if err != nil {
 			return nil, errors.New("sudo isn't installed; run pulsegrid-agent enable-hardware as root")
 		}
 		cmd = exec.CommandContext(ctx, sudo, append([]string{"-n"}, args...)...)

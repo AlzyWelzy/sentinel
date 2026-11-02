@@ -24,7 +24,7 @@ import (
 // autoconfigRev is bumped when autoconfig learns something new, so servers
 // that already ran an older revision run it again on their next update.
 const (
-	autoconfigRev    = "4"
+	autoconfigRev    = "5"
 	autoconfigMarker = ".autoconfig" // in the config dir: the revision, or "off"
 	autoconfigNote   = "# Written by pulsegrid-agent autoconfig. Delete this line before editing, or updates may refresh the file."
 )
@@ -145,10 +145,10 @@ func autoconfigure(dir, svcUser string, noLogs bool) bool {
 			try("mysql", "dsn = "+dsn+"\n", 0o640, svcUser, true)
 		}
 	}
-	// Rev 3 wrote hardware plugins on servers without sudo (Proxmox ships
-	// none), where they can never run; redo those.
-	_, sudoErr := os.Stat(hardwareSudoers)
-	if (!have["smart"] && !have["ipmi"]) || sudoErr != nil {
+	// Rev 3 wrote hardware plugins on servers without the sudo binary
+	// (Proxmox ships none, though /etc/sudoers.d can exist), where they can
+	// never run; redo those.
+	if (!have["smart"] && !have["ipmi"]) || !has("sudo") {
 		if physical() {
 			installHardwareTools()
 		}
@@ -159,6 +159,15 @@ func autoconfigure(dir, svcUser string, noLogs bool) bool {
 		}
 		if (s || i) && cmdEnableHardware([]string{"--config-dir", dir, "--user", svcUser}) == nil {
 			changed = true
+		}
+	}
+	// A BMC device that returns no sensor readings would alert forever; drop
+	// the IPMI plugin we wrote there.
+	ipmi := filepath.Join(pdir, "ipmi.conf")
+	if b, err := os.ReadFile(ipmi); err == nil && strings.Contains(string(b), "Written by pulsegrid-agent enable-hardware") {
+		if err := probePlugin(ipmi); err != nil && strings.Contains(err.Error(), "no sensor readings") {
+			os.Remove(ipmi)
+			note(true, "IPMI off: the BMC returns no sensor readings")
 		}
 	}
 	return changed

@@ -35,7 +35,8 @@ type observation struct {
 	Breached bool
 	Value    float64
 	Total    float64 // probe checks: how many locations reported
-	Detail   string  // check rules: the latest result text
+	Detail   string  // check rules: the latest result text; plugin rules: each failing plugin's error
+	Plugins  string  // plugin rules without a target: the failing plugins' names
 }
 
 func transition(cur alertState, obs observation, duration time.Duration, now time.Time) (alertState, action) {

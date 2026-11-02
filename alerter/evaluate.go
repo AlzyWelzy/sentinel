@@ -144,6 +144,9 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 		}
 		if act != actionNone {
 			o.Detail = e.checkDetail(ctx, r, h)
+			if r.Kind == "plugin_down" && act == actionOpen {
+				o.Plugins, o.Detail = e.store.failingPlugins(ctx, h.ID, r.Target)
+			}
 		}
 		msg := func(kind, incidentID string) message { return e.message(r, h, o, kind, incidentID) }
 		quiet := suppressed && act == actionResolve
@@ -513,7 +516,12 @@ func describe(r rule, h host, o observation, resolved bool) (subject, condition 
 			fmt.Sprintf("Service %s is running again on %s", r.Target, h.Hostname))
 	case "plugin_down":
 		name := r.Target
-		if name == "" {
+		switch {
+		case name != "":
+			name = "Plugin " + name
+		case o.Plugins != "":
+			name = "Plugin " + o.Plugins
+		default:
 			name = "A plugin"
 		}
 		condition = fmt.Sprintf("%s can't collect metrics", name)
