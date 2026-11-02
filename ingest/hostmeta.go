@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // Limits on what an agent can store about its host. The agent is on a
@@ -46,6 +47,22 @@ func cleanIPs(in []string) []string {
 		}
 	}
 	return out
+}
+
+// cleanField drops control characters (and NUL, which Postgres refuses),
+// trims spaces and cuts the result to max bytes on a character boundary.
+func cleanField(s string, max int) string {
+	s = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || r == utf8.RuneError {
+			return -1
+		}
+		return r
+	}, s))
+	for len(s) > max {
+		_, size := utf8.DecodeLastRuneInString(s)
+		s = s[:len(s)-size]
+	}
+	return s
 }
 
 func cleanHostname(h string) string {

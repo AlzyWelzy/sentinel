@@ -27,3 +27,19 @@ func TestCleanHostname(t *testing.T) {
 		t.Error("hostname not cleaned")
 	}
 }
+
+func TestCleanField(t *testing.T) {
+	cases := map[string]string{
+		"linux\r\nBcc: x": "linuxBcc: x",
+		"  ubuntu\x00 ":   "ubuntu",
+		"\xff\xfeok":      "ok",
+	}
+	for in, want := range cases {
+		if got := cleanField(in, 100); got != want {
+			t.Errorf("cleanField(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := cleanField("ééééé", 5); got != "éé" {
+		t.Errorf("cut mid-character: %q", got)
+	}
+}

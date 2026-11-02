@@ -118,6 +118,21 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusBadRequest, "install_key, machine_id and hostname are required")
 		return
 	}
+	// Whatever the agent reports is shown in the dashboard and in emails, and
+	// Postgres can't store NUL: drop control characters and cap lengths.
+	if req.Hostname = cleanHostname(req.Hostname); req.Hostname == "" {
+		httpError(w, http.StatusBadRequest, "hostname must be 1 to 253 characters with no control characters")
+		return
+	}
+	if req.MachineID = cleanField(req.MachineID, 200); req.MachineID == "" {
+		httpError(w, http.StatusBadRequest, "machine_id is required")
+		return
+	}
+	req.OS = cleanField(req.OS, 50)
+	req.Platform = cleanField(req.Platform, 100)
+	req.PlatformVersion = cleanField(req.PlatformVersion, 100)
+	req.Arch = cleanField(req.Arch, 50)
+	req.AgentVersion = cleanField(req.AgentVersion, 50)
 
 	token := hostTokenPrefix + randomToken()
 	tokenHash := hashSecret(token)
