@@ -153,6 +153,9 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 			if r.Kind == "plugin_down" {
 				o.Plugins, o.Detail = e.pluginDetail(ctx, r, h, act)
 			}
+			if act == actionOpen && (r.Metric == "disk" || r.Metric == "inodes") && (r.Kind == "metric" || r.Kind == "forecast") {
+				o.Detail = e.mountDetail(ctx, r, h)
+			}
 		}
 		msg := func(kind, incidentID string) message { return e.message(r, h, o, kind, incidentID) }
 		quiet := suppressed && act == actionResolve
@@ -343,6 +346,11 @@ func (e *evaluator) metricObservations(ctx context.Context, r rule) (map[string]
 // host_id. extra_label is the same guard as the API's: VictoriaMetrics adds
 // it to every selector, so a rule only ever sees its own tenant's series.
 func (e *evaluator) queryVector(ctx context.Context, tenantID, query string) (map[string]float64, error) {
+	return e.queryVectorBy(ctx, tenantID, query, "host_id")
+}
+
+// queryVectorBy is queryVector keyed by another label.
+func (e *evaluator) queryVectorBy(ctx context.Context, tenantID, query, label string) (map[string]float64, error) {
 	params := url.Values{"query": {query}, "extra_label": {"tenant_id=" + tenantID}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.vmURL+"/api/v1/query?"+params.Encode(), nil)
 	if err != nil {
@@ -371,13 +379,77 @@ func (e *evaluator) queryVector(ctx context.Context, tenantID, query string) (ma
 	out := map[string]float64{}
 	for _, res := range body.Data.Result {
 		s, _ := res.Value[1].(string)
-		v, err := strconv.ParseFloat(s, 64)
-		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
-			continue
+		if v, err := strconv.ParseFloat(s, 64); err == nil && !math.IsNaN(v) && !math.IsInf(v, 0) {
+			out[res.Metric[label]] = v
 		}
-		out[res.Metric["host_id"]] = v
 	}
 	return out, nil
+}
+
+// mountDetail names the mounts a disk or inode alert is about: the ones
+// breaching the rule (for a forecast, the ones heading past it), fullest
+// first, with the space left on each.
+func (e *evaluator) mountDetail(ctx context.Context, r rule, h host) string {
+	def := alertMetrics[r.Metric]
+	sel := def.name + matchers(fmt.Sprintf("host_id=%q", h.ID))
+	used, err := e.queryVectorBy(ctx, r.TenantID, "max by (mountpoint) (last_over_time("+sel+"[5m]))", "mountpoint")
+	if err != nil || len(used) == 0 {
+		return ""
+	}
+	free := map[string]float64{}
+	if r.Metric == "disk" {
+		free, _ = e.queryVectorBy(ctx, r.TenantID, fmt.Sprintf("max by (mountpoint) (last_over_time(pulsegrid_disk_free_bytes{host_id=%q}[5m]))", h.ID), "mountpoint")
+	}
+	hit := func(m string) bool { return breached(r.Operator, used[m], r.Threshold) }
+	if r.Kind == "forecast" {
+		scoped := r
+		scoped.HostID = &h.ID
+		q, _ := ruleQuery(scoped)
+		q = strings.Replace(q, "max by (host_id)", "max by (mountpoint)", 1)
+		pred, _ := e.queryVectorBy(ctx, r.TenantID, q, "mountpoint")
+		hit = func(m string) bool { return pred[m] >= 100 }
+	}
+	return formatMounts(used, free, hit)
+}
+
+func formatMounts(used, free map[string]float64, hit func(string) bool) string {
+	var mounts []string
+	for m := range used {
+		if m != "" && hit(m) {
+			mounts = append(mounts, m)
+		}
+	}
+	sort.Slice(mounts, func(i, j int) bool {
+		if used[mounts[i]] != used[mounts[j]] {
+			return used[mounts[i]] > used[mounts[j]]
+		}
+		return mounts[i] < mounts[j]
+	})
+	if len(mounts) > 5 {
+		mounts = mounts[:5]
+	}
+	parts := make([]string, 0, len(mounts))
+	for _, m := range mounts {
+		p := fmt.Sprintf("%s %.1f%% used", m, used[m])
+		if f, ok := free[m]; ok {
+			p += ", " + humanBytes(f) + " free"
+		}
+		parts = append(parts, p)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func humanBytes(b float64) string {
+	units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
+	i := 0
+	for b >= 1024 && i < len(units)-1 {
+		b /= 1024
+		i++
+	}
+	if i == 0 {
+		return fmt.Sprintf("%.0f B", b)
+	}
+	return fmt.Sprintf("%.1f %s", b, units[i])
 }
 
 // queryScalar runs a query that yields a single series without labels.
