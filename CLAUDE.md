@@ -1,8 +1,15 @@
 # Pulsegrid Beyond
 
-Pulsegrid Beyond is the owner's own continuation of Pulsegrid, a multi-tenant monitoring product for servers and uptime. It started as a full copy of `AlzyWelzy/pulsegrid` (history and tags up to `565b89f`, release v0.8.26 plus two alerter fixes, agent 0.8.11).
+Pulsegrid Beyond is a multi-tenant monitoring product for servers and uptime, owned by its author.
 
-This repo is independent. Use personal accounts, registries and servers only, never the company's.
+## Beyond stands on its own
+
+Beyond is its own project. It does not rely on any other project, and work here never depends on one.
+
+- **History:** Beyond started from a copy of Pulsegrid at release v0.8.27 (`565b89f`, agent 0.8.11). That's history only. Pulsegrid, the Example console, billing and every other Example service are not upstreams, dependencies or deploy targets.
+- **No syncing:** don't pull from, push to, or sync with `example-org/pulsegrid` or `AlzyWelzy/pulsegrid`. Changes start here. Anything borrowed from elsewhere is re-implemented here deliberately.
+- **Own infrastructure:** use only Beyond's own accounts, registry, domains, servers, secrets and email provider. Never use company resources.
+- **Remove the coupling:** wherever the code still assumes the Example console (see "Removing inherited coupling"), Beyond's direction is to remove that dependency, not to keep it working.
 
 See `README.md` for the architecture, multi-tenancy, the agent platforms and the full feature list. This file holds what the README doesn't: how work is done here, where things stand, and what was learned running it on a real fleet of about 80 servers.
 
@@ -15,9 +22,9 @@ See `README.md` for the architecture, multi-tenancy, the agent platforms and the
 - **Never echo credentials or tokens** in output or logs.
 - **Confirm before tagging a release.** A tag publishes images, and whatever autoupdates from them deploys.
 
-## Before going live: rebrand the infrastructure
+## Removing inherited coupling
 
-The copied files still point at company infrastructure. Change them before CI or a deploy runs from this repo:
+The inherited files still point at company infrastructure and the console. Replace each item below with Beyond's own before CI or a deploy runs from this repo. Until then, treat these as bugs:
 
 - **Image registry:** workflows and stack files use `ghcr.io/example-org/pulsegrid-*`. Switch to a personal registry, or a build here could overwrite company images that autoupdate onto company prod.
 - **Console coupling:** identity and email go through the Example console:
@@ -25,7 +32,7 @@ The copied files still point at company infrastructure. Change them before CI or
   - The alerter sends email through the console (`CONSOLE_EMAIL_URL`, the `consoleMailer` sender in `alerter/notify.go`).
   - Tenants are keyed `(source, console uid)`.
 
-  A standalone product needs its own auth and its own email. SMTP already exists as the `emailSender` in `alerter/notify.go`.
+  Beyond needs its own sign-up/login and its own tenants. Email should go through `emailSender` (SMTP), not `consoleMailer`.
 - **Domains, secrets and env:** see `deploy/production.env.example`, `deploy/console.env.example` and `deploy/sentinel/`.
 - **GitHub Actions:** this repo has no secrets yet, so nothing publishes until you add them.
 
@@ -45,7 +52,7 @@ The copied files still point at company infrastructure. Change them before CI or
 - **After a reboot:** the test stack containers don't start on their own. Start postgres, redis, victoriametrics (and its `-long` copy), victorialogs, tempo and mailpit before running pytest.
 - **Demo fleet:** the old setup ran demo servers as Docker containers (one agent per container, Dockerfiles for apt- and dnf-based images, plus a probe container). It's a good way to test outages: `docker stop` a few containers and watch the alerts.
 
-## State at the fork (2026-11-02)
+## Inherited state (v0.8.27, 2026-11-02)
 
 ### Agent 0.8.11 (Go)
 
@@ -90,6 +97,13 @@ The copied files still point at company infrastructure. Change them before CI or
 
 All timestamps are stored in UTC. Digests use the account's own timezone.
 
+### Live-tested before the fork
+
+The v0.8.27 alerter changes were verified on a demo fleet. Three servers were stopped for about 3.5 minutes:
+- Alerts were held 60s before sending.
+- Alerts for two servers went to each contact as one grouped email, and the three recoveries went out together.
+- Alerts whose servers were back within the hold were skipped, along with their recoveries.
+
 ## Lessons from the production fleet
 
 - **Shared NAT:** many servers sit behind one public IP. A short network drop there silences a group of them at once. That's real downtime from the monitor's point of view, but customers shouldn't get one email per server, so the grouping and blip suppression exist.
@@ -103,4 +117,4 @@ All timestamps are stored in UTC. Digests use the account's own timezone.
 
 - **Correlated outages:** detect several hosts behind one public IP going silent together. Open one "network" incident and link the hosts to it, instead of N incidents.
 - **Dependency hint:** when several servers drop together, suggest a host dependency (`depends_on_host_id`).
-- **Standalone auth and email:** replace the console coupling (see above).
+- **Own auth and email:** replace the console coupling (see "Removing inherited coupling"). This is the first priority.
