@@ -88,6 +88,16 @@ export default function AccountPage() {
     },
     onError: fail,
   });
+  const [deletePw, setDeletePw] = useState("");
+  const deleteAccount = useMutation({
+    mutationFn: async () =>
+      unwrap(await api.POST("/auth/me/delete", { body: { password: deletePw } })),
+    onSuccess: () => {
+      setSession(null);
+      router.replace("/login");
+    },
+    onError: fail,
+  });
   const revoke = useMutation({
     mutationFn: async (id: string) =>
       unwrap(
@@ -262,6 +272,33 @@ export default function AccountPage() {
               </tbody>
             </Table>
           )}
+        </Card>
+        <Card title="Delete your account" className="lg:col-span-2">
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (confirm("Delete your account? This can't be undone.")) deleteAccount.mutate();
+            }}
+          >
+            <p className="w-full text-sm text-ink-2">
+              Deletes your account, and the organisations only you are in with all their data.
+              Organisations with other members must be handed to one of them first.
+            </p>
+            <div className="min-w-64 flex-1">
+              <Field label="Password">
+                <Input
+                  type="password"
+                  required
+                  value={deletePw}
+                  onChange={(e) => setDeletePw(e.target.value)}
+                />
+              </Field>
+            </div>
+            <Button type="submit" variant="danger" loading={deleteAccount.isPending}>
+              Delete account
+            </Button>
+          </form>
         </Card>
       </div>
     </>

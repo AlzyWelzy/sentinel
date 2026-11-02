@@ -17,7 +17,7 @@ import {
   Select,
   Table,
 } from "@/components/ui";
-import { api, errorText, setOrg } from "@/lib/api/client";
+import { api, authed, errorText, setOrg } from "@/lib/api/client";
 import { ago } from "@/lib/format";
 import { unwrap } from "@/lib/queries";
 import { ROLE_LABELS, orgName, useMe } from "@/lib/session";
@@ -84,6 +84,30 @@ function Organisation() {
     onSuccess: refresh,
     onError: fail,
   });
+  const makeOwner = useMutation({
+    mutationFn: async (id: string) =>
+      unwrap(
+        await api.POST("/v1/members/{member_id}/make-owner", {
+          params: { path: { member_id: id } },
+        }),
+      ),
+    onSuccess: () => {
+      setMsg({ tone: "ok", text: "Ownership handed over. You're an admin now." });
+      refresh();
+    },
+    onError: fail,
+  });
+  async function exportData() {
+    const r = await authed("/v1/organisation/export");
+    if (!r.ok) return setMsg({ tone: "bad", text: "The export couldn't be made." });
+    const url = URL.createObjectURL(await r.blob());
+    const a = Object.assign(document.createElement("a"), {
+      href: url,
+      download: `sentinel-export-${new Date().toISOString().slice(0, 10)}.json`,
+    });
+    a.click();
+    URL.revokeObjectURL(url);
+  }
   const resend = useMutation({
     mutationFn: async (id: string) =>
       unwrap(
@@ -108,7 +132,7 @@ function Organisation() {
     onSuccess: () => {
       setOrg(null);
       qc.clear();
-      router.push("/");
+      router.push("/overview");
     },
     onError: fail,
   });
@@ -243,6 +267,18 @@ function Organisation() {
                       {m.joined ? ago(m.last_seen_at) : <Badge tone="warn">invited</Badge>}
                     </td>
                     <td className="text-right whitespace-nowrap">
+                      {role === "owner" && m.joined && m.role !== "owner" && (
+                        <Button
+                          variant="ghost"
+                          onClick={() =>
+                            confirm(
+                              `Make ${m.name ?? m.email} the owner? You'll become an admin.`,
+                            ) && makeOwner.mutate(m.id)
+                          }
+                        >
+                          Make owner
+                        </Button>
+                      )}
                       {manager && !m.joined && (
                         <Button variant="ghost" onClick={() => resend.mutate(m.id)}>
                           Resend
@@ -266,6 +302,16 @@ function Organisation() {
             </Table>
           )}
         </Card>
+        {manager && (
+          <Card title="Your data">
+            <p className="mb-3 text-sm text-ink-2">
+              Download everything this organisation has in Sentinel as JSON: servers, rules, checks,
+              contacts, incidents with timelines, status pages and the audit log. Secrets are
+              masked.
+            </p>
+            <Button onClick={exportData}>Download export</Button>
+          </Card>
+        )}
         {role === "owner" && (
           <Card title="Delete organisation">
             <p className="mb-3 text-sm text-ink-2">

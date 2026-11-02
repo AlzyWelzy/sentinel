@@ -95,6 +95,21 @@ export default function ContactsPage() {
     onSuccess: () => done("Test message queued."),
     onError: fail,
   });
+  const [editing, setEditing] = useState<string | null>(null);
+  const patch = useMutation({
+    mutationFn: async ([id, body]: [string, components["schemas"]["ChannelPatch"]]) =>
+      unwrap(
+        await api.PATCH("/v1/channels/{channel_id}", {
+          params: { path: { channel_id: id } },
+          body,
+        }),
+      ),
+    onSuccess: () => {
+      setEditing(null);
+      done("Saved.");
+    },
+    onError: fail,
+  });
   const remove = useMutation({
     mutationFn: async (id: string) =>
       unwrap(
@@ -179,7 +194,7 @@ export default function ContactsPage() {
               </tr>
             </thead>
             <tbody>
-              {channels.data.map((c) => (
+              {channels.data.map((c) => [
                 <tr key={c.id}>
                   <td>
                     <span className="font-medium">{c.label ?? c.target}</span>
@@ -226,18 +241,114 @@ export default function ContactsPage() {
                     {editable && (
                       <Button
                         variant="ghost"
+                        onClick={() => setEditing(editing === c.id ? null : c.id)}
+                      >
+                        Settings
+                      </Button>
+                    )}
+                    {editable && (
+                      <Button
+                        variant="ghost"
                         onClick={() => confirm("Remove this contact?") && remove.mutate(c.id)}
                       >
                         Remove
                       </Button>
                     )}
                   </td>
-                </tr>
-              ))}
+                </tr>,
+                editing === c.id && (
+                  <tr key={`${c.id}-settings`}>
+                    <td colSpan={4} className="bg-panel-2/50">
+                      <ContactSettings
+                        severity={c.min_severity}
+                        quiet={c.quiet_hours ?? null}
+                        onSave={(body) => patch.mutate([c.id, body])}
+                      />
+                    </td>
+                  </tr>
+                ),
+              ])}
             </tbody>
           </Table>
         )}
       </Card>
     </>
+  );
+}
+
+type Quiet = components["schemas"]["QuietHours"];
+
+/** Lowest severity the contact receives, and hours it hears nothing (except
+ * critical alerts, unless that's turned off too). */
+function ContactSettings({
+  severity,
+  quiet,
+  onSave,
+}: {
+  severity: string;
+  quiet: Quiet | null;
+  onSave: (body: components["schemas"]["ChannelPatch"]) => void;
+}) {
+  const [min, setMin] = useState(severity);
+  const [on, setOn] = useState(!!quiet);
+  const [q, setQ] = useState<Quiet>(
+    quiet ?? {
+      start: "22:00",
+      end: "07:00",
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      critical_breaks_through: true,
+    },
+  );
+  return (
+    <form
+      className="flex flex-wrap items-end gap-3 py-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave({
+          min_severity: min as "critical" | "warning" | "info",
+          quiet_hours: on ? q : null,
+        });
+      }}
+    >
+      <Field label="Receives">
+        <Select value={min} onChange={(e) => setMin(e.target.value)}>
+          <option value="info">Everything</option>
+          <option value="warning">Warning and critical</option>
+          <option value="critical">Critical only</option>
+        </Select>
+      </Field>
+      <label className="flex h-9 items-center gap-2 text-sm">
+        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> Quiet hours
+      </label>
+      {on && (
+        <>
+          <Field label="From">
+            <Input
+              type="time"
+              value={q.start}
+              onChange={(e) => setQ({ ...q, start: e.target.value })}
+            />
+          </Field>
+          <Field label="To">
+            <Input
+              type="time"
+              value={q.end}
+              onChange={(e) => setQ({ ...q, end: e.target.value })}
+            />
+          </Field>
+          <label className="flex h-9 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={q.critical_breaks_through ?? true}
+              onChange={(e) => setQ({ ...q, critical_breaks_through: e.target.checked })}
+            />{" "}
+            Critical alerts still come through
+          </label>
+        </>
+      )}
+      <Button type="submit" variant="primary">
+        Save
+      </Button>
+    </form>
   );
 }

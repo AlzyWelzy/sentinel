@@ -14,9 +14,12 @@ import {
   Card,
   Empty,
   ErrorState,
+  Field,
+  Input,
   Loading,
   Meter,
   PageHeader,
+  Select,
   Table,
   cx,
 } from "@/components/ui";
@@ -29,7 +32,15 @@ import { canEdit, useMe } from "@/lib/session";
 type Metric = NonNullable<
   paths["/v1/hosts/{host_id}/metrics"]["get"]["parameters"]["query"]
 >["metric"];
-const TABS = ["Overview", "Disks", "Processes", "Network", "System", "Activity"] as const;
+const TABS = [
+  "Overview",
+  "Disks",
+  "Processes",
+  "Network",
+  "System",
+  "Activity",
+  "Settings",
+] as const;
 type Tab = (typeof TABS)[number];
 
 function useMetric(hostId: string, metric: Metric, range: Range) {
@@ -253,6 +264,7 @@ export default function ServerPage() {
       )}
       {tab === "System" && <System hostId={id} host={h} />}
       {tab === "Activity" && <Activity hostId={id} />}
+      {tab === "Settings" && <HostSettings host={h} editable={editable} />}
     </>
   );
 }
@@ -502,5 +514,187 @@ function Activity({ hostId }: { hostId: string }) {
         </Table>
       )}
     </Card>
+  );
+}
+
+function HostSettings({
+  host,
+  editable,
+}: {
+  host: components["schemas"]["HostOut"];
+  editable: boolean;
+}) {
+  const qc = useQueryClient();
+  const hosts = useQuery({
+    queryKey: ["hosts"],
+    queryFn: async () => unwrap(await api.GET("/v1/hosts")),
+  });
+  const actions = useQuery({
+    queryKey: ["actions", host.id],
+    refetchInterval: 10_000,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/hosts/{host_id}/actions", { params: { path: { host_id: host.id } } }),
+      ),
+  });
+  const [tags, setTags] = useState(host.tags.join(", "));
+  const [notes, setNotes] = useState(host.notes ?? "");
+  const [dependsOn, setDependsOn] = useState(host.depends_on_host_id ?? "");
+  const [msg, setMsg] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await api.PATCH("/v1/hosts/{host_id}", {
+          params: { path: { host_id: host.id } },
+          body: {
+            tags: tags
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean),
+            notes,
+            depends_on_host_id: dependsOn || null,
+            clear_depends_on: !dependsOn,
+          },
+        }),
+      ),
+    onSuccess: () => {
+      setMsg("Saved.");
+      qc.invalidateQueries({ queryKey: ["host", host.id] });
+      qc.invalidateQueries({ queryKey: ["hosts"] });
+    },
+  });
+  const run = useMutation({
+    mutationFn: async (name: string) =>
+      unwrap(
+        await api.POST("/v1/hosts/{host_id}/actions", {
+          params: { path: { host_id: host.id } },
+          body: { name },
+        }),
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["actions", host.id] }),
+  });
+  const allowed = (actions.data?.allowed ?? []) as string[];
+  const history = (actions.data?.history ?? []) as {
+    id: string;
+    name: string;
+    status: string;
+    requested_by: string;
+    exit_code: number | null;
+    output: string | null;
+    created_at: string;
+  }[];
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <Card title="Server">
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate();
+          }}
+        >
+          {msg && <p className="text-sm text-ok">{msg}</p>}
+          <Field
+            label="Tags"
+            hint="Comma-separated. Rules, maintenance and dashboards can target a tag."
+          >
+            <Input value={tags} disabled={!editable} onChange={(e) => setTags(e.target.value)} />
+          </Field>
+          <Field
+            label="Depends on"
+            hint="While that server is silent, this one's alerts are held back."
+          >
+            <Select
+              value={dependsOn}
+              disabled={!editable}
+              onChange={(e) => setDependsOn(e.target.value)}
+              className="w-full"
+            >
+              <option value="">Nothing</option>
+              {hosts.data
+                ?.filter((x) => x.id !== host.id)
+                .map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.hostname}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+          <Field label="Notes" hint="For the team: what runs here, who owns it.">
+            <textarea
+              value={notes}
+              disabled={!editable}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={4}
+              className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm focus:border-brand focus:outline-none"
+            />
+          </Field>
+          {editable && (
+            <Button type="submit" variant="primary" loading={save.isPending}>
+              Save
+            </Button>
+          )}
+        </form>
+      </Card>
+      <Card title="Actions" pad={false}>
+        <div className="p-4 text-sm text-ink-2">
+          {allowed.length ? (
+            <div className="flex flex-wrap gap-2">
+              {allowed.map((a) => (
+                <Button
+                  key={a}
+                  onClick={() => confirm(`Run "${a}" on ${host.hostname}?`) && run.mutate(a)}
+                >
+                  Run {a}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <p>
+              No actions allowed on this server. On the server, as root:{" "}
+              <code className="font-mono text-xs">
+                sentinel-agent allow-action restart-nginx -- /usr/bin/systemctl restart nginx
+              </code>
+            </p>
+          )}
+        </div>
+        {history.length > 0 && (
+          <Table>
+            <tbody>
+              {history.map((a) => (
+                <tr key={a.id}>
+                  <td>
+                    <span className="font-medium">{a.name}</span>
+                    <p className="text-xs text-ink-3">
+                      {a.requested_by} · {dateTime(a.created_at)}
+                    </p>
+                    {a.output && (
+                      <pre className="mt-1 max-h-32 overflow-auto font-mono text-xs text-ink-2">
+                        {a.output}
+                      </pre>
+                    )}
+                  </td>
+                  <td className="text-right">
+                    <Badge
+                      tone={
+                        a.status === "succeeded"
+                          ? "ok"
+                          : a.status === "failed" || a.status === "refused"
+                            ? "bad"
+                            : "idle"
+                      }
+                    >
+                      {a.status}
+                      {a.exit_code != null ? ` (${a.exit_code})` : ""}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </Card>
+    </div>
   );
 }

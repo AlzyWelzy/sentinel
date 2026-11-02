@@ -36,7 +36,7 @@ function Invite() {
     setBusy(false);
     if (data) {
       setOrg(data.tenant_id);
-      router.replace("/");
+      router.replace("/overview");
     } else setError(errorText(error));
   }
 

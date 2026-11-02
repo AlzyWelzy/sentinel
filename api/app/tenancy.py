@@ -74,6 +74,7 @@ OPERATOR_WRITES = frozenset(
     }
 )
 OWNER_ONLY_PREFIXES = ("/v1/api-tokens", "/v1/organisation/delete")
+OWNER_ONLY_PATHS = frozenset({"/v1/members/{member_id}/make-owner"})
 
 
 @dataclass(frozen=True)
@@ -225,7 +226,7 @@ def check_member_write(request: Request, role: str) -> None:
         return
     route = request.scope.get("route")
     path = getattr(route, "path", request.url.path)
-    if path.startswith(OWNER_ONLY_PREFIXES):
+    if path.startswith(OWNER_ONLY_PREFIXES) or path in OWNER_ONLY_PATHS:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the organisation's owner can do that",

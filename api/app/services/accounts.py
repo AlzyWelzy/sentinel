@@ -537,3 +537,43 @@ async def totp_disable(user_id: str, password: str, code: str) -> None:
             text("UPDATE users SET totp_enabled_at = NULL, totp_secret = NULL WHERE id = :u"),
             {"u": user_id},
         )
+
+
+# ── Deleting an account ──────────────────────────────────────────────────────
+
+
+async def delete_account(user_id: str, password: str) -> None:
+    """Deletes the user, their memberships, and the organisations they own
+    that nobody else has joined (with all their data). An organisation with
+    other members must be handed to one of them first, so nobody's
+    monitoring disappears with someone else's account."""
+    from app.services import tenants  # noqa: PLC0415 (tenants imports heartbeats, not us)
+
+    async with ServiceSession() as db, db.begin():
+        user = await _user_by_id(db, user_id)
+        if user is None or not native.check_password(user.password_hash, password):
+            raise HTTPException(status_code=400, detail="Your password isn't right")
+        owned = (
+            await db.execute(
+                text(
+                    "SELECT m.tenant_id, t.display_name, "
+                    "(SELECT count(*) FROM tenant_members o WHERE o.tenant_id = m.tenant_id "
+                    " AND o.user_id IS DISTINCT FROM :u AND o.joined_at IS NOT NULL) AS others "
+                    "FROM tenant_members m JOIN tenants t ON t.id = m.tenant_id "
+                    "WHERE m.user_id = :u AND m.role = 'owner'"
+                ),
+                {"u": user_id},
+            )
+        ).all()
+        shared = [o.display_name or str(o.tenant_id) for o in owned if o.others]
+        if shared:
+            raise HTTPException(
+                status_code=409,
+                detail="Make someone else the owner of "
+                + ", ".join(shared)
+                + " first (Organisation → Members), or delete it.",
+            )
+        for o in owned:
+            await tenants.delete(db, o.tenant_id)
+        await db.execute(text("DELETE FROM tenant_members WHERE user_id = :u"), {"u": user_id})
+        await db.execute(text("DELETE FROM users WHERE id = :u"), {"u": user_id})

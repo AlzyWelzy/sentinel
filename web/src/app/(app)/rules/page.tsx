@@ -86,6 +86,8 @@ export default function RulesPage() {
   const me = useMe();
   const editable = canEdit(me.data?.role);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Rule | null>(null);
+  const [tested, setTested] = useState<string | null>(null);
   const rules = useQuery({
     queryKey: ["rules"],
     queryFn: async () => unwrap(await api.GET("/v1/alert-rules")),
@@ -104,6 +106,14 @@ export default function RulesPage() {
     mutationFn: async (id: string) =>
       unwrap(await api.DELETE("/v1/alert-rules/{rule_id}", { params: { path: { rule_id: id } } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["rules"] }),
+  });
+  const test = useMutation({
+    mutationFn: async (id: string) =>
+      unwrap(
+        await api.POST("/v1/alert-rules/{rule_id}/test", { params: { path: { rule_id: id } } }),
+      ),
+    onSuccess: () => setTested("A test alert was sent to this rule's contacts."),
+    onError: (e) => setTested(errorText(e)),
   });
   const recommended = useMutation({
     mutationFn: async () => unwrap(await api.POST("/v1/alert-rules/recommended")),
@@ -128,7 +138,13 @@ export default function RulesPage() {
           )
         }
       />
+      {tested && (
+        <div className="mb-4">
+          <Notice>{tested}</Notice>
+        </div>
+      )}
       {creating && <RuleForm onDone={() => setCreating(false)} />}
+      {editing && <RuleForm key={editing.id} initial={editing} onDone={() => setEditing(null)} />}
       <Card pad={false}>
         {rules.isLoading ? (
           <Loading />
@@ -180,6 +196,12 @@ export default function RulesPage() {
                   </td>
                   {editable && (
                     <td className="text-right whitespace-nowrap">
+                      <Button variant="ghost" onClick={() => setEditing(r)}>
+                        Edit
+                      </Button>
+                      <Button variant="ghost" onClick={() => test.mutate(r.id)}>
+                        Test
+                      </Button>
                       <Button variant="ghost" onClick={() => save.mutate(r)}>
                         {r.enabled ? "Disable" : "Enable"}
                       </Button>
@@ -201,40 +223,75 @@ export default function RulesPage() {
   );
 }
 
-function RuleForm({ onDone }: { onDone: () => void }) {
+type Preview = {
+  days: number;
+  fires: number;
+  firing_minutes: number;
+  hosts_affected: number;
+  verdict: string;
+  advice: string | null;
+};
+
+function RuleForm({ onDone, initial }: { onDone: () => void; initial?: Rule }) {
   const qc = useQueryClient();
   const hosts = useHosts();
   const channels = useQuery({
     queryKey: ["channels"],
     queryFn: async () => unwrap(await api.GET("/v1/channels")),
   });
-  const [rule, setRule] = useState<RuleIn>({
-    name: "",
-    kind: "metric",
-    metric: "cpu",
-    operator: ">",
-    threshold: 90,
-    duration_seconds: 300,
-    severity: "critical",
-    aggregation: "last",
-    window_seconds: 300,
-    enabled: true,
-    channel_ids: [],
+  const schedules = useQuery({
+    queryKey: ["oncall"],
+    queryFn: async () => unwrap(await api.GET("/v1/oncall/schedules")),
   });
-  const [scope, setScope] = useState<"all" | "host" | "tag">("all");
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [rule, setRule] = useState<RuleIn>(() =>
+    initial
+      ? toInput(initial)
+      : {
+          name: "",
+          kind: "metric",
+          metric: "cpu",
+          operator: ">",
+          threshold: 90,
+          duration_seconds: 300,
+          severity: "critical",
+          aggregation: "last",
+          window_seconds: 300,
+          enabled: true,
+          channel_ids: [],
+          schedule_ids: [],
+          escalations: [],
+        },
+  );
+  const [scope, setScope] = useState<"all" | "host" | "tag">(
+    initial?.host_id ? "host" : initial?.tag ? "tag" : "all",
+  );
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<RuleIn>) => setRule((r) => ({ ...r, ...patch }));
+  const body = (): RuleIn => ({
+    ...rule,
+    host_id: scope === "host" ? rule.host_id : null,
+    tag: scope === "tag" ? rule.tag : null,
+    ...(rule.kind === "metric" || rule.kind === "forecast" || rule.kind === "anomaly"
+      ? {}
+      : { metric: null, operator: null }),
+    ...(rule.kind === "metric" || rule.kind === "forecast" ? {} : { threshold: null }),
+  });
+  const runPreview = useMutation({
+    mutationFn: async () =>
+      unwrap(await api.POST("/v1/alert-rules/preview", { body: body() })) as unknown as Preview,
+    onSuccess: setPreview,
+    onError: (e) => setError(errorText(e)),
+  });
   const create = useMutation({
     mutationFn: async () =>
       unwrap(
-        await api.POST("/v1/alert-rules", {
-          body: {
-            ...rule,
-            host_id: scope === "host" ? rule.host_id : null,
-            tag: scope === "tag" ? rule.tag : null,
-            ...(rule.kind === "metric" ? {} : { metric: null, operator: null, threshold: null }),
-          },
-        }),
+        initial
+          ? await api.PUT("/v1/alert-rules/{rule_id}", {
+              params: { path: { rule_id: initial.id } },
+              body: body(),
+            })
+          : await api.POST("/v1/alert-rules", { body: body() }),
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["rules"] });
@@ -244,7 +301,7 @@ function RuleForm({ onDone }: { onDone: () => void }) {
   });
 
   return (
-    <Card title="New rule" className="mb-6">
+    <Card title={initial ? `Edit "${initial.name}"` : "New rule"} className="mb-6">
       <form
         className="grid gap-4 sm:grid-cols-2"
         onSubmit={(e) => {
@@ -416,10 +473,125 @@ function RuleForm({ onDone }: { onDone: () => void }) {
             ))}
           </div>
         </Field>
+        {!!schedules.data?.length && (
+          <Field label="Page on-call" hint="Whoever is on call in these rotations is notified too.">
+            <div className="flex flex-wrap gap-3 pt-1">
+              {schedules.data.map((s) => (
+                <label key={s.id} className="flex items-center gap-1.5 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={rule.schedule_ids?.includes(s.id) ?? false}
+                    onChange={(e) =>
+                      set({
+                        schedule_ids: e.target.checked
+                          ? [...(rule.schedule_ids ?? []), s.id]
+                          : (rule.schedule_ids ?? []).filter((x) => x !== s.id),
+                      })
+                    }
+                  />
+                  {s.name}
+                </label>
+              ))}
+            </div>
+          </Field>
+        )}
+        <div className="space-y-2 sm:col-span-2">
+          <p className="text-sm font-medium">Escalation</p>
+          <p className="text-xs text-ink-3">
+            While nobody acknowledges, also notify these after a delay. Steps stop once someone
+            acknowledges.
+          </p>
+          {(rule.escalations ?? []).map((step, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2">
+              <span className="text-sm">After</span>
+              <Input
+                type="number"
+                min={1}
+                aria-label={`Step ${i + 1} delay in minutes`}
+                value={step.delay_minutes}
+                onChange={(e) =>
+                  set({
+                    escalations: (rule.escalations ?? []).map((x, j) =>
+                      j === i ? { ...x, delay_minutes: Number(e.target.value) } : x,
+                    ),
+                  })
+                }
+                className="w-20"
+              />
+              <span className="text-sm">minutes, notify</span>
+              {channels.data?.map((c) => (
+                <label key={c.id} className="flex items-center gap-1 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={step.channel_ids?.includes(c.id) ?? false}
+                    onChange={(e) =>
+                      set({
+                        escalations: (rule.escalations ?? []).map((x, j) =>
+                          j === i
+                            ? {
+                                ...x,
+                                channel_ids: e.target.checked
+                                  ? [...(x.channel_ids ?? []), c.id]
+                                  : (x.channel_ids ?? []).filter((y) => y !== c.id),
+                              }
+                            : x,
+                        ),
+                      })
+                    }
+                  />
+                  {c.label ?? c.target}
+                </label>
+              ))}
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() =>
+                  set({ escalations: (rule.escalations ?? []).filter((_, j) => j !== i) })
+                }
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+          {(rule.escalations?.length ?? 0) < 5 && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() =>
+                set({
+                  escalations: [
+                    ...(rule.escalations ?? []),
+                    { delay_minutes: 15, channel_ids: [], schedule_ids: [] },
+                  ],
+                })
+              }
+            >
+              Add escalation step
+            </Button>
+          )}
+        </div>
+        {preview && (
+          <div className="sm:col-span-2">
+            <Notice tone={preview.verdict === "noisy" ? "warn" : "idle"}>
+              Over the last {preview.days} days this would have fired {preview.fires} times on{" "}
+              {preview.hosts_affected} servers ({preview.verdict}).
+              {preview.advice ? ` ${preview.advice}` : ""}
+            </Notice>
+          </div>
+        )}
         <div className="flex gap-2 sm:col-span-2">
           <Button type="submit" variant="primary" loading={create.isPending}>
-            Create rule
+            {initial ? "Save rule" : "Create rule"}
           </Button>
+          {(rule.kind === "metric" || rule.kind === "custom" || rule.kind === "logs") && (
+            <Button
+              type="button"
+              onClick={() => runPreview.mutate()}
+              loading={runPreview.isPending}
+            >
+              Preview last 7 days
+            </Button>
+          )}
           <Button type="button" onClick={onDone}>
             Cancel
           </Button>

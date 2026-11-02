@@ -195,6 +195,26 @@ export interface paths {
         patch: operations["update_me_auth_me_patch"];
         trace?: never;
     };
+    "/auth/me/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Me
+         * @description Deletes your account and the organisations only you are in.
+         */
+        post: operations["delete_me_auth_me_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/sessions": {
         parameters: {
             query?: never;
@@ -274,6 +294,43 @@ export interface paths {
         put?: never;
         /** Totp Disable */
         post: operations["totp_disable_auth_totp_disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/invitations/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pending Invitations
+         * @description Invitations sent to your verified email that you haven't answered.
+         */
+        get: operations["pending_invitations_auth_invitations_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/invitations/pending/{member_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Pending Invitation */
+        post: operations["accept_pending_invitation_auth_invitations_pending__member_id__accept_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1631,6 +1688,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organisation/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Organisation
+         * @description Everything the organisation has here, as one JSON file (owner and
+         *     admins). Secrets are masked; metric history is in the reports.
+         */
+        get: operations["export_organisation_v1_organisation_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/members": {
         parameters: {
             query?: never;
@@ -1689,6 +1767,26 @@ export interface paths {
         head?: never;
         /** Change Role */
         patch: operations["change_role_v1_members__member_id__patch"];
+        trace?: never;
+    };
+    "/v1/members/{member_id}/make-owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make Owner
+         * @description Hands the organisation to a joined member; you become an admin.
+         */
+        post: operations["make_owner_v1_members__member_id__make_owner_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/logs": {
@@ -3484,6 +3582,11 @@ export interface components {
              */
             updated_at: string;
         };
+        /** DeleteAccountIn */
+        DeleteAccountIn: {
+            /** Password */
+            password: string;
+        };
         /** DeleteIn */
         DeleteIn: {
             /** Confirm Name */
@@ -4495,6 +4598,25 @@ export interface components {
              * @enum {integer}
              */
             width: 1 | 2;
+        };
+        /** PendingOut */
+        PendingOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Organisation */
+            organisation: string;
+            /** Role */
+            role: string;
+            /** Invited By */
+            invited_by: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
         };
         /** PinIn */
         PinIn: {
@@ -6427,6 +6549,37 @@ export interface operations {
             };
         };
     };
+    delete_me_auth_me_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteAccountIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sessions_auth_sessions_get: {
         parameters: {
             query?: never;
@@ -6546,6 +6699,57 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pending_invitations_auth_invitations_pending_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingOut"][];
+                };
+            };
+        };
+    };
+    accept_pending_invitation_auth_invitations_pending__member_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__services__invitations__Accepted"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -9109,6 +9313,26 @@ export interface operations {
             };
         };
     };
+    export_organisation_v1_organisation_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     list_members_v1_members_get: {
         parameters: {
             query?: never;
@@ -9236,6 +9460,37 @@ export interface operations {
                 "application/json": components["schemas"]["MemberPatch"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    make_owner_v1_members__member_id__make_owner_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

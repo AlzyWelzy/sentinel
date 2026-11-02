@@ -264,6 +264,18 @@ async def update_me(body: ProfileIn, user: User) -> UserOut:
     return UserOut(**await accounts.update_profile(str(user.user_id), body.name))
 
 
+class DeleteAccountIn(BaseModel):
+    password: str = Field(max_length=256)
+
+
+@router.post("/me/delete", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(body: DeleteAccountIn, user: User, response: Response) -> None:
+    """Deletes your account and the organisations only you are in."""
+    await ratelimit.hit("delete-account", str(user.user_id), 5, 3600)
+    await accounts.delete_account(str(user.user_id), body.password)
+    _clear_refresh(response)
+
+
 @router.get("/sessions")
 async def sessions(user: User, request: Request) -> list[SessionRow]:
     rows = await accounts.list_sessions(str(user.user_id), request.state.session_id)
@@ -304,6 +316,17 @@ class TotpDisableIn(BaseModel):
 async def totp_disable(body: TotpDisableIn, user: User) -> None:
     await ratelimit.hit("totp", str(user.user_id), 10, 600)
     await accounts.totp_disable(str(user.user_id), body.password, body.code)
+
+
+@router.get("/invitations/pending")
+async def pending_invitations(user: User) -> list[invitations.PendingOut]:
+    """Invitations sent to your verified email that you haven't answered."""
+    return await invitations.pending_for(user)
+
+
+@router.post("/invitations/pending/{member_id}/accept")
+async def accept_pending_invitation(member_id: uuid.UUID, user: User) -> invitations.Accepted:
+    return await invitations.accept_pending(member_id, user)
 
 
 @router.get("/invitations/{token}")

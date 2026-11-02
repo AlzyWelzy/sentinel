@@ -120,29 +120,87 @@ async def accept(token: str, user: Principal) -> Accepted:
                 detail=f"This invitation is for {row.email}. "
                 "Sign in with that address to accept it.",
             )
-        already = await db.scalar(
-            text("SELECT role FROM tenant_members WHERE tenant_id = :t AND user_id = :u"),
-            {"t": row.tenant_id, "u": user.user_id},
+        return await _join(db, row, user)
+
+
+class PendingOut(BaseModel):
+    id: UUID
+    organisation: str
+    role: str
+    invited_by: str | None
+    expires_at: datetime
+
+
+_PENDING_FOR_EMAIL = (
+    "SELECT m.id, m.tenant_id, m.email, m.role, m.invite_expires_at, t.display_name, "
+    "t.email AS org_email, t.status, u.name AS inviter, u.email AS inviter_email "
+    "FROM tenant_members m JOIN tenants t ON t.id = m.tenant_id "
+    "LEFT JOIN users u ON u.id = m.invited_by "
+    "WHERE m.email = :e AND m.user_id IS NULL AND m.invite_hash IS NOT NULL "
+    "AND m.invite_expires_at > now() AND t.status = 'active'"
+)
+
+
+async def pending_for(user: Principal) -> list[PendingOut]:
+    """Invitations waiting for the user's (verified) email address: what a
+    person who signed up from an invitation email sees right after
+    confirming their address, wherever they confirmed it."""
+    async with ServiceSession() as db:
+        rows = await db.execute(
+            text(_PENDING_FOR_EMAIL + " ORDER BY m.invited_at"), {"e": (user.email or "").lower()}
         )
-        if already is not None:
-            await db.execute(text("DELETE FROM tenant_members WHERE id = :m"), {"m": row.id})
-            return Accepted(tenant_id=row.tenant_id, role=already)
-        await db.execute(
-            text(
-                "UPDATE tenant_members SET user_id = :u, joined_at = now(), invite_hash = NULL, "
-                "invite_expires_at = NULL, display_name = :n WHERE id = :m"
-            ),
-            {"u": user.user_id, "n": user.name, "m": row.id},
-        )
-        # The member's verified email becomes one of the organisation's
-        # alert contacts (removed again when they leave); they pick which
-        # rules notify it like any other contact.
-        await db.execute(
-            text(
-                "INSERT INTO notification_channels "
-                "(tenant_id, type, target, label, source, verified_at) "
-                "VALUES (:t, 'email', :e, :l, 'team', now()) ON CONFLICT DO NOTHING"
-            ),
-            {"t": row.tenant_id, "e": row.email, "l": user.name or row.email},
-        )
-        return Accepted(tenant_id=row.tenant_id, role=row.role)
+        return [
+            PendingOut(
+                id=r.id,
+                organisation=org_name(r.display_name, r.org_email),
+                role=ROLE_LABELS.get(r.role, r.role),
+                invited_by=r.inviter or r.inviter_email,
+                expires_at=r.invite_expires_at,
+            )
+            for r in rows
+        ]
+
+
+async def accept_pending(member_id: UUID, user: Principal) -> Accepted:
+    """Accepting by id instead of by the emailed token: the address the
+    invitation was sent to is the user's own verified one, which is what the
+    token proves too."""
+    async with ServiceSession() as db, db.begin():
+        row = (
+            await db.execute(
+                text(_PENDING_FOR_EMAIL + " AND m.id = :m FOR UPDATE OF m"),
+                {"e": (user.email or "").lower(), "m": member_id},
+            )
+        ).one_or_none()
+        if row is None:
+            raise _gone()
+        return await _join(db, row, user)
+
+
+async def _join(db: AsyncSession, row, user: Principal) -> Accepted:
+    already = await db.scalar(
+        text("SELECT role FROM tenant_members WHERE tenant_id = :t AND user_id = :u"),
+        {"t": row.tenant_id, "u": user.user_id},
+    )
+    if already is not None:
+        await db.execute(text("DELETE FROM tenant_members WHERE id = :m"), {"m": row.id})
+        return Accepted(tenant_id=row.tenant_id, role=already)
+    await db.execute(
+        text(
+            "UPDATE tenant_members SET user_id = :u, joined_at = now(), invite_hash = NULL, "
+            "invite_expires_at = NULL, display_name = :n WHERE id = :m"
+        ),
+        {"u": user.user_id, "n": user.name, "m": row.id},
+    )
+    # The member's verified email becomes one of the organisation's
+    # alert contacts (removed again when they leave); they pick which
+    # rules notify it like any other contact.
+    await db.execute(
+        text(
+            "INSERT INTO notification_channels "
+            "(tenant_id, type, target, label, source, verified_at) "
+            "VALUES (:t, 'email', :e, :l, 'team', now()) ON CONFLICT DO NOTHING"
+        ),
+        {"t": row.tenant_id, "e": row.email, "l": user.name or row.email},
+    )
+    return Accepted(tenant_id=row.tenant_id, role=row.role)

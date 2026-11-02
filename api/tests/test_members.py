@@ -3,6 +3,10 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import text
+
+from app.db import ServiceSession
+
 from .conftest import User, _new_user, emailed_token, insert_host
 
 CPU_RULE = {
@@ -214,3 +218,87 @@ async def test_incidents_are_assigned_to_members_only(alice: User, bob: User, cl
     assert r.status_code == 422
     r = await alice.request("POST", f"/v1/incidents/{incident}/assign", json={"user_id": None})
     assert r.json()["assigned_to"] is None
+
+
+async def test_ownership_moves_and_accounts_can_be_deleted(client, alice: User, bob: User):
+    from .conftest import TEST_PASSWORD
+
+    tid = await alice.tenant_id()
+    member = await join(alice, bob, "admin")
+    # Alice can't delete her account while bob depends on her organisation.
+    r = await alice.request("POST", "/auth/me/delete", json={"password": TEST_PASSWORD})
+    assert r.status_code == 409
+    # An admin can't take ownership; the owner hands it over.
+    as_bob = acting_for(bob, tid)
+    r = await bob.request("POST", f"/v1/members/{member['id']}/make-owner", headers=as_bob)
+    assert r.status_code == 403
+    r = await alice.request("POST", f"/v1/members/{member['id']}/make-owner")
+    assert r.status_code == 200 and r.json()["role"] == "owner"
+    roles = {
+        m["email"]: m["role"]
+        for m in (await bob.request("GET", "/v1/members", headers=as_bob)).json()
+    }
+    assert roles == {alice.email: "admin", bob.email: "owner"}
+    # Now alice can go; the organisation stays, with bob.
+    assert (
+        await alice.request("POST", "/auth/me/delete", json={"password": "wrong"})
+    ).status_code == 400
+    r = await alice.request("POST", "/auth/me/delete", json={"password": TEST_PASSWORD})
+    assert r.status_code == 204
+    assert (await bob.request("GET", "/v1/hosts", headers=as_bob)).status_code == 200
+    roles = {m["email"] for m in (await bob.request("GET", "/v1/members", headers=as_bob)).json()}
+    assert alice.email not in roles
+
+
+async def test_an_export_has_everything_but_secrets(alice: User):
+    await insert_host(await alice.tenant_id(), "exported-1")
+    await alice.request(
+        "POST",
+        "/v1/channels",
+        json={"type": "slack", "target": "https://hooks.slack.com/services/T0/B0/secretsecret"},
+    )
+    r = await alice.request("GET", "/v1/organisation/export")
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+    data = r.json()
+    assert data["format"] == "sentinel-export-v1"
+    assert [h["hostname"] for h in data["servers"]] == ["exported-1"]
+    assert "token_hash" not in data["servers"][0] and "machine_id" not in data["servers"][0]
+    assert "secretsecret" not in r.text
+    assert data["members"][0]["role"] == "owner"
+
+
+async def test_deleting_a_solo_account_deletes_its_organisation(alice: User):
+    from .conftest import TEST_PASSWORD
+
+    tid = await alice.tenant_id()
+    await insert_host(tid, "solo-1")
+    r = await alice.request("POST", "/auth/me/delete", json={"password": TEST_PASSWORD})
+    assert r.status_code == 204
+    async with ServiceSession() as db:
+        assert await db.scalar(text("SELECT count(*) FROM tenants WHERE id = :t"), {"t": tid}) == 0
+        assert (
+            await db.scalar(text("SELECT count(*) FROM users WHERE id = :u"), {"u": alice.uid}) == 0
+        )
+        assert (
+            await db.scalar(text("SELECT count(*) FROM hosts WHERE tenant_id = :t"), {"t": tid})
+            == 0
+        )
+
+
+async def test_pending_invitations_are_offered_after_sign_up(alice: User, bob: User, client):
+    tid = await alice.tenant_id()
+    await invite(alice, bob.email, "operator")
+    pending = (await bob.request("GET", "/auth/invitations/pending")).json()
+    assert [(p["role"], p["organisation"]) for p in pending] == [
+        ("member", pending[0]["organisation"])
+    ]
+    # Someone else can't accept it by its id.
+    carol = _new_user(client, "carol")
+    r = await carol.request("POST", f"/auth/invitations/pending/{pending[0]['id']}/accept")
+    assert r.status_code == 404
+    assert (await carol.request("GET", "/auth/invitations/pending")).json() == []
+    r = await bob.request("POST", f"/auth/invitations/pending/{pending[0]['id']}/accept")
+    assert r.json() == {"tenant_id": str(tid), "role": "operator"}
+    assert (await bob.request("GET", "/auth/invitations/pending")).json() == []
+    # Bob never had an organisation of his own: he lands in the shared one.
+    assert (await bob.request("GET", "/v1/me")).json()["tenant_id"] == str(tid)

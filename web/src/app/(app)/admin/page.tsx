@@ -119,7 +119,7 @@ function Orgs() {
     onSuccess: (imp) => {
       setImpersonation(imp.access_token);
       qc.clear();
-      router.push("/");
+      router.push("/overview");
     },
     onError: (e) => setMsg(errorText(e)),
   });

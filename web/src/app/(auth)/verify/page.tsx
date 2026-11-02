@@ -19,7 +19,8 @@ function Verify() {
     api.POST("/auth/verify", { body: { token } }).then(({ data, error }) => {
       if (data) {
         setSession(data);
-        router.replace("/welcome");
+        // Invited people join their team before anything else gets created.
+        router.replace("/invitations");
       } else setError(errorText(error, "This link didn't work"));
     });
   }, [token, router]);

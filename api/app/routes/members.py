@@ -14,10 +14,11 @@ the client.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
@@ -25,7 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db import ServiceSession
 from app.models import Tenant as TenantRow
 from app.models import TenantMember
-from app.services import invitations, tenants
+from app.services import export, invitations, tenants
 from app.tenancy import Tenant, TenantContext, UserTenant
 
 router = APIRouter(prefix="/v1")
@@ -150,6 +151,18 @@ async def delete_organisation(body: DeleteIn, t: UserTenant) -> None:
         await tenants.delete(sdb, t.tenant_id)
 
 
+@router.get("/organisation/export")
+async def export_organisation(t: UserTenant) -> JSONResponse:
+    """Everything the organisation has here, as one JSON file (owner and
+    admins). Secrets are masked; metric history is in the reports."""
+    _require_manager(t)
+    name = f"sentinel-export-{datetime.now(UTC):%Y%m%d}.json"
+    return JSONResponse(
+        await export.build(t.db, t.tenant_id),
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
 @router.get("/members")
 async def list_members(t: UserTenant) -> list[MemberOut]:
     rows = await t.db.scalars(
@@ -210,6 +223,30 @@ async def change_role(member_id: uuid.UUID, body: MemberPatch, t: UserTenant) ->
     if m.role == "owner":
         raise HTTPException(status_code=400, detail="The owner's role can't be changed")
     m.role = body.role
+    return _out(m, t)
+
+
+@router.post("/members/{member_id}/make-owner")
+async def make_owner(member_id: uuid.UUID, t: UserTenant) -> MemberOut:
+    """Hands the organisation to a joined member; you become an admin."""
+    if t.role != "owner":
+        raise HTTPException(status_code=403, detail="Only the owner can hand over ownership")
+    m = await _get(t, member_id)
+    if m.user_id is None or m.joined_at is None:
+        raise HTTPException(status_code=400, detail="They have to accept the invitation first")
+    if m.role == "owner":
+        return _out(m, t)
+    me = await t.db.scalar(
+        select(TenantMember).where(
+            TenantMember.tenant_id == t.tenant_id, TenantMember.role == "owner"
+        )
+    )
+    # One owner at a time (a unique index): step down first.
+    if me is not None:
+        me.role = "admin"
+        await t.db.flush()
+    m.role = "owner"
+    await t.db.flush()
     return _out(m, t)
 
 

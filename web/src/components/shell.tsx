@@ -11,17 +11,19 @@ import { isImpersonating, setImpersonation, signOut } from "@/lib/api/client";
 import { orgName, useMe, useOrgs, useSession } from "@/lib/session";
 
 const NAV = [
-  { href: "/", label: "Overview" },
+  { href: "/overview", label: "Overview" },
   { href: "/servers", label: "Servers" },
   { href: "/incidents", label: "Incidents" },
   { href: "/rules", label: "Alert rules" },
   { href: "/checks", label: "Uptime checks" },
+  { href: "/oncall", label: "On-call" },
   { href: "/maintenance", label: "Maintenance" },
   { href: "/status-pages", label: "Status pages" },
   { href: "/logs", label: "Logs" },
   { href: "/apm", label: "APM" },
   { href: "/dashboards", label: "Dashboards" },
   { href: "/reports", label: "Reports" },
+  { href: "/insights", label: "Insights" },
 ];
 const SETTINGS = [
   { href: "/settings/contacts", label: "Contacts" },
@@ -33,7 +35,7 @@ const SETTINGS = [
 
 function NavLink({ href, label, onClick }: { href: string; label: string; onClick?: () => void }) {
   const path = usePathname();
-  const active = href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`);
+  const active = path === href || path.startsWith(`${href}/`);
   const exact = href === "/settings" ? path === "/settings" : active;
   return (
     <Link
@@ -90,7 +92,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const sidebar = (
     <nav className="flex h-full flex-col gap-6 p-4">
-      <Link href="/" className="flex items-center gap-2 px-1 font-semibold">
+      <Link href="/overview" className="flex items-center gap-2 px-1 font-semibold">
         <span className="inline-block size-5 rounded-md bg-brand" aria-hidden />
         Sentinel
       </Link>

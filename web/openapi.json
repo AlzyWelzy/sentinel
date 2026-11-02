@@ -498,6 +498,46 @@
     ]
    }
   },
+  "/auth/me/delete": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Delete Me",
+    "description": "Deletes your account and the organisations only you are in.",
+    "operationId": "delete_me_auth_me_delete_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DeleteAccountIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
   "/auth/sessions": {
    "get": {
     "tags": [
@@ -671,6 +711,85 @@
       "HTTPBearer": []
      }
     ]
+   }
+  },
+  "/auth/invitations/pending": {
+   "get": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Pending Invitations",
+    "description": "Invitations sent to your verified email that you haven't answered.",
+    "operationId": "pending_invitations_auth_invitations_pending_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/PendingOut"
+         },
+         "type": "array",
+         "title": "Response Pending Invitations Auth Invitations Pending Get"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/auth/invitations/pending/{member_id}/accept": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Accept Pending Invitation",
+    "operationId": "accept_pending_invitation_auth_invitations_pending__member_id__accept_post",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "member_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Member Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/app__services__invitations__Accepted"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
    }
   },
   "/auth/invitations/{token}": {
@@ -4838,6 +4957,28 @@
     ]
    }
   },
+  "/v1/organisation/export": {
+   "get": {
+    "summary": "Export Organisation",
+    "description": "Everything the organisation has here, as one JSON file (owner and\nadmins). Secrets are masked; metric history is in the reports.",
+    "operationId": "export_organisation_v1_organisation_export_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
   "/v1/members": {
    "get": {
     "summary": "List Members",
@@ -5030,6 +5171,52 @@
     "responses": {
      "204": {
       "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/members/{member_id}/make-owner": {
+   "post": {
+    "summary": "Make Owner",
+    "description": "Hands the organisation to a joined member; you become an admin.",
+    "operationId": "make_owner_v1_members__member_id__make_owner_post",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "member_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Member Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MemberOut"
+        }
+       }
+      }
      },
      "422": {
       "description": "Validation Error",
@@ -11655,6 +11842,20 @@
     ],
     "title": "DashboardOut"
    },
+   "DeleteAccountIn": {
+    "properties": {
+     "password": {
+      "type": "string",
+      "maxLength": 256,
+      "title": "Password"
+     }
+    },
+    "type": "object",
+    "required": [
+     "password"
+    ],
+    "title": "DeleteAccountIn"
+   },
    "DeleteIn": {
     "properties": {
      "confirm_name": {
@@ -14833,6 +15034,48 @@
      "metric"
     ],
     "title": "Panel"
+   },
+   "PendingOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "organisation": {
+      "type": "string",
+      "title": "Organisation"
+     },
+     "role": {
+      "type": "string",
+      "title": "Role"
+     },
+     "invited_by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Invited By"
+     },
+     "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Expires At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "organisation",
+     "role",
+     "invited_by",
+     "expires_at"
+    ],
+    "title": "PendingOut"
    },
    "PinIn": {
     "properties": {

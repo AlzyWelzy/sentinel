@@ -15,6 +15,7 @@ import {
   Notice,
   PageHeader,
   Select,
+  Table,
   cx,
 } from "@/components/ui";
 import { api, authed, errorText, setOrg } from "@/lib/api/client";
@@ -43,6 +44,16 @@ export default function IncidentPage() {
     queryFn: async () =>
       unwrap(
         await api.GET("/v1/incidents/{incident_id}", { params: { path: { incident_id: id } } }),
+      ),
+  });
+  const deliveries = useQuery({
+    queryKey: ["incident-deliveries", id],
+    refetchInterval: 30_000,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/incidents/{incident_id}/deliveries", {
+          params: { path: { incident_id: id } },
+        }),
       ),
   });
   const members = useQuery({
@@ -111,6 +122,9 @@ export default function IncidentPage() {
             )}
             <span>· {i.rule_name}</span>
             <span>· {duration(i.duration_seconds)}</span>
+            {i.snoozed_until && (
+              <Badge tone="brand">snoozed until {dateTime(i.snoozed_until)}</Badge>
+            )}
           </span>
         }
         actions={
@@ -126,6 +140,37 @@ export default function IncidentPage() {
                 Acknowledge
               </Button>
             )}
+            {open &&
+              (i.snoozed_until ? (
+                <Button
+                  onClick={() =>
+                    act.mutate(() => api.DELETE("/v1/incidents/{incident_id}/snooze", path))
+                  }
+                >
+                  Unsnooze
+                </Button>
+              ) : (
+                <Select
+                  aria-label="Snooze escalation"
+                  value=""
+                  onChange={(e) =>
+                    e.target.value &&
+                    act.mutate(() =>
+                      api.POST("/v1/incidents/{incident_id}/snooze", {
+                        ...path,
+                        body: { minutes: Number(e.target.value) },
+                      }),
+                    )
+                  }
+                >
+                  <option value="">Snooze…</option>
+                  <option value="30">30 minutes</option>
+                  <option value="60">1 hour</option>
+                  <option value="240">4 hours</option>
+                  <option value="1440">1 day</option>
+                  <option value="10080">1 week</option>
+                </Select>
+              ))}
             {open ? (
               <Button
                 onClick={() =>
@@ -201,67 +246,102 @@ export default function IncidentPage() {
             </form>
           </Card>
         </div>
-        <Card title="Details">
-          <dl className="space-y-3 text-sm">
-            <div>
-              <dt className="text-ink-3">Assigned to</dt>
-              <dd className="mt-1">
-                <Select
-                  value={i.assigned_to ?? ""}
-                  onChange={(e) =>
-                    act.mutate(() =>
-                      api.POST("/v1/incidents/{incident_id}/assign", {
-                        ...path,
-                        body: { user_id: e.target.value || null },
-                      }),
-                    )
-                  }
-                  className="w-full"
-                >
-                  <option value="">Nobody</option>
-                  {(members.data ?? [])
-                    .filter((m) => m.joined && m.user_id)
-                    .map((m) => (
-                      <option key={m.id} value={m.user_id ?? ""}>
-                        {m.name ?? m.email}
-                      </option>
-                    ))}
-                </Select>
-              </dd>
-            </div>
-            <div>
-              <dt className="text-ink-3">Opened</dt>
-              <dd>{dateTime(i.opened_at)}</dd>
-            </div>
-            {i.acknowledged_at && (
+        <div className="space-y-6">
+          <Card title="Details">
+            <dl className="space-y-3 text-sm">
               <div>
-                <dt className="text-ink-3">Acknowledged</dt>
-                <dd>
-                  {dateTime(i.acknowledged_at)} by {i.acknowledged_by}
+                <dt className="text-ink-3">Assigned to</dt>
+                <dd className="mt-1">
+                  <Select
+                    value={i.assigned_to ?? ""}
+                    onChange={(e) =>
+                      act.mutate(() =>
+                        api.POST("/v1/incidents/{incident_id}/assign", {
+                          ...path,
+                          body: { user_id: e.target.value || null },
+                        }),
+                      )
+                    }
+                    className="w-full"
+                  >
+                    <option value="">Nobody</option>
+                    {(members.data ?? [])
+                      .filter((m) => m.joined && m.user_id)
+                      .map((m) => (
+                        <option key={m.id} value={m.user_id ?? ""}>
+                          {m.name ?? m.email}
+                        </option>
+                      ))}
+                  </Select>
                 </dd>
               </div>
-            )}
-            {i.resolved_at && (
               <div>
-                <dt className="text-ink-3">Resolved</dt>
-                <dd>
-                  {dateTime(i.resolved_at)}
-                  {i.resolved_by ? ` by ${i.resolved_by}` : ""}
-                </dd>
+                <dt className="text-ink-3">Opened</dt>
+                <dd>{dateTime(i.opened_at)}</dd>
               </div>
-            )}
-            {i.value != null && (
+              {i.acknowledged_at && (
+                <div>
+                  <dt className="text-ink-3">Acknowledged</dt>
+                  <dd>
+                    {dateTime(i.acknowledged_at)} by {i.acknowledged_by}
+                  </dd>
+                </div>
+              )}
+              {i.resolved_at && (
+                <div>
+                  <dt className="text-ink-3">Resolved</dt>
+                  <dd>
+                    {dateTime(i.resolved_at)}
+                    {i.resolved_by ? ` by ${i.resolved_by}` : ""}
+                  </dd>
+                </div>
+              )}
+              {i.value != null && (
+                <div>
+                  <dt className="text-ink-3">Value when it fired</dt>
+                  <dd className="tabular">{i.value.toFixed(2)}</dd>
+                </div>
+              )}
               <div>
-                <dt className="text-ink-3">Value when it fired</dt>
-                <dd className="tabular">{i.value.toFixed(2)}</dd>
+                <dt className="text-ink-3">Escalation step</dt>
+                <dd>{i.escalation_level}</dd>
               </div>
+            </dl>
+          </Card>
+          <Card title="Notifications" pad={false}>
+            {!deliveries.data?.length ? (
+              <p className="p-4 text-sm text-ink-3">Nothing sent for this incident.</p>
+            ) : (
+              <Table>
+                <tbody>
+                  {deliveries.data.map((d) => (
+                    <tr key={d.id}>
+                      <td>
+                        <span className="text-sm">
+                          {d.channel_label ?? d.channel_target ?? d.channel_type}
+                        </span>
+                        <p className="text-xs text-ink-3">
+                          {d.kind.replace("alert_", "")} · {dateTime(d.sent_at ?? d.created_at)}
+                          {d.attempts > 1 ? ` · ${d.attempts} attempts` : ""}
+                        </p>
+                        {d.last_error && d.status !== "sent" && (
+                          <p className="text-xs text-bad">{d.last_error}</p>
+                        )}
+                      </td>
+                      <td className="text-right">
+                        <Badge
+                          tone={d.status === "sent" ? "ok" : d.status === "failed" ? "bad" : "idle"}
+                        >
+                          {d.status === "sent" ? "delivered" : d.status}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
             )}
-            <div>
-              <dt className="text-ink-3">Escalation step</dt>
-              <dd>{i.escalation_level}</dd>
-            </div>
-          </dl>
-        </Card>
+          </Card>
+        </div>
       </div>
     </>
   );
