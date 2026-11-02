@@ -1,4 +1,4 @@
-module github.com/example-org/pulsegrid
+module github.com/AlzyWelzy/pulsegrid-beyond
 
 go 1.26.5
 
