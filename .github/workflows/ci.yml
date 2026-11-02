@@ -32,7 +32,9 @@ jobs:
         with:
           go-version-file: go.mod
       - name: gofmt
-        run: test -z "$(gofmt -l $(git ls-files '*.go'))" || (gofmt -l $(git ls-files '*.go') && exit 1)
+        run: |
+          unformatted="$(git ls-files -z '*.go' | xargs -0 gofmt -l)"
+          [ -z "$unformatted" ] || { echo "$unformatted"; exit 1; }
       - run: go vet ./...
       - run: go test -race ./...
       - name: Cross-compile and vet the agent for every released platform

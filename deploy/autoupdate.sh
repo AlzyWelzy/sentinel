@@ -54,9 +54,10 @@ agent=$(docker image inspect "ghcr.io/$REPO/$IMG-api:$newest" \
 
 deploy() {
 	set -a; . ./prod.env; set +a
-	export TEMPO_CONFIG=$(sha256sum tempo/tempo.yml | cut -c1-8)
-	export BACKUP_SCRIPT=$(sha256sum postgres/backup.sh | cut -c1-8)
-	export RESTORE_CHECK=$(sha256sum postgres/restore-check.sh | cut -c1-8)
+	TEMPO_CONFIG="$(sha256sum tempo/tempo.yml | cut -c1-8)"
+	BACKUP_SCRIPT="$(sha256sum postgres/backup.sh | cut -c1-8)"
+	RESTORE_CHECK="$(sha256sum postgres/restore-check.sh | cut -c1-8)"
+	export TEMPO_CONFIG BACKUP_SCRIPT RESTORE_CHECK
 	docker stack deploy -q -c stack.yml --with-registry-auth sentinel >>autoupdate.log 2>&1
 }
 settled() {
