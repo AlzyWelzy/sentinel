@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -202,26 +203,21 @@ func actionsUseSudo(configDir string) bool {
 }
 
 const (
-	hardwareUnit      = "pulsegrid-agent-hardware"
-	hardwareUnitDir   = "/etc/systemd/system/"
-	hardwareTimerFile = hardwareUnitDir + hardwareUnit + ".timer"
+	hardwareUnit        = "pulsegrid-agent-hardware"
+	hardwareUnitDir     = "/etc/systemd/system/"
+	hardwareTimerFile   = hardwareUnitDir + hardwareUnit + ".timer"
+	hardwareServiceFile = hardwareUnitDir + hardwareUnit + ".service"
 )
 
 // installHardwareTimer runs `hardware-cache` as root every 2 minutes, for
 // servers without sudo, and once right away.
 func installHardwareTimer(configDir string) error {
-	self, err := os.Executable()
+	service, err := hardwareServiceUnit(configDir)
 	if err != nil {
 		return err
 	}
-	if p, err := filepath.EvalSymlinks(self); err == nil {
-		self = p
-	}
-	service := fmt.Sprintf("[Unit]\nDescription=Pulsegrid agent: read disk and board sensors as root\n\n"+
-		"[Service]\nType=oneshot\nExecStart=%s hardware-cache --config-dir %s\nNice=10\nIOSchedulingClass=idle\n", self, configDir)
-	timer := "[Unit]\nDescription=Pulsegrid agent: hardware readings every 2 minutes\n\n" +
-		"[Timer]\nOnBootSec=1min\nOnUnitActiveSec=2min\nAccuracySec=15s\n\n[Install]\nWantedBy=timers.target\n"
-	if err := os.WriteFile(hardwareUnitDir+hardwareUnit+".service", []byte(service), 0o644); err != nil {
+	timer := hardwareTimerUnit
+	if err := os.WriteFile(hardwareServiceFile, []byte(service), 0o644); err != nil {
 		return err
 	}
 	if err := os.WriteFile(hardwareTimerFile, []byte(timer), 0o644); err != nil {
@@ -239,6 +235,33 @@ func installHardwareTimer(configDir string) error {
 	return cmdHardwareCache([]string{"--config-dir", configDir})
 }
 
+// hardwareTimerCurrent reports whether the installed timer units are the
+// ones this agent would write (an older agent's may lack a fix).
+func hardwareTimerCurrent(configDir string) bool {
+	want, err := hardwareServiceUnit(configDir)
+	if err != nil {
+		return false
+	}
+	svc, _ := os.ReadFile(hardwareServiceFile)
+	tmr, _ := os.ReadFile(hardwareTimerFile)
+	return string(svc) == want && string(tmr) == hardwareTimerUnit
+}
+
+const hardwareTimerUnit = "[Unit]\nDescription=Pulsegrid agent: hardware readings every 2 minutes\n\n" +
+	"[Timer]\nOnBootSec=1min\nOnUnitActiveSec=2min\nAccuracySec=15s\n\n[Install]\nWantedBy=timers.target\n"
+
+func hardwareServiceUnit(configDir string) (string, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	if p, err := filepath.EvalSymlinks(self); err == nil {
+		self = p
+	}
+	return fmt.Sprintf("[Unit]\nDescription=Pulsegrid agent: read disk and board sensors as root\n\n"+
+		"[Service]\nType=oneshot\nExecStart=%s hardware-cache --config-dir %s\nNice=5\nTimeoutStartSec=110\n", self, configDir), nil
+}
+
 func removeHardwareTimer() {
 	if _, err := os.Stat(hardwareTimerFile); err != nil {
 		return
@@ -247,7 +270,7 @@ func removeHardwareTimer() {
 		exec.Command(systemctl, "disable", "--now", hardwareUnit+".timer").Run()
 	}
 	os.Remove(hardwareTimerFile)
-	os.Remove(hardwareUnitDir + hardwareUnit + ".service")
+	os.Remove(hardwareServiceFile)
 	if systemctl, ok := findTool("systemctl"); ok {
 		exec.Command(systemctl, "daemon-reload").Run()
 	}
@@ -271,11 +294,32 @@ func cmdHardwareCache(args []string) error {
 	for _, c := range hardwareCommands(filepath.Join(*configDir, "plugins.d")) {
 		path := plugins.HardwareCacheFile(c)
 		keep[filepath.Base(path)] = true
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		keep[filepath.Base(path)+".err"] = true
+		// Slow BMCs can take over a minute for a full SDR listing.
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 		// smartctl's exit status is a bitmask that's non-zero for failing
 		// disks too; the output says what happened.
-		out, _ := exec.CommandContext(ctx, c[0], c[1:]...).Output()
+		var stderr strings.Builder
+		cmd := exec.CommandContext(ctx, c[0], c[1:]...)
+		cmd.Stderr = &stderr
+		out, err := cmd.Output()
+		timedOut := ctx.Err() != nil
 		cancel()
+		if len(bytes.TrimSpace(out)) == 0 || timedOut {
+			// Keep the last good output; tell the agent why this run failed.
+			msg := strings.TrimSpace(stderr.String())
+			switch {
+			case timedOut:
+				msg = filepath.Base(c[0]) + " took longer than 100s"
+			case msg == "" && err != nil:
+				msg = err.Error()
+			case msg == "":
+				msg = "no output"
+			}
+			os.WriteFile(path+".err", []byte(msg), 0o644)
+			continue
+		}
+		os.Remove(path + ".err")
 		tmp := path + ".tmp"
 		if os.WriteFile(tmp, out, 0o644) == nil {
 			os.Rename(tmp, path)

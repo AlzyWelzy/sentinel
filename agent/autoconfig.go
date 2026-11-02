@@ -100,8 +100,8 @@ func repairHardware(dir, svcUser string) bool {
 				ok = false
 			}
 		}
-	} else if _, err := os.Stat(hardwareTimerFile); err != nil {
-		ok = false // neither sudo nor the root timer: nothing can run them
+	} else if !hardwareTimerCurrent(dir) {
+		ok = false // neither sudo nor an up-to-date root timer
 	}
 	if ok {
 		// Rules match; a SMART list whose disks all fail (one was pulled or
@@ -132,7 +132,7 @@ func repairHardware(dir, svcUser string) bool {
 // hardwareFiles is the content of everything enable-hardware writes.
 func hardwareFiles(pdir string) string {
 	var b strings.Builder
-	for _, p := range []string{filepath.Join(pdir, "smart.conf"), filepath.Join(pdir, "ipmi.conf"), hardwareSudoers(), dropInFile, hardwareTimerFile} {
+	for _, p := range []string{filepath.Join(pdir, "smart.conf"), filepath.Join(pdir, "ipmi.conf"), hardwareSudoers(), dropInFile, hardwareTimerFile, hardwareServiceFile} {
 		c, _ := os.ReadFile(p)
 		b.WriteString(p + "\x00" + string(c) + "\x00")
 	}

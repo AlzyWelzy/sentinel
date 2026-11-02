@@ -105,6 +105,9 @@ const hardwareCacheMaxAge = 10 * time.Minute
 
 func readHardwareCache(args []string) ([]byte, error) {
 	path := HardwareCacheFile(args)
+	if msg, err := os.ReadFile(path + ".err"); err == nil {
+		return nil, fmt.Errorf("%s (as root, by the hardware timer)", strings.TrimSpace(string(msg)))
+	}
 	fi, err := os.Stat(path)
 	if err != nil {
 		return nil, errors.New("sudo isn't installed and the hardware timer hasn't run yet; run pulsegrid-agent enable-hardware as root")
