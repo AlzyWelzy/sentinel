@@ -13,6 +13,7 @@ import {
   Field,
   Input,
   Loading,
+  Notice,
   PageHeader,
   Select,
   cx,
@@ -24,17 +25,22 @@ import { unwrap, useHosts } from "@/lib/queries";
 
 type Panel = components["schemas"]["Panel"];
 type Metric = Panel["metric"];
+// The metrics the API compares across servers.
 const METRICS: Metric[] = [
   "cpu",
   "memory",
+  "swap",
   "disk",
+  "inodes",
   "load",
   "network",
   "disk_io",
-  "swap",
-  "tcp_connections",
+  "disk_iops",
+  "disk_busy",
   "processes",
 ];
+// The API compares at most this many servers in one panel.
+const MAX_COMPARE = 12;
 
 function PanelChart({ panel, range }: { panel: Panel; range: Range }) {
   const q = useQuery({
@@ -85,6 +91,7 @@ export default function DashboardsPage() {
   const [range, setRange] = useState<Range>(() => presetRange("6h"));
   const [current, setCurrent] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Panel>({
     title: "",
     metric: "cpu",
@@ -115,7 +122,11 @@ export default function DashboardsPage() {
           body: { name: dash!.name, panels: next },
         }),
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboards"] }),
+    onSuccess: () => {
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["dashboards"] });
+    },
+    onError: (e) => setError(errorText(e)),
   });
   const remove = useMutation({
     mutationFn: async () =>
@@ -188,11 +199,25 @@ export default function DashboardsPage() {
               </Button>
             }
           >
+            {error && (
+              <div className="mb-3">
+                <Notice tone="bad">{error}</Notice>
+              </div>
+            )}
             <form
-              className="grid gap-3 sm:grid-cols-[1fr_10rem_1fr_7rem_auto] sm:items-end"
+              className="grid gap-3 sm:grid-cols-[1fr_9rem_1fr_9rem_7rem_auto] sm:items-end"
               onSubmit={(e) => {
                 e.preventDefault();
-                save.mutate([...panels, { ...draft, title: draft.title || draft.metric }]);
+                // Nothing chosen: every server (as many as a panel compares).
+                const hostIds = draft.tag
+                  ? []
+                  : draft.host_ids?.length
+                    ? draft.host_ids
+                    : (hosts.data ?? []).slice(0, MAX_COMPARE).map((h) => h.id);
+                save.mutate([
+                  ...panels,
+                  { ...draft, host_ids: hostIds, title: draft.title || draft.metric },
+                ]);
               }}
             >
               <Field label="Title">
@@ -212,7 +237,10 @@ export default function DashboardsPage() {
                   ))}
                 </Select>
               </Field>
-              <Field label="Servers" hint="None chosen: every server (or a tag).">
+              <Field
+                label="Servers"
+                hint={`None chosen and no tag: the first ${MAX_COMPARE} servers.`}
+              >
                 <Select
                   multiple
                   value={draft.host_ids ?? []}
@@ -230,6 +258,13 @@ export default function DashboardsPage() {
                     </option>
                   ))}
                 </Select>
+              </Field>
+              <Field label="Or a tag">
+                <Input
+                  value={draft.tag ?? ""}
+                  onChange={(e) => setDraft({ ...draft, tag: e.target.value || null })}
+                  placeholder="production"
+                />
               </Field>
               <Field label="Width">
                 <Select

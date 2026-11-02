@@ -1,9 +1,12 @@
 import Link from "next/link";
-import type {
-  ButtonHTMLAttributes,
-  InputHTMLAttributes,
-  ReactNode,
-  SelectHTMLAttributes,
+import {
+  cloneElement,
+  isValidElement,
+  useId,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
 } from "react";
 
 export function cx(...parts: (string | false | null | undefined)[]) {
@@ -92,6 +95,9 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
   );
 }
 
+/** A label tied to its control by id (not by wrapping it, which would put a
+ * select's every option into its accessible name), with an optional hint
+ * read out as the control's description. */
 export function Field({
   label,
   hint,
@@ -101,12 +107,30 @@ export function Field({
   hint?: ReactNode;
   children: ReactNode;
 }) {
+  const id = useId();
+  const hintId = `${id}-hint`;
+  const element = isValidElement<{ id?: string; "aria-describedby"?: string }>(children)
+    ? children
+    : null;
+  const controlId = element ? (element.props.id ?? id) : undefined;
+  const control = element
+    ? cloneElement(element, {
+        id: controlId,
+        "aria-describedby": hint ? hintId : undefined,
+      })
+    : children;
   return (
-    <label className="block space-y-1.5">
-      <span className="text-sm font-medium text-ink">{label}</span>
-      {children}
-      {hint && <span className="block text-xs text-ink-3">{hint}</span>}
-    </label>
+    <div className="block space-y-1.5">
+      <label htmlFor={controlId} className="block text-sm font-medium text-ink">
+        {label}
+      </label>
+      {control}
+      {hint && (
+        <span id={hintId} className="block text-xs text-ink-3">
+          {hint}
+        </span>
+      )}
+    </div>
   );
 }
 

@@ -101,7 +101,7 @@ async def test_apm_is_per_account(alice: User, bob: User, monkeypatch):
     await send(b_tid, b_host, f"bob-{svc}", [span(os.urandom(16).hex(), "d" * 16, "x", now, 5)])
 
     found = []
-    for _ in range(40):  # Tempo indexes recent traces within seconds
+    for _ in range(120):  # Tempo indexes recent traces within seconds (longer when just started)
         found = (await alice.request("GET", "/v1/apm/traces", params={"service": svc})).json()
         if len(found) >= 6:
             break
@@ -135,7 +135,7 @@ async def test_apm_is_per_account(alice: User, bob: User, monkeypatch):
     ).status_code == 404
 
     services = []
-    for _ in range(40):
+    for _ in range(120):  # TraceQL metrics lag behind search on a cold Tempo
         body = (await alice.request("GET", "/v1/apm/services")).json()
         services = [s for s in body["services"] if s["name"] == svc]
         if services and services[0]["requests"] >= 6:

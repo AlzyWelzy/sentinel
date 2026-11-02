@@ -11,7 +11,7 @@ import { useSession } from "@/lib/session";
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/";
+  const next = params.get("next") || "/overview";
   const { status } = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,7 +22,8 @@ function LoginForm() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (status === "signed-in") router.replace(next.startsWith("/") ? next : "/");
+    if (status === "signed-in")
+      router.replace(next.startsWith("/") && !next.startsWith("//") ? next : "/overview");
   }, [status, next, router]);
 
   async function submit(e: React.FormEvent) {

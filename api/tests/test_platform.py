@@ -515,3 +515,21 @@ async def test_only_probe_accounts_can_be_probes(client, monkeypatch):
         await customer.request("PUT", f"/admin/v1/hosts/{probe_host}/probe", json={"region": None})
     ).status_code in (401, 403)
     await client.put(f"/admin/v1/hosts/{probe_host}/probe", headers=staff, json={"region": None})
+
+
+async def test_agent_binaries_are_served_and_nothing_else(client, tmp_path, monkeypatch):
+    from app.config import settings
+
+    (tmp_path / "1.2.3").mkdir()
+    (tmp_path / "1.2.3" / "sentinel-agent-linux-amd64").write_bytes(b"\x7fELF")
+    (tmp_path / "secret.txt").write_text("no")
+    monkeypatch.setattr(settings, "AGENT_DIST_DIR", str(tmp_path))
+    r = await client.get("/agent/1.2.3/sentinel-agent-linux-amd64")
+    assert r.status_code == 200 and r.content == b"\x7fELF"
+    for bad in [
+        "/agent/1.2.3/../secret.txt",
+        "/agent/..%2Fsecret.txt/x",
+        "/agent/1.2.3/secret.txt",
+        "/agent/9.9.9/sentinel-agent-linux-amd64",
+    ]:
+        assert (await client.get(bad)).status_code == 404, bad

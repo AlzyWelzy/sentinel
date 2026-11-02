@@ -113,6 +113,9 @@ services:
       # Local only; production refuses short or missing secrets.
       AUTH_SECRET: dev-only-auth-secret-change-me-in-production
       COOKIE_SECURE: "false"
+      # The browser reaches the API under /api (the web app's dev proxy, or
+      # Caddy), and the refresh cookie is scoped to that path.
+      API_ROOT_PATH: /api
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
       SUPERADMIN_EMAILS: ${SUPERADMIN_EMAILS:-}
       VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
@@ -190,6 +193,8 @@ services:
     command: ["python", "-m", "app.jobs"]
     environment:
       ENVIRONMENT: development
+      # A new version here becomes the rollout's stable (first) or candidate.
+      AGENT_VERSION: ${AGENT_VERSION:-dev}
       DATABASE_APP_URL: postgresql+asyncpg://sentinel_app:sentinel_app@postgres:5432/sentinel
       DATABASE_SERVICE_URL: postgresql+asyncpg://sentinel_service:sentinel_service@postgres:5432/sentinel
       REDIS_URL: redis://redis:6379/0

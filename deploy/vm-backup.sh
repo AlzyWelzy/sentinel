@@ -12,6 +12,7 @@
 set -eu
 VM=v1.155.0
 STACK=${STACK:-sentinel}
+NETWORK=${NETWORK:-${STACK}_backend}
 DEST=${DEST:-/srv/sentinel-backups/vm}
 KEEP_DAYS=${KEEP_DAYS:-7}
 mkdir -p "$DEST"
@@ -19,7 +20,7 @@ mkdir -p "$DEST"
 run() { # image, volume, args...
 	img=$1 vol=$2
 	shift 2
-	docker run --rm --network "${STACK}_backend" \
+	docker run --rm --network "$NETWORK" \
 		-v "${STACK}_${vol}:/storage" -v "$DEST:/backup" "victoriametrics/$img:$VM" "$@"
 }
 

@@ -7,7 +7,13 @@
  * the app shows a loading state rather than flashing the sign-in page.
  * Signing out in one tab signs every tab out.
  */
-import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   createContext,
   useContext,
@@ -18,8 +24,11 @@ import {
   type ReactNode,
 } from "react";
 
+import { Toasts, toastError } from "@/components/toast";
+
 import {
   api,
+  errorText,
   getOrg,
   onSessionChange,
   refreshSession,
@@ -40,6 +49,13 @@ export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
     () =>
       new QueryClient({
+        // A mutation that handles its own errors shows them in place; any
+        // other failure still reaches the user.
+        mutationCache: new MutationCache({
+          onError: (error, _vars, _ctx, mutation) => {
+            if (!mutation.options.onError) toastError(errorText(error));
+          },
+        }),
         defaultOptions: {
           queries: { staleTime: 15_000, retry: 1, refetchOnWindowFocus: true },
         },
@@ -48,6 +64,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <SessionProvider>{children}</SessionProvider>
+      <Toasts />
     </QueryClientProvider>
   );
 }

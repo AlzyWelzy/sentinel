@@ -43,9 +43,30 @@ async def _reset() -> None:
 
 @pytest.fixture
 async def clean_rollout():
+    """Tests share the dev database: put the rollout back the way it was, so
+    installers there keep offering the real agent version."""
+    async with ServiceSession() as db:
+        before = (await db.execute(text("SELECT * FROM agent_rollout WHERE id = 1"))).one_or_none()
     await _reset()
     yield
     await _reset()
+    if before is not None:
+        async with ServiceSession() as db, db.begin():
+            await db.execute(
+                text(
+                    "UPDATE agent_rollout SET stable_version = :s, candidate_version = :c, "
+                    "candidate_percent = :p, candidate_since = :cs, rolled_back_version = :r, "
+                    "rollback_reason = :rr WHERE id = 1"
+                ),
+                {
+                    "s": before.stable_version,
+                    "c": before.candidate_version,
+                    "p": before.candidate_percent,
+                    "cs": before.candidate_since,
+                    "r": before.rolled_back_version,
+                    "rr": before.rollback_reason,
+                },
+            )
 
 
 async def test_adopt_release(clean_rollout, monkeypatch):

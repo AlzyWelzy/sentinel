@@ -131,7 +131,12 @@ export default function StatusPagesPage() {
                       <input
                         type="checkbox"
                         checked={!!items[`h:${h.id}`]}
-                        onChange={() => toggle(`h:${h.id}`, { label: h.hostname, host_id: h.id })}
+                        onChange={() =>
+                          toggle(`h:${h.id}`, {
+                            label: `Server ${Object.keys(items).filter((k) => k.startsWith("h:")).length + 1}`,
+                            host_id: h.id,
+                          })
+                        }
                       />{" "}
                       {h.hostname}
                     </label>
@@ -157,6 +162,9 @@ export default function StatusPagesPage() {
             {Object.keys(items).length > 0 && (
               <div className="space-y-2">
                 <p className="text-sm font-medium">Labels shown publicly</p>
+                <p className="text-xs text-ink-3">
+                  The public page shows only these names, never hostnames or addresses.
+                </p>
                 {Object.entries(items).map(([k, i]) => (
                   <Input
                     key={k}
