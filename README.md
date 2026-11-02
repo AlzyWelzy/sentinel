@@ -1,62 +1,57 @@
 # Sentinel
 
-Multi-tenant server and uptime monitoring. A lightweight agent on each
-server pushes metrics every 30 seconds and runs checks (ports, URLs, files,
-log patterns) and plugins (MySQL, PostgreSQL, Redis, Nginx, Apache, Docker,
-Prometheus endpoints, scripts); agents marked as probes run customers'
-uptime checks from several regions. Sentinel stores everything, evaluates
-alert rules (thresholds, anomalies, forecasts), opens incidents with a
-timeline, notifies verified contacts by email and Web Push, can run an
-allowed fix on the server, and publishes status pages and monthly reports.
+Multi-tenant server and uptime monitoring, at
+[sentinel.rajpoot.app](https://sentinel.rajpoot.app). A small agent on each
+server pushes metrics every 30 seconds, runs checks (ports, URLs,
+certificates, DNS, files, log patterns) and plugins (MySQL, PostgreSQL,
+Redis, Nginx, Apache, Docker, SMART/IPMI, SNMP, Prometheus endpoints,
+scripts). Sentinel stores everything, evaluates alert rules (thresholds,
+anomalies, forecasts, silence), opens incidents with a timeline, notifies
+verified contacts (email, Web Push, webhooks, Slack, Teams, Discord,
+Telegram, PagerDuty), and publishes status pages and reports.
 
-The Example console is the dashboard and the identity provider: users
-sign up there, and Sentinel trusts the console's JWT (the same way
-billing-ms does). The console's **Monitoring → Servers** tab is the UI.
+People sign up at the web app, create an organisation, invite their team,
+install the agent with one command and manage everything there. Nothing
+outside this repository is needed to run it.
 
 ```text
-                 ┌──────────── Sentinel ─────────────────────────────────────┐
-agent ──push──▶  │ ingest ──▶ VictoriaMetrics (metric samples, history)       │
- (Go, per        │   │              ▲                                         │
-  server)        │   ▼              │                                         │
-                 │ PostgreSQL ◀── api ◀──── console dashboard (console JWT)   │
-                 │ (tenants, hosts, │  ◀──── console backend (/internal, key) │
-                 │  rules, incidents,│                                        │
-                 │  outbox)  ▲       │                                        │
-                 │           └── alerter ──▶ email · SMS · webhooks          │
-                 └────────────────────────────────────────────────────────────┘
+browser ──https──▶ Caddy ─┬─ /      ──▶ web (Next.js)
+                          └─ /api/* ──▶ api (FastAPI) ──▶ PostgreSQL (RLS) · Redis · VictoriaMetrics
+agent ───https──▶ Caddy ──▶ ingest (Go) ──▶ VictoriaMetrics · VictoriaLogs · Tempo · PostgreSQL
+                            alerter (Go): rules → incidents → outbox → email, push, chat, webhooks
+                            jobs (Python): rollups, reports, digests, agent rollouts
 ```
 
 | Path | What | Stack |
 |---|---|---|
-| `agent/` | Installed on servers: collects, buffers to disk, pushes, self-updates | Go |
-| `ingest/` | Agent registration, metric intake, remote agent config | Go |
-| `alerter/` | Rule evaluation, incidents, notification outbox dispatcher | Go |
-| `api/` | Control plane: tenants, keys, hosts, metrics, rules, incidents, contacts | FastAPI · uv · ruff · ty |
+| `agent/` | On each server: collects, buffers to disk, pushes, updates itself | Go |
+| `ingest/` | Agent registration, metric/log/trace intake, remote agent config | Go |
+| `alerter/` | Rule evaluation, incidents, the notification and account-email outbox | Go |
+| `api/` | Accounts, organisations, servers, rules, incidents, status pages, reports | FastAPI · uv · ruff · ty |
+| `web/` | The web app and public status pages | Next.js · TypeScript |
 | `proto/` | Agent ⇄ ingest wire contract (JSON v1, backward compatible) | Go |
-| `deploy/` | Dev compose, production Swarm stack, Caddy, Postgres roles, OS test harness | Docker |
+| `deploy/` | Dev compose, production Swarm stack, Caddy, backups | Docker |
 
-## Multi-tenancy
+Read next: [ARCHITECTURE.md](ARCHITECTURE.md) (components, data flow,
+delivery guarantees), [SECURITY.md](SECURITY.md) (accounts, tenancy, threat
+model), [DEPLOYMENT.md](DEPLOYMENT.md) (one VPS, TLS, backups and restores),
+[CHANGELOG.md](CHANGELOG.md).
 
-Every console user is a tenant (`tenants.source` + `external_account_id` =
-the console `uid`). Isolation is layered so one mistake can't leak data:
+## Accounts and organisations
 
-1. **Identity from trusted credentials only**: the console JWT for the API,
-   the host token for ingest. Never a request body, never an IP.
-2. **Application scoping**: every query filters on `tenant_id`; metric queries
-   are built server-side from a fixed catalog, never from client PromQL.
-3. **Postgres row-level security**: the API connects as `sentinel_app`,
-   which RLS always applies to. Each request sets `app.tenant_id` for its
-   transaction only (`api/app/tenancy.py`), so a query with no `WHERE` still
-   sees one tenant, and a pooled connection can't carry it to the next request.
-4. **Metrics**: ingest stamps `host_id` itself and writes with
-   `extra_label=tenant_id=…`; every read adds the same `extra_label`, so
-   VictoriaMetrics scopes every selector to the tenant.
-5. **Tests prove it**: `api/tests/test_rls.py`, `test_api_isolation.py`,
-   `test_alerting.py`, `ingest/vm_test.go`.
-
-Database roles: `sentinel` (owner, migrations only), `sentinel_app` (API;
-RLS), `sentinel_service` (ingest, alerter, `/internal`; BYPASSRLS with
-narrow grants).
+- Sign up with an email and password (argon2id); the emailed link confirms
+  the address and signs you in. Optional TOTP two-factor sign-in, password
+  reset, and a list of signed-in browsers you can sign out.
+- An **organisation** owns servers, rules, contacts and integrations. You
+  can own several and belong to others. Roles: **owner**, **admin**
+  (everything but API tokens and deleting the organisation), **member**
+  (also acknowledges, resolves and assigns incidents, schedules maintenance,
+  runs allowed actions) and **read-only**. Invitations are emailed links for
+  one address, valid 7 days.
+- **Superadmins** (`SUPERADMIN_EMAILS`) run the installation from the admin
+  panel: organisations (suspend, resume, delete), users, the agent rollout,
+  probes. They see inside an organisation only through an impersonation:
+  a reason, one hour, read-only unless writes are asked for, audited.
 
 ## Agent
 
@@ -71,9 +66,11 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 | NetBSD (amd64) | `ftp -o - … \| sh` | `sentinel` | rc.d (pidfile) + 5-minute cron watchdog | root cron |
 | Windows Server 2016+ / 10+ | `install.ps1` in elevated PowerShell | `LocalService` | Service Control Manager (restart on failure) | SYSTEM scheduled task |
 
-- One-line install from the dashboard; the agent never runs privileged. Its
+- One-line install from the web app (`install.sh --uninstall` removes it);
+  the agent never runs privileged. Its
   state (including the host token) is readable only by it and administrators.
-- Buffers every batch on disk until ingest accepts it; outages lose nothing.
+- Buffers every batch on disk (24 hours) until ingest accepts it; see
+  ARCHITECTURE.md for exactly what that guarantees.
 - In a container (Docker, LXC, Kubernetes) or a capped systemd unit it
   reports the cgroup v2 limits as the server's size, CPU as a share of the
   quota and memory against the limit, not the whole machine.
@@ -127,10 +124,10 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 The agent has its own version (`agent/VERSION`), so a server-only release
 ships no new agent. Ingest offers each server one version
 (`agent_rollout`, `ingest/rollout.go` = `app/services/rollout.py`): the
-account's pin if staff set one, else the candidate when the server's bucket
+organisation's pin if a superadmin set one, else the candidate when the server's bucket
 (FNV-1a of the host id, mod 100) is below `candidate_percent`, else stable.
 On a deploy with a newer `AGENT_VERSION` the jobs worker makes it the
-candidate for `AGENT_CANARY_PERCENT` (10) of servers; staff promote it or
+candidate for `AGENT_CANARY_PERCENT` (10) of servers; superadmins promote it or
 roll it back (`/admin/v1/agent-rollout`, Fleet & probes). The health gate
 rolls a candidate back by itself once its servers go silent noticeably more
 than the rest (20% and 10 points above, after 75 minutes). Each API image
@@ -178,7 +175,7 @@ a rollback or a pin can still download its version.
 - The alerter evaluates every 30s: `ok → pending → firing → resolved`, with
   incidents opened and resolved in the same transaction as the state change.
 - Notifications go through an outbox (`outbound_messages`) with retries and
-  backoff. Email (SMTP, or through the console; HTML with acknowledge and
+  backoff. Email (SMTP or a provider's relay; HTML with acknowledge and
   view buttons), Web Push to browsers and phones (VAPID; a dropped
   subscription is removed), webhooks (signed
   `X-Sentinel-Signature: sha256=…`, private addresses refused), Slack,
@@ -188,7 +185,8 @@ a rollback or a pin can still download its version.
   masked whenever the API returns them.
   `ENABLED_CHANNEL_TYPES` (default `email,push`) limits what customers can
   add; contacts saved earlier keep working.
-- Contacts: the console email is prefilled and verified; others get a 6-digit
+- Contacts: the account email is prefilled and verified, and members' emails
+  join when they accept an invitation; others get a 6-digit
   code (5 attempts, 30-minute expiry) and receive nothing until verified. A
   push subscription is verified by being one. Each contact picks the lowest
   severity it receives.
@@ -212,20 +210,9 @@ a rollback or a pin can still download its version.
   default 99.9%), error budget left and the current burn rate.
 - Reports (`/v1/reports/summary`, `.csv`): availability, incidents, time to
   acknowledge and resolve, noisiest rules, resource use, days until disks
-  fill. Accounts get it by email on the 1st unless they turn it off.
-- API tokens (`pgt_…`, read-only by default) act as the account; managing
-  tokens needs a console login. OpenAPI at `/docs`.
-
-## Teams
-
-The account owner invites other console users by email as **viewer** (reads
-everything), **operator** (also acknowledges and resolves incidents,
-schedules maintenance, runs allowed actions) or **admin** (changes anything
-but members and API tokens). A member opens the shared account by sending
-`X-Sentinel-Account: <tenant id>`; `tenancy.py` checks the membership
-(`sentinel_member_tenant()`, SECURITY DEFINER) and the role per route, then
-RLS applies as usual. Invitations are claimed by the first console login with
-that verified email and pinned to it.
+  fill. Organisations get it by email on the 1st unless they turn it off.
+- API tokens (`pgt_…`, read-only by default) act as the organisation;
+  managing tokens needs a signed-in owner. OpenAPI at `/api/docs`.
 
 ## Logs
 
@@ -279,21 +266,12 @@ average, counters the hour-end value), which charts read for ranges past raw
 retention or longer than a month, daily cleanup, and agent rollouts (adopting
 a new `AGENT_VERSION` as the canary, and the health gate).
 
-## Backups
-
-The `backup` service dumps Sentinel's Postgres every night (`pg_dump -Fc`
-into the `pg-backups` volume, kept `BACKUP_KEEP_DAYS`, default 7). That's the
-part that can't be rebuilt: accounts, rules, incidents, status pages. Metrics,
-logs and traces age out by retention. Restore with `pg_restore --clean
---if-exists` (see `deploy/postgres/backup.sh`); copy the volume off the host
-(restic, rclone) for off-site copies.
-
 ## Probes
 
-Uptime checks run on agents staff mark as probes (`PUT
-/admin/v1/hosts/{id}/probe {"region": "…"}`, or Fleet & probes in the
-console). Only agents in the accounts listed in `PROBE_ACCOUNT_IDS` qualify:
-a probe receives every account's uptime check targets. An agent in a
+Uptime checks run on agents a superadmin marks as probes (`PUT
+/admin/v1/hosts/{id}/probe {"region": "…"}`). Only agents in the
+organisations listed in `PROBE_ACCOUNT_IDS` qualify: a probe receives every
+organisation's uptime check targets. An agent in a
 container is enough (no root needed).
 - Run 2+ alerter replicas: a Postgres advisory lock keeps one active and the
   rest on standby.
@@ -301,109 +279,31 @@ container is enough (no root needed).
 ## Develop
 
 ```sh
-make up          # Postgres, Redis, VictoriaMetrics, Mailpit, migrations, api :8000, ingest :8080, alerter
+make up          # Postgres, Redis, VictoriaMetrics, Mailpit, migrations, api :8010, ingest :8090, alerter, jobs
+cd web && npm ci && npm run dev    # the web app on :3000, proxying /api to :8010
 make agent       # agent binaries for every platform + checksums into api/dist/dev
 make test        # Go tests + API tests (needs `make up`)
-make lint        # gofmt, go vet, ruff, ty
+make lint        # gofmt, go vet, ruff, ty, and the web app's eslint/prettier/tsc
 ```
 
-The dev stack runs with `ALLOW_AUTH_BYPASS=true`: requests **without** a
-token act as a fixed dev user (a token that's present is always verified).
-Emails land in Mailpit (`MAILPIT_PORT`, default 8025).
+Sign up at http://localhost:3000/signup; the confirmation email lands in
+Mailpit at http://localhost:8035. Put your address in `SUPERADMIN_EMAILS`
+(`deploy/.env`) to see the admin panel. Then, with an install key from
+"Add server":
 
 ```sh
-curl -s -X POST localhost:8000/v1/agent-keys -H 'content-type: application/json' -d '{"name":"laptop"}'
-go run ./agent register --url http://localhost:8080 --key pg_... --state-dir ./.agent
-go run ./agent run --state-dir ./.agent
+go run ./agent register --url http://localhost:8090 --key pg_... --state-dir ./.agent/state
+go run ./agent run --state-dir ./.agent/state
 ```
 
-Override host ports and public URLs through `deploy/.env` (`API_PORT`,
-`PUBLIC_API_URL`, `CORS_ORIGINS`, `JWKS_URI`, …; see the compose file).
+After an API change, regenerate the typed client: `cd web && npm run api`
+(CI fails if it's out of date).
 
 ## Release
 
-Push a tag (`v0.2.0`). The `Release` workflow publishes
-`ghcr.io/example-org/sentinel-{api,ingest,alerter}:0.2.0` and attaches
-agent binaries with `.sha256` files to the GitHub release. Upload those files
-to the download host under `/agent/<agent version>/`, then bump
-`SENTINEL_VERSION` (and `AGENT_VERSION`, when `agent/VERSION` changed) and
-redeploy: a new agent version reaches the canary share first.
-Web Push needs `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` once per environment:
-`docker run --rm ghcr.io/example-org/sentinel-alerter:<v> vapid`.
-
-## Deploy behind the console (dev, prod)
-
-Sentinel runs as its own Swarm stack and is served on the console's domain
-through the console's nginx (`frontend/nginx/*.conf`), like billing-ms:
-
-| Path on the console domain | Goes to |
-|---|---|
-| `/api/sentinel/...` | API (unstripped; `API_ROOT_PATH=/api/sentinel`), install scripts, agent binaries baked into the image |
-| `/sentinel/ingest/...` | ingest (prefix stripped) |
-| `/api/sentinel/internal/`, `/api/internal/` | blocked (404): service-to-service only |
-
-```sh
-docker network create --driver overlay --attachable sentinel-dev   # once
-cp deploy/console.env.example deploy/dev.env                        # fill in; never commit
-set -a; . deploy/dev.env; set +a
-docker stack deploy -c deploy/stack.console.yml --with-registry-auth sentinel
-docker run --rm --network sentinel_backend \
-  -e DATABASE_OWNER_URL="postgresql+asyncpg://sentinel:${POSTGRES_PASSWORD}@postgres:5432/sentinel" \
-  ghcr.io/example-org/sentinel-api:${SENTINEL_VERSION} alembic upgrade head
-```
-
-The console stack's frontend (nginx) and backend join the same network; the
-backend is aliased `console-backend` there. Email goes through the console
-(`EMAIL_TRANSPORT=console`): the alerter posts to the backend's
-`/api/internal/sentinel/email/`, which sends with the console's Mail Settings
-from the `sentinel_alert` sender. Console settings: `SENTINEL_ENABLED`,
-`SENTINEL_INTERNAL_URL`, `SENTINEL_INTERNAL_API_KEY` (= Sentinel's
-`INTERNAL_API_KEY`), `SENTINEL_CALLBACK_API_KEY` (= Sentinel's
-`CONSOLE_INTERNAL_API_KEY`).
-
-## Deploy standalone (Swarm, own domains)
-
-```sh
-cp deploy/production.env.example deploy/production.env   # fill in; never commit
-docker node update --label-add sentinel.db=true <node>  # where data lives
-set -a; . deploy/production.env; set +a
-docker stack deploy -c deploy/stack.yml --with-registry-auth sentinel
-
-# migrations, once per release, before relying on new code:
-docker run --rm --network sentinel_backend \
-  -e DATABASE_OWNER_URL="postgresql+asyncpg://sentinel:${POSTGRES_PASSWORD}@postgres:5432/sentinel" \
-  ghcr.io/example-org/sentinel-api:${SENTINEL_VERSION} alembic upgrade head
-```
-
-- Caddy terminates TLS for `API_HOST`, `INGEST_HOST` and `DOWNLOAD_HOST`
-  (automatic certificates) and refuses `/internal/*` from the internet.
-- The API refuses to start in production with dev settings: auth bypass on,
-  a placeholder or short `INTERNAL_API_KEY`, or no real console JWKS.
-- Never deploy the stack under the same name as a compose project on that
-  host: volumes are named `<name>_<volume>`, so they'd share Postgres data.
-- Moving domains: change the hostnames, deploy, keep the old names serving
-  until agents have picked up the new ingest URL (within an hour).
-
-## Staff view
-
-Console staff (token `role` in `STAFF_ROLES`, default `admin,super_admin`)
-get `/admin/v1`: totals, every account with servers, any account's servers
-and charts, incidents (with timelines) across all accounts, and the agent
-fleet (versions, outdated agents, probes). The one change staff make is
-which of our agents are probes; staff act for a customer through the
-console's view-as-client, which Sentinel treats as read-only. `ADMIN_JWT_TOKEN_ISSUER` /
-`ADMIN_JWT_TOKEN_AUDIENCE` default to the customer token values.
-
-## Console integration
-
-- **Browser → Sentinel**: set `VITE_SENTINEL_API_BASE_URL` in the console
-  frontend build; add the console origin to `CORS_ORIGINS`. The console's
-  access token is sent as-is.
-- **Identity**: `JWKS_URI`, `JWT_TOKEN_ISSUER`, `JWT_TOKEN_AUDIENCE` take the
-  same values as billing-ms in that environment.
-- **Console backend → `/internal/v1`** with `X-Internal-Api-Key`:
-  `GET /usage` (active hosts per account, for per-host billing),
-  `POST /tenants/{uid}/suspend|resume`, `DELETE /tenants/{uid}` (purges data),
-  `POST /tenants/{uid}/notify` (an uptime alert to the user's push devices),
-  `GET /tenants/{uid}/maintenance?address=` (is the server at this IP or
-  hostname in a maintenance window: the console holds back uptime alerts).
+Push a tag `vX.Y.Z` (confirm first: it publishes images that autoupdate).
+The `Release` workflow publishes
+`ghcr.io/alzywelzy/sentinel-{api,ingest,alerter,agent,web}:X.Y.Z` and
+attaches agent binaries with `.sha256` files to the GitHub release; the API
+image also serves them. A new `agent/VERSION` reaches the canary share of
+servers first; superadmins promote it (or the health gate rolls it back).

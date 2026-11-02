@@ -1,4 +1,4 @@
-"""Beyond's own accounts: users, sessions, organisations and superadmins.
+"""Sentinel's own accounts: users, sessions, organisations and superadmins.
 
 - users: sign-up with email and password (argon2id), verified by email,
   optional TOTP. Not tenant-scoped: only the API's auth service reads them,

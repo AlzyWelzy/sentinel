@@ -2,7 +2,7 @@
 
 This is the one place tenant identity is decided:
 
-1. The caller is identified from Beyond's own access token or an API token
+1. The caller is identified from Sentinel's own access token or an API token
    (never from the request body).
 2. The organisation is the one named in X-Sentinel-Account, which must be
    one the user is a member of; otherwise their default organisation

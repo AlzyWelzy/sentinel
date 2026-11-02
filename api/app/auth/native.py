@@ -1,4 +1,4 @@
-"""Beyond's own credentials: access tokens, passwords and TOTP secrets.
+"""Sentinel's own credentials: access tokens, passwords and TOTP secrets.
 
 - Access tokens are short-lived JWTs (HS256) that only this API issues and
   verifies. They carry the user and session, nothing about organisations:

@@ -1,6 +1,6 @@
 /**
  * The API client: typed from the FastAPI OpenAPI schema (npm run api), with
- * Beyond's sign-in built in.
+ * Sentinel's sign-in built in.
  *
  * - The access token lives in memory only. The refresh token is an httpOnly
  *   cookie the browser sends to /api/auth/refresh; JavaScript never sees it.

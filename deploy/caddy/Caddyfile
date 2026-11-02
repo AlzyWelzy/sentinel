@@ -31,18 +31,13 @@
 	reverse_proxy ingest:8080
 }
 
-# install.sh, install.ps1 and agent binaries. Binaries are uploaded into the
-# agent-dist volume by the release job (or point this host at a CDN instead).
+# install.sh, install.ps1 and agent binaries: the API image carries the
+# binaries of its agent version and the previous ones (or point this host at
+# a CDN with the release's files instead).
 {$DOWNLOAD_HOST} {
-	handle /install.sh {
+	@download path /install.sh /install.ps1 /agent/*
+	handle @download {
 		reverse_proxy api:8000
-	}
-	handle /install.ps1 {
-		reverse_proxy api:8000
-	}
-	handle /agent/* {
-		root * /srv
-		file_server
 	}
 	respond 404
 }

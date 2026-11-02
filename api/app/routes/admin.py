@@ -1,6 +1,6 @@
 """The superadmin panel: every organisation, the fleet, agent rollouts.
 
-Superadmins are Beyond users with is_superadmin (from SUPERADMIN_EMAILS).
+Superadmins are Sentinel users with is_superadmin (from SUPERADMIN_EMAILS).
 They see every organisation's servers, charts and incidents here, manage
 organisations (suspend, resume, delete), the agent rollout and probes. To
 work inside an organisation they start an impersonation: audited, with a

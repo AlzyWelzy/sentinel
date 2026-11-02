@@ -28,5 +28,6 @@ test-api:
 	cd api && uv run pytest
 
 lint:
-	gofmt -l . | (! grep .) && go vet ./...
+	gofmt -l $$(git ls-files '*.go') | (! grep .) && go vet ./...
 	cd api && uv run ruff format --check . && uv run ruff check . && uv run ty check
+	cd web && npm run format:check && npm run lint && npm run typecheck

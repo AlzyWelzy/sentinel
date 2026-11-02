@@ -48,7 +48,6 @@ services:
         target: /etc/caddy/Caddyfile
     volumes:
       - caddy-data:/data
-      - agent-dist:/srv/agent:ro
     networks: [edge]
     deploy: *rolling
 
@@ -299,7 +298,6 @@ configs:
 
 volumes:
   caddy-data:
-  agent-dist:
   postgres-data:
   pg-backups:
   redis-data:

@@ -1,4 +1,4 @@
-"""Beyond's own accounts, end to end through the HTTP API: sign-up, the
+"""Sentinel's own accounts, end to end through the HTTP API: sign-up, the
 emailed link, sign-in, refresh rotation, reset, two-factor, sessions."""
 
 import uuid

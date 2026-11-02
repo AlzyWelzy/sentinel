@@ -35,7 +35,7 @@ def access_token(
     superadmin: bool = False,
     impersonation: tuple[str, str, bool] | None = None,
 ) -> str:
-    """A Beyond access token, as /auth/login would issue it."""
+    """A Sentinel access token, as /auth/login would issue it."""
     return native.issue_access_token(
         uid, None, email or "", "Test User", superadmin=superadmin, impersonation=impersonation
     )

@@ -1,7 +1,7 @@
 """Drop what only the console used.
 
 - external_monitors (Uptime Kuma monitors synced by the console) and status
-  page items showing them. Status pages show servers and Beyond's own
+  page items showing them. Status pages show servers and Sentinel's own
   probe checks.
 - Contacts the console created are 'account' contacts now (the
   organisation's own email); 'team' contacts are members' emails, added

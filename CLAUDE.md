@@ -1,60 +1,54 @@
-# Pulsegrid Beyond
+# Sentinel
 
-Pulsegrid Beyond is a multi-tenant monitoring product for servers and uptime, owned by its author.
+Sentinel (this repo, formerly "Pulsegrid Beyond") is a multi-tenant monitoring product for servers and uptime, owned by its author, at **sentinel.rajpoot.app**.
 
-## Beyond stands on its own
+## Sentinel stands on its own
 
-Beyond is its own project. It does not rely on any other project, and work here never depends on one.
+Sentinel is its own project. It does not rely on any other project, and work here never depends on one.
 
-- **History:** Beyond started from a copy of Pulsegrid at release v0.8.27 (`565b89f`, agent 0.8.11). That's history only. Pulsegrid, the Example console, billing and every other Example service are not upstreams, dependencies or deploy targets.
+- **History:** it started from a copy of Pulsegrid at release v0.8.27 (`565b89f`, agent 0.8.11). That's history only. Pulsegrid, the Example console, billing and every other Example service are not upstreams, dependencies or deploy targets.
 - **No syncing:** don't pull from, push to, or sync with `example-org/pulsegrid` or `AlzyWelzy/pulsegrid`. Changes start here. Anything borrowed from elsewhere is re-implemented here deliberately.
-- **Own infrastructure:** use only Beyond's own accounts, registry, domains, servers, secrets and email provider. Never use company resources.
-- **Remove the coupling:** wherever the code still assumes the Example console (see "Removing inherited coupling"), Beyond's direction is to remove that dependency, not to keep it working.
+- **Own infrastructure:** use only Sentinel's own accounts, registry (`ghcr.io/alzywelzy/sentinel-*`), domain, servers, secrets and email provider. Never use company resources.
+- **The repo** is still `AlzyWelzy/pulsegrid-beyond` on GitHub, and the Go module path matches it. Renaming the GitHub repo is the owner's call; if it happens, change `go.mod` and the imports in one commit.
 
-To start a build session, paste `docs/kickoff-prompt.md` into Claude Code from this folder.
-
-See `README.md` for the architecture, multi-tenancy, the agent platforms and the full feature list. This file holds what the README doesn't: how work is done here, where things stand, and what was learned running it on a real fleet of about 80 servers.
+`README.md` has the feature list, `ARCHITECTURE.md` the components, data flow and delivery guarantees, `SECURITY.md` accounts, tenancy and the threat model, `DEPLOYMENT.md` the single-VPS setup, backups and restores. This file holds what they don't: how work is done here, where things stand, and what was learned running the inherited code on a real fleet of about 80 servers.
 
 ## Ground rules
 
 - **Python (`api/`):** use uv, ruff and ty. Run `uv run ruff format`, `uv run ruff check` and `uv run ty check`.
-- **Go:** run `gofmt` and `go vet ./...`. `make lint` runs both languages.
+- **Go:** run `gofmt` and `go vet ./...`.
+- **Web (`web/`):** strict TypeScript, ESLint, Prettier. After any API change run `npm run api` to regenerate the typed client; CI fails if it's stale.
+- `make lint` runs all three.
 - **Commits:** use conventional subjects (`fix(agent): …`, `feat(api): …`). Write the subject as plain-language behaviour, as `git log` shows. Agent changes end with `; agent X.Y.Z`.
 - **No AI attribution:** never add a Co-Authored-By Claude line or "Generated with Claude Code" to commits or PRs.
 - **Never echo credentials or tokens** in output or logs.
 - **Confirm before tagging a release.** A tag publishes images, and whatever autoupdates from them deploys.
 
-## Removing inherited coupling
+## Names that stay short
 
-The inherited files still point at company infrastructure and the console. Replace each item below with Beyond's own before CI or a deploy runs from this repo. Until then, treat these as bugs:
+- Token prefixes `pg_` (install keys), `pgh_` (host tokens), `pgt_` (API tokens), the `pg_refresh` cookie and `pg.*` browser storage keys are inherited and kept: they're opaque, and changing them buys nothing.
+- The dev compose project is `beyond-dev` (host ports offset by 10: Postgres 5442, Redis 6389, VictoriaMetrics 8438/8439, VictoriaLogs 9438, Tempo 3210/4329, Mailpit 8035 and SMTP 1035, API 8010, ingest 8090). It must never share a name with the company Pulsegrid checkout's `pulsegrid-dev`.
 
-- **Image registry:** workflows and stack files use `ghcr.io/example-org/pulsegrid-*`. Switch to a personal registry, or a build here could overwrite company images that autoupdate onto company prod.
-- **Console coupling:** identity and email go through the Example console:
-  - The API trusts the console JWT.
-  - The alerter sends email through the console (`CONSOLE_EMAIL_URL`, the `consoleMailer` sender in `alerter/notify.go`).
-  - Tenants are keyed `(source, console uid)`.
+## How releases work
 
-  Beyond needs its own sign-up/login and its own tenants. Email should go through `emailSender` (SMTP), not `consoleMailer`.
-- **Domains, secrets and env:** see `deploy/production.env.example`, `deploy/console.env.example` and `deploy/sentinel/`.
-- **GitHub Actions:** this repo has no secrets yet, so nothing publishes until you add them.
-
-## How releases work (inherited design)
-
-1. **Tag:** push a tag `vX.Y.Z`. CI builds the images (api, ingest, alerter, jobs) and the agent bundle.
-2. **Server autoupdate:** the server autoupdates from the registry. The agent version lives in `agent/VERSION`, separate from the release number.
+1. **Tag:** push a tag `vX.Y.Z`. CI builds the images (api, ingest, alerter, web, agent; jobs runs from the api image) and the agent binaries.
+2. **Server autoupdate:** `deploy/autoupdate.sh` on the server deploys newer images, with a dump first and an automatic rollback. The agent version lives in `agent/VERSION`, separate from the release number.
 3. **Agent rollout:** a new agent version becomes the *candidate* for 10% of hosts, and `agent_rollout` in Postgres tracks it.
-4. **Promote:** set `stable_version` to the candidate and clear `candidate_*`. The jobs service must have registered the candidate first; promoting too early just needs a re-run.
+4. **Promote:** from the superadmin panel, or set `stable_version` to the candidate and clear `candidate_*`. The jobs service must have registered the candidate first; promoting too early just needs a re-run.
 5. **Hourly update:** agents check for updates hourly through a root timer or cron, and autoconfig runs right after an update.
 
 ## Local testing
 
-- `make up` starts the dev compose stack.
+- `make up` starts the dev compose stack; `cd web && npm run dev` the web app on :3000 (it proxies `/api` to :8010).
 - `go test ./...` runs the Go tests.
-- `cd api && uv run pytest` runs the API tests. They need Postgres and Redis running and migrated.
+- `cd api && uv run pytest` runs the API tests. They need Postgres and Redis running and migrated. With the dev alerter running, it may send account emails before a test reads them; the tests then read the link from Mailpit.
 - **After a reboot:** the test stack containers don't start on their own. Start postgres, redis, victoriametrics (and its `-long` copy), victorialogs, tempo and mailpit before running pytest.
-- **Demo fleet:** the old setup ran demo servers as Docker containers (one agent per container, Dockerfiles for apt- and dnf-based images, plus a probe container). It's a good way to test outages: `docker stop` a few containers and watch the alerts.
+- **End to end:** sign up at :3000, confirm from Mailpit (:8035), install the agent from "Add server", `docker stop beyond-dev-ingest-1` for four minutes, and watch the "not reporting" and recovery emails arrive.
+- **Disk space:** image builds need several GB free. When the disk filled during a build, Docker Desktop stopped responding until it was restarted.
 
 ## Inherited state (v0.8.27, 2026-11-02)
+
+What the code did at the fork, still true except where the roadmap below says otherwise. Names here are the old ones: `pulsegrid-*` and `pulsegrid_*` are now `sentinel-*` and `sentinel_*`.
 
 ### Agent 0.8.11 (Go)
 
@@ -108,107 +102,69 @@ The v0.8.27 alerter changes were verified on a demo fleet. Three servers were st
 
 ## Roadmap: a fully standalone app
 
-The goal is for Beyond to be a complete product of its own: its own frontend, backend, accounts, email, infrastructure and domain. It should run with nothing from Example.
+Each phase ends with something that runs. **Done means:** a stranger can open sentinel.rajpoot.app, sign up, install the agent, get an alert email from Sentinel's own domain, and manage everything in Sentinel's own UI, with no Example service running anywhere. On the dev stack that works end to end; production needs the server, DNS and accounts below.
 
-Today the backend (agent, ingest, alerter, API, jobs) is Beyond's, but three things live in the console:
-- the user interface (the console's Monitoring pages)
-- who users are (sign-up, login, staff)
-- how email is sent
+### Phase 1: Own infrastructure
 
-Work through these phases in order. Each phase ends with something that runs. Tick items off here as they land.
+- [x] Images at `ghcr.io/alzywelzy/sentinel-*` (workflows, stack, autoupdate, agent image); Go module at the repo's own path.
+- [x] Product name and domain: Sentinel, `sentinel.rajpoot.app` (`APP_HOST`), `ingest.` and `get.` subdomains. Links come from `PUBLIC_APP_URL`; installers from `PUBLIC_DOWNLOAD_URL`.
+- [x] Console stack, console env, sentinel gateway and Kuma files deleted; console keys removed from every env example.
+- [x] Ingest: 413 instead of a data-losing 400, per-token rate limits, timestamp window; VictoriaMetrics dedup; atomic spool writes (agent 0.9.0).
+- [ ] **Owner's accounts:** the server, DNS records, SMTP provider with SPF/DKIM/DMARC, Turnstile keys, VAPID keys. Steps in `DEPLOYMENT.md`. GitHub Actions needs no extra secrets (it publishes with `GITHUB_TOKEN`).
 
-### Phase 1: Own infrastructure, so nothing can touch company systems
+### Phase 2: Own accounts and login
 
-- [ ] Point images at Beyond's own registry (`ghcr.io/alzywelzy/pulsegrid-beyond-*` or similar):
-  - `.github/workflows/release.yml`
-  - `deploy/stack*.yml`
-  - `deploy/sentinel/`
-  - the agent self-update and download URLs
-- [ ] Choose a product name and domain. Replace `CONSOLE_HOST`, the dashboard and ack links (`dashboardLink`, `ackURL`), status page hosts, and the installer URLs in `api/app/install.sh` and `install.ps1`.
-- [ ] Set up Beyond's own server or servers, DNS, TLS (Caddy is in `deploy/caddy`), backups and GitHub Actions secrets.
-- [ ] Delete `deploy/stack.console.yml`, `deploy/console.env.example` and the sentinel Kuma/gateway files that are specific to the console.
-- [ ] Remove `CONSOLE_INTERNAL_API_KEY` and `CONSOLE_EMAIL_URL` from every env example.
-
-### Phase 2: Own accounts and login (backend)
-
-The design already allows this. `api/app/auth/console.py` is the only module that knows what a console token looks like, and everything else uses a `Principal`. Add a native identity source next to it, then delete the console one.
-
-- [ ] Add a `users` table: email, password hash (argon2), verified, created. Then:
-  - email verification
-  - password reset
-  - optional TOTP 2FA
-  - later, optional Google or GitHub login
-- [ ] Add `api/app/auth/native.py`, which issues and verifies Beyond's own tokens: short-lived access tokens plus a rotating refresh token in an httpOnly cookie. It returns the same `Principal`.
-- [ ] Remove the console settings from `config.py`:
-  - `TENANT_SOURCE = "console"`
-  - `JWKS_URI`, `JWT_TOKEN_ISSUER`, `JWT_TOKEN_AUDIENCE`
-  - `ADMIN_JWT_*`
-- [ ] Tenants are keyed `(source, external_account_id)` = console uid. Make the native user or organisation the tenant: a migration that sets `source='beyond'` and a uid.
-- [ ] Add organisations so a company has several users. Replace "team members" (`routes/members.py`, which shares between console users) with real invites and roles: owner, admin, member, read-only.
-- [ ] **Staff and admin:** `routes/admin.py` and `admin_verifier` trust console staff roles, and staff "view-as" comes from the console's impersonation claim (`imp`). Replace these with a Beyond superadmin role, plus an impersonation flow that is audited and read-only by default.
-- [ ] **Sign-up protection:** rate limits, Turnstile or hCaptcha on sign-up, and lockout after failed logins.
+- [x] `users`, sessions with rotating refresh tokens, email verification, password reset, optional TOTP, session list and revoke (`api/app/auth/native.py`, `services/accounts.py`).
+- [x] Console identity removed (`auth/console.py`, JWKS/JWT settings, staff roles, dev auth bypass).
+- [x] Organisations: a tenant is an organisation, every member (owner too) a `tenant_members` row with a user; invitations by emailed token; owner, admin, member (`operator`), read-only (`viewer`).
+- [x] Superadmins from `SUPERADMIN_EMAILS`; audited, time-limited, read-only-by-default impersonation.
+- [x] Sign-up protection: Redis rate limits, Turnstile, lockout after failed sign-ins.
+- [ ] Later: Google or GitHub sign-in.
 
 ### Phase 3: Own email and notifications
 
-- [ ] Make SMTP or a provider API (SES, Postmark, Resend) the only email path: `emailSender` in `alerter/notify.go`. Delete `consoleMailer` and its setting.
-- [ ] Move all email to Beyond's own branded templates:
-  - alerts (`alerter/emailhtml.go`)
-  - verification codes
-  - digests
-  - reports
-  - sign-up, verification and reset emails from Phase 2
-- [ ] Set up SPF, DKIM and DMARC for the sending domain, plus bounce and complaint handling that marks a contact undeliverable.
-- [ ] Web Push (`alerter/push.go`): generate Beyond's own VAPID keys and set its subject to Beyond's domain.
-- [ ] SMS and voice: Beyond's own provider account, or switch the channels off until there is one.
+- [x] SMTP (or a provider's relay) is the only email path; `consoleMailer` deleted. Account emails go through `account_emails` with the alert outbox's retries.
+- [x] Branded templates for account emails (`services/account_emails.py`); alert, digest and report emails were already Sentinel's own HTML.
+- [x] A mail server refusing the recipient marks the contact undeliverable until it's verified again.
+- [ ] Bounces and complaints a provider reports later, by webhook. Pick the provider first.
+- [x] Web Push subject is configurable (`VAPID_SUBJECT`); generate keys at deploy time.
+- [x] SMS and voice stay off (`ENABLED_CHANNEL_TYPES`) until there's a Twilio account.
 
 ### Phase 4: Remove the console-only API surface
 
-`api/app/routes/internal.py` (guarded by `auth/internal.py`) exists only so the console backend can drive Beyond:
-- usage
-- incidents for ticket rules
-- suspending, resuming and deleting tenants
-- staff-made agent keys
-- ticket contacts and team contacts
-- recommended rules
-- notify
-- maintenance
-- external monitors (Uptime Kuma checks synced from the console)
+- [x] `routes/internal.py` and `auth/internal.py` deleted. Suspend, resume and delete moved to the superadmin panel; recommended rules run on organisation creation; members replace team contacts; usage, ticket incidents, ticket contacts, notify, the maintenance lookup and external monitors are gone (migration 0023 drops `external_monitors`).
 
-For each one, either:
-- **expose it in Beyond's own API and UI**, for example tenant suspension in the admin panel, maintenance and recommended rules in settings, and external monitors replaced by Beyond's own uptime checks (probes already exist), or
-- **delete it**: ticket rules and ticket contacts belong to the console's helpdesk, and usage was for console billing.
+### Phase 5: Own frontend
 
-Then delete `routes/internal.py` and `auth/internal.py`, and update the migrations' comments where they describe the console.
-
-### Phase 5: Own frontend (the big one)
-
-The whole UI currently lives in the Example console repo (React + Vite, Monitoring → Servers and its many sections). Beyond needs its own web app in this repo, for example `web/`.
-
-- [ ] **Stack:** React + TypeScript + Vite, TanStack Query for the API, a router, a component library, and a chart library for time series.
-- [ ] Generate a typed API client from the FastAPI OpenAPI schema, so the frontend can't drift from the API.
-- [ ] Rebuild the screens. Use the console's Monitoring section as the feature list, not as code to copy. In rough priority:
-  1. Login, sign-up, verify, reset, 2FA, invite acceptance.
-  2. Onboarding: create the organisation, show the install command (Linux/BSD/Windows/Docker), and wait for the first server.
-  3. Server list (live CPU, memory, disk, load, status, tags), plus server detail with the Overview, Disks, Processes, Memory, Network, System, Forecast and Activity tabs, time ranges and a date picker.
-  4. Alerts: rules (every kind), incidents with timeline, ack and snooze, merging, and maintenance windows.
-  5. Contacts and channels, quiet hours, on-call schedules and escalation.
-  6. Checks and uptime monitors, probes and regions, plus status pages (public pages served by Beyond itself).
-  7. Logs search, APM and traces, dashboards, fleet view, insights and anomalies.
-  8. Reports (PDF), digests, audit log, API tokens, organisation settings and members.
-  9. Superadmin panel: tenants, suspend and resume, impersonation, agent rollout (promote and rollback), and fleet health.
-  10. Help and setup guide pages (the old Field Guide content can seed these).
-- [ ] A marketing and landing site, docs, and pricing if it will ever be paid. These can be a separate static site.
-- [ ] Serve `web/` from Caddy or as its own container, on the same domain as the API (`/api`), so cookies stay first-party.
+- [x] `web/`: Next.js (App Router), TypeScript strict, TanStack Query, uPlot, a typed client generated from OpenAPI.
+- [x] Sign-in, sign-up, verify, reset, two-factor, invitation acceptance.
+- [x] Onboarding: name the organisation, install command for Linux/BSD, Windows, Docker and cloud-init, wait for the first server.
+- [x] Overview; servers list and detail (Overview, Disks, Processes, Network, System, Activity; time ranges and custom).
+- [x] Incidents with timeline, acknowledge, resolve, reopen, notes, assignment; alert rules; maintenance windows.
+- [x] Contacts with verification; uptime checks; status pages, public ones rendered on the server.
+- [x] Logs, APM, dashboards, reports (with PDF), audit log, API tokens and install keys, organisation and members, account security.
+- [x] Superadmin panel: organisations, impersonation, users, agent rollout.
+- [ ] Not built yet in the UI (the API has them): on-call schedules and escalation steps, quiet hours, rule preview and test, incident merge and snooze, fleet wall and insights, saved views, host actions, help pages.
+- [ ] A marketing and landing site, docs and pricing (separate static site).
+- [x] Served on one origin: Caddy sends `/api/*` to the API and everything else to `web`.
 
 ### Phase 6: Polish and operations
 
-- [ ] Monitor Beyond with Beyond, plus one external uptime monitor.
-- [ ] Backups with tested restores (Postgres plus VictoriaMetrics snapshots), and a runbook in `deploy/`.
-- [ ] Terraform provider (`terraform-provider-pulsegrid/`): rename it and point it at Beyond's API.
-- [ ] Rename the binaries, service names and paths (`pulsegrid-agent`, `/etc/pulsegrid`) if the product name changes. Ship a migration path for already-installed agents.
-- [ ] Legal and product basics: terms, privacy, data deletion and export per tenant.
+- [x] Self-monitoring and an external uptime monitor: documented in `DEPLOYMENT.md`; set up once the server exists.
+- [x] Backups: every Postgres dump is restored into a scratch database (`restore-check.sh`); VictoriaMetrics backup and restore (`vm-backup.sh`); runbook in `DEPLOYMENT.md`.
+- [x] Terraform provider renamed (`terraform-provider-sentinel`).
+- [x] Binaries, services and paths renamed (`sentinel-agent`, `/etc/sentinel`). No agents were installed under the old names, so no migration path is needed.
+- [x] Agent uninstall: `install.sh --uninstall`, `install.ps1 -Uninstall`.
+- [ ] Legal and product basics: terms, privacy, per-organisation data export. (Deletion exists: owners delete their organisation.)
 
-**Done means:** a stranger can open Beyond's domain, sign up, install the agent, get an alert email from Beyond's own domain, and manage everything in Beyond's own UI, with no Example service running anywhere.
+### Not yet verified
+
+- The restore check and `vm-backup.sh` haven't been run against a live stack.
+- The uninstall paths haven't been run on each OS.
+- The web app has been built and type-checked but not yet clicked through against the running API.
+- The API suite after the rename and migrations 0024 and 0025.
+
+Run all of these first when the dev stack is back.
 
 ## Lessons from the production fleet
 
@@ -223,4 +179,3 @@ The whole UI currently lives in the Example console repo (React + Vite, Monitori
 
 - **Correlated outages:** detect several hosts behind one public IP going silent together. Open one "network" incident and link the hosts to it, instead of N incidents.
 - **Dependency hint:** when several servers drop together, suggest a host dependency (`depends_on_host_id`).
-- **Own auth and email:** replace the console coupling (see "Removing inherited coupling"). This is the first priority.

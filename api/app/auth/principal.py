@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Principal:
-    # A Beyond user, or the tenant an API token belongs to.
+    # A Sentinel user, or the tenant an API token belongs to.
     user_id: str | None
     email: str | None
     name: str | None
