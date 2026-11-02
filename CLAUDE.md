@@ -11,6 +11,8 @@ Beyond is its own project. It does not rely on any other project, and work here 
 - **Own infrastructure:** use only Beyond's own accounts, registry, domains, servers, secrets and email provider. Never use company resources.
 - **Remove the coupling:** wherever the code still assumes the Example console (see "Removing inherited coupling"), Beyond's direction is to remove that dependency, not to keep it working.
 
+To start a build session, paste `docs/kickoff-prompt.md` into Claude Code from this folder.
+
 See `README.md` for the architecture, multi-tenancy, the agent platforms and the full feature list. This file holds what the README doesn't: how work is done here, where things stand, and what was learned running it on a real fleet of about 80 servers.
 
 ## Ground rules
