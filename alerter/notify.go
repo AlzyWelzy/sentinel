@@ -42,6 +42,13 @@ type permanentError struct{ msg string }
 
 func (e *permanentError) Error() string { return e.msg }
 
+// undeliverableError is a permanent rejection of the address itself (the
+// mail server refused the recipient): the contact stops receiving until
+// it's verified again.
+type undeliverableError struct{ permanentError }
+
+func (e *undeliverableError) Unwrap() error { return &e.permanentError }
+
 func permanent(format string, args ...any) error {
 	return &permanentError{msg: fmt.Sprintf(format, args...)}
 }
@@ -128,7 +135,7 @@ func (e *emailSender) sendMail(ctx context.Context, to, subject, text, html stri
 		return err
 	}
 	if err := c.Rcpt(to); err != nil {
-		return permanent("recipient rejected: %v", err)
+		return &undeliverableError{permanentError{msg: fmt.Sprintf("recipient rejected: %v", err)}}
 	}
 	w, err := c.Data()
 	if err != nil {

@@ -10988,6 +10988,22 @@
       "type": "boolean",
       "title": "Verified"
      },
+     "undeliverable": {
+      "type": "boolean",
+      "title": "Undeliverable",
+      "default": false
+     },
+     "undeliverable_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Undeliverable Reason"
+     },
      "min_severity": {
       "type": "string",
       "title": "Min Severity"

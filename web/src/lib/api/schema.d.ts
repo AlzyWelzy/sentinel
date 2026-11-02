@@ -3260,6 +3260,13 @@ export interface components {
             is_default: boolean;
             /** Verified */
             verified: boolean;
+            /**
+             * Undeliverable
+             * @default false
+             */
+            undeliverable: boolean;
+            /** Undeliverable Reason */
+            undeliverable_reason?: string | null;
             /** Min Severity */
             min_severity: string;
             quiet_hours?: components["schemas"]["QuietHours"] | null;

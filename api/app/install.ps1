@@ -1,8 +1,9 @@
 # Sentinel agent installer for Windows (Server 2016+ / Windows 10+), run as Administrator:
 #   & ([scriptblock]::Create((irm __DOWNLOAD_URL__/install.ps1))) -Key <install key> [-Tags web,production]
+#   & ([scriptblock]::Create((irm __DOWNLOAD_URL__/install.ps1))) -Uninstall [-KeepConfig]
 #
 # Served by the Sentinel API with the URLs below filled in from its config.
-param([Parameter(Mandatory = $true)][string]$Key, [string]$Tags = '')
+param([string]$Key = '', [string]$Tags = '', [switch]$Uninstall, [switch]$KeepConfig)
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'   # makes Invoke-WebRequest much faster
@@ -21,6 +22,29 @@ $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'sentinel: run this in an elevated (Administrator) PowerShell'
 }
+
+# Everything the install below creates. The server stays listed in Sentinel
+# (as not reporting) until it's removed there.
+if ($Uninstall) {
+    foreach ($task in 'Sentinel agent update', 'Sentinel agent watchdog') {
+        Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue
+    }
+    $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if ($svc) {
+        Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+        sc.exe delete $ServiceName | Out-Null
+    }
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $InstallDir
+    if ($KeepConfig) {
+        Get-ChildItem $StateDir -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'conf' } |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    } else {
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $StateDir
+    }
+    Write-Host 'Sentinel agent removed. The server stays listed in Sentinel as not reporting until you remove it there.'
+    return
+}
+if (-not $Key) { throw 'sentinel: -Key <install key> is required (or -Uninstall)' }
 
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
 $asset = "sentinel-agent-windows-$arch.exe"

@@ -7,3 +7,5 @@ api/dist
 deploy/.env
 deploy/production.env
 *.env
+**/node_modules
+web/.next

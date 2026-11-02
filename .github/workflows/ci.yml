@@ -32,7 +32,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: gofmt
-        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))" || (gofmt -l $(git ls-files '*.go') && exit 1)
       - run: go vet ./...
       - run: go test -race ./...
       - name: Cross-compile and vet the agent for every released platform
@@ -42,6 +42,30 @@ jobs:
             GOOS=${target%/*} GOARCH=${target#*/} go vet ./agent/...
             GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./agent
           done
+
+  web:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+      - run: npm ci
+      - name: The typed client matches the API
+        run: |
+          (cd ../api && uv sync --locked)
+          npm run api
+          git diff --exit-code -- openapi.json src/lib/api/schema.d.ts
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
 
   # The collector reads real OS counters, so run its tests on real Windows and
   # macOS too (Linux runs in the job above).

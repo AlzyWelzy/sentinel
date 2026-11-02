@@ -2,6 +2,7 @@
 # Sentinel agent installer for Linux, FreeBSD, OpenBSD and NetBSD.
 #   curl -fsSL __DOWNLOAD_URL__/install.sh | sudo sh -s -- --key <install key> [--tags web,production]
 #   (FreeBSD without curl: fetch -qo - ... | sh -s -- ...; OpenBSD: ftp -o - ... | doas sh -s -- ...)
+#   ... | sudo sh -s -- --uninstall [--keep-config]   removes the agent again
 #
 # Served by the Sentinel API with the URLs below filled in from its config.
 # Windows uses install.ps1 instead.
@@ -29,6 +30,8 @@ KEY=""
 TAGS=""
 LOGS=1
 AUTO=1
+UNINSTALL=0
+KEEP_CONFIG=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --key) [ $# -ge 2 ] || die "--key needs a value"; KEY="$2"; shift 2 ;;
@@ -37,11 +40,14 @@ while [ $# -gt 0 ]; do
         --tags=*) TAGS="${1#*=}"; shift ;;
         --no-logs) LOGS=0; shift ;;
         --no-autoconfig) AUTO=0; shift ;;
+        --uninstall) UNINSTALL=1; shift ;;
+        --keep-config) KEEP_CONFIG=1; shift ;;
         *) die "unknown option: $1" ;;
     esac
 done
-[ -n "$KEY" ] || die "usage: install.sh --key <install key> [--tags a,b] [--no-logs] [--no-autoconfig]"
 [ "$(id -u)" -eq 0 ] || die "run as root (sudo or doas)"
+[ -n "$KEY" ] || [ "$UNINSTALL" = 1 ] ||
+    die "usage: install.sh --key <install key> [--tags a,b] [--no-logs] [--no-autoconfig] | --uninstall [--keep-config]"
 
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case "$os" in
@@ -56,6 +62,62 @@ esac
 # OpenBSD convention: daemon accounts start with an underscore.
 SERVICE_USER=sentinel
 [ "$os" = openbsd ] && SERVICE_USER=_sentinel
+
+# Everything install puts on the machine, on every init system it supports.
+# The server stays listed in Sentinel (as not reporting) until it's removed
+# there, so its history isn't lost by accident.
+uninstall() {
+    if have systemctl && [ -d /run/systemd/system ]; then
+        for u in "$SERVICE" "$SERVICE-update.timer" "$SERVICE-watchdog.timer" "$SERVICE-hardware.timer"; do
+            systemctl disable --now "$u" >/dev/null 2>&1 || true
+        done
+        rm -f /etc/systemd/system/$SERVICE.service /etc/systemd/system/$SERVICE-update.service \
+            /etc/systemd/system/$SERVICE-update.timer /etc/systemd/system/$SERVICE-watchdog.service \
+            /etc/systemd/system/$SERVICE-watchdog.timer /etc/systemd/system/$SERVICE-hardware.service \
+            /etc/systemd/system/$SERVICE-hardware.timer
+        rm -rf /etc/systemd/system/$SERVICE.service.d
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+    if [ -f /etc/init.d/$SERVICE ]; then
+        rc-service "$SERVICE" stop >/dev/null 2>&1 || /etc/init.d/$SERVICE stop >/dev/null 2>&1 || true
+        rc-update del "$SERVICE" default >/dev/null 2>&1 || true
+        rm -f /etc/init.d/$SERVICE
+    fi
+    case "$os" in
+        freebsd)
+            service "$RC_SERVICE" onestop >/dev/null 2>&1 || true
+            sysrc -q -x ${RC_SERVICE}_enable >/dev/null 2>&1 || true
+            rm -f /usr/local/etc/rc.d/$RC_SERVICE ;;
+        openbsd)
+            rcctl stop "$RC_SERVICE" >/dev/null 2>&1 || true
+            rcctl disable "$RC_SERVICE" >/dev/null 2>&1 || true
+            rm -f /etc/rc.d/$RC_SERVICE ;;
+        netbsd)
+            /etc/rc.d/$RC_SERVICE stop >/dev/null 2>&1 || true
+            sed -i.sentinel "/^${RC_SERVICE}=/d" /etc/rc.conf 2>/dev/null && rm -f /etc/rc.conf.sentinel
+            rm -f /etc/rc.d/$RC_SERVICE ;;
+    esac
+    pkill -u "$SERVICE_USER" -f "$BIN run" 2>/dev/null || true
+    if have crontab; then
+        crontab -l 2>/dev/null | grep -v "# sentinel" | crontab - 2>/dev/null || true
+    fi
+    for d in /etc/sudoers.d /usr/local/etc/sudoers.d /usr/pkg/etc/sudoers.d; do
+        rm -f "$d/sentinel" "$d/sentinel-hardware"
+    done
+    rm -f "$BIN" "$BIN.old" "$BIN.new"
+    rm -rf "$STATE_DIR" /var/cache/sentinel
+    [ "$KEEP_CONFIG" = 1 ] || rm -rf "$CONFIG_DIR"
+    if id "$SERVICE_USER" >/dev/null 2>&1; then
+        case "$os" in
+            freebsd) pw userdel "$SERVICE_USER" >/dev/null 2>&1 || true ;;
+            *) if have userdel; then userdel "$SERVICE_USER" >/dev/null 2>&1 || true
+               elif have deluser; then deluser "$SERVICE_USER" >/dev/null 2>&1 || true; fi ;;
+        esac
+    fi
+    echo "Sentinel agent removed.$([ "$KEEP_CONFIG" = 1 ] && echo " $CONFIG_DIR was kept.")"
+    echo "The server stays listed in Sentinel as not reporting until you remove it there."
+}
+[ "$UNINSTALL" = 1 ] && { uninstall; exit 0; }
 
 fetch_url() {
     if have curl; then

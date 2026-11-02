@@ -747,6 +747,16 @@ func (s *store) markFailed(ctx context.Context, id string, sendErr error, retryI
 	return err
 }
 
+// markUndeliverable stops sending to a contact whose server refused it
+// until someone verifies it again.
+func (s *store) markUndeliverable(ctx context.Context, id, reason string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE notification_channels
+		   SET undeliverable_at = now(), undeliverable_reason = left($2, 300), verified_at = NULL
+		 WHERE id = $1`, id, reason)
+	return err
+}
+
 // deleteChannel removes a contact the provider says no longer exists.
 func (s *store) deleteChannel(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM notification_channels WHERE id = $1 AND type = 'push'`, id)

@@ -82,6 +82,12 @@ func (d *dispatcher) dispatchOnce(ctx context.Context) int {
 			level = slog.LevelInfo // the first retry usually gets it through
 		}
 		d.log.Log(ctx, level, "message not sent", "id", it.ID, "kind", it.Kind, "attempt", it.Attempts+1, "err", sendErr)
+		var bounced *undeliverableError
+		if errors.As(sendErr, &bounced) {
+			if err := d.store.markUndeliverable(ctx, it.Channel.ID, sendErr.Error()); err != nil {
+				d.log.Error("marking contact undeliverable", "channel_id", it.Channel.ID, "err", err)
+			}
+		}
 		var gone *goneError
 		if errors.As(sendErr, &gone) {
 			// The browser dropped this subscription: remove the contact so

@@ -77,6 +77,16 @@ export default function ContactsPage() {
     onSuccess: () => done("Verified."),
     onError: fail,
   });
+  const resend = useMutation({
+    mutationFn: async (id: string) =>
+      unwrap(
+        await api.POST("/v1/channels/{channel_id}/verification", {
+          params: { path: { channel_id: id } },
+        }),
+      ),
+    onSuccess: () => done("A new code is on its way."),
+    onError: fail,
+  });
   const test = useMutation({
     mutationFn: async (id: string) =>
       unwrap(
@@ -181,7 +191,11 @@ export default function ContactsPage() {
                   </td>
                   <td>
                     <div className="flex gap-1">
-                      {c.verified ? (
+                      {c.undeliverable ? (
+                        <span title={c.undeliverable_reason ?? undefined}>
+                          <Badge tone="bad">bounced: verify again</Badge>
+                        </span>
+                      ) : c.verified ? (
                         <Badge tone="ok">verified</Badge>
                       ) : (
                         <Badge tone="warn">unverified</Badge>
@@ -199,6 +213,9 @@ export default function ContactsPage() {
                           onChange={(e) => setCodes({ ...codes, [c.id]: e.target.value })}
                         />
                         <Button onClick={() => verify.mutate(c.id)}>Verify</Button>
+                        <Button variant="ghost" onClick={() => resend.mutate(c.id)}>
+                          Send code
+                        </Button>
                       </span>
                     )}
                     {c.verified && (

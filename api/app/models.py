@@ -125,6 +125,9 @@ class Host(TenantScoped):
 class NotificationChannel(TenantScoped):
     __tablename__ = "notification_channels"
 
+    undeliverable_at: Mapped[datetime | None]
+    undeliverable_reason: Mapped[str | None] = mapped_column(Text)
+
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
     type: Mapped[str] = mapped_column(Text)
     target: Mapped[str] = mapped_column(Text)

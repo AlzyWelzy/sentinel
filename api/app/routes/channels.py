@@ -159,6 +159,8 @@ class ChannelOut(BaseModel):
     source: str
     is_default: bool
     verified: bool
+    undeliverable: bool = False
+    undeliverable_reason: str | None = None
     min_severity: str
     quiet_hours: QuietHours | None = None
     created_at: datetime
@@ -209,6 +211,8 @@ def _out(c: NotificationChannel) -> ChannelOut:
         source=c.source,
         is_default=c.is_default,
         verified=c.verified_at is not None,
+        undeliverable=c.undeliverable_at is not None,
+        undeliverable_reason=c.undeliverable_reason,
         min_severity=c.min_severity,
         quiet_hours=QuietHours(**c.quiet_hours) if c.quiet_hours else None,
         created_at=c.created_at,
@@ -388,6 +392,8 @@ async def verify(channel_id: uuid.UUID, body: VerifyIn, t: Tenant) -> ChannelOut
         channel.verification_attempts += 1
         return JSONResponse(status_code=400, content={"detail": "Wrong code"})
     channel.verified_at = datetime.now(UTC)
+    channel.undeliverable_at = None
+    channel.undeliverable_reason = None
     channel.verification_code_hash = None
     return _out(channel)
 
