@@ -55,7 +55,7 @@ async def test_fleet_views_and_reports(alice: User, bob: User):
             {"t": tid, "h": web},
         )
     await redis.set(f"pg:last_seen:{web}", int(time.time()))
-    _push(tid, web, ["pulsegrid_cpu_usage_percent{} 30", "pulsegrid_uptime_seconds{} 100"])
+    _push(tid, web, ["sentinel_cpu_usage_percent{} 30", "sentinel_uptime_seconds{} 100"])
 
     w = (await alice.request("GET", "/v1/fleet/wall")).json()
     by_name = {x["name"]: x for x in w["tiles"]}

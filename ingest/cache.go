@@ -127,7 +127,7 @@ func (c *cache) takeQuota(ctx context.Context, kind, hostID string, n, perMinute
 	if perMinute <= 0 || n == 0 {
 		return n, nil
 	}
-	key := fmt.Sprintf("pulsegrid:%s:%s:%d", kind, hostID, time.Now().Unix()/60)
+	key := fmt.Sprintf("sentinel:%s:%s:%d", kind, hostID, time.Now().Unix()/60)
 	used, err := c.rdb.IncrBy(ctx, key, int64(n)).Result()
 	if err != nil {
 		return n, err

@@ -41,7 +41,7 @@ func (d *hostsDataSource) Metadata(_ context.Context, req datasource.MetadataReq
 
 func (d *hostsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Servers reporting to Pulsegrid, optionally filtered by tag or hostname.",
+		Description: "Servers reporting to Sentinel, optionally filtered by tag or hostname.",
 		Attributes: map[string]schema.Attribute{
 			"tag":      schema.StringAttribute{Optional: true},
 			"hostname": schema.StringAttribute{Optional: true, Description: "Exact hostname."},

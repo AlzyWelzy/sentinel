@@ -1,4 +1,4 @@
-module github.com/AlzyWelzy/pulsegrid-beyond/terraform-provider-pulsegrid
+module github.com/AlzyWelzy/pulsegrid-beyond/terraform-provider-sentinel
 
 go 1.26.5
 

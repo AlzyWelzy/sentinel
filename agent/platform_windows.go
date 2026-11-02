@@ -21,7 +21,7 @@ func defaultStateDir() string {
 	if base == "" {
 		base = `C:\ProgramData`
 	}
-	return filepath.Join(base, "Pulsegrid")
+	return filepath.Join(base, "Sentinel")
 }
 
 // runAsService runs the agent under the Windows Service Control Manager when
@@ -35,7 +35,7 @@ func runAsService(run func(context.Context)) (bool, error) {
 	return true, svc.Run(serviceName, &service{run: run})
 }
 
-const serviceName = "pulsegrid-agent"
+const serviceName = "sentinel-agent"
 
 func defaultConfigDir() string { return filepath.Join(defaultStateDir(), "conf") }
 

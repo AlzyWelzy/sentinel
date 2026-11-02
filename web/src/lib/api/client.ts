@@ -7,7 +7,7 @@
  * - A 401 triggers one refresh and one retry. Refreshes are serialised across
  *   tabs with the Web Locks API, because the server rotates the refresh token
  *   on every use and treats a reused one as stolen.
- * - The selected organisation goes out as X-Pulsegrid-Account; the server
+ * - The selected organisation goes out as X-Sentinel-Account; the server
  *   checks membership on every request.
  */
 import createClient from "openapi-fetch";
@@ -85,7 +85,7 @@ async function doRefresh(): Promise<Session | null> {
     const r = await fetch(`${API_BASE}/auth/refresh`, {
       method: "POST",
       credentials: "same-origin",
-      headers: { "X-Requested-With": "pulsegrid" },
+      headers: { "X-Requested-With": "sentinel" },
     });
     if (!r.ok) return null;
     return (await r.json()) as Session;
@@ -112,9 +112,9 @@ function withAuth(req: Request): Request {
     org &&
     !impersonationToken &&
     !req.url.includes("/auth/") &&
-    !req.headers.has("X-Pulsegrid-Account")
+    !req.headers.has("X-Sentinel-Account")
   ) {
-    req.headers.set("X-Pulsegrid-Account", org);
+    req.headers.set("X-Sentinel-Account", org);
   }
   return req;
 }
@@ -145,7 +145,7 @@ export async function signOut() {
   await fetch(`${API_BASE}/auth/logout`, {
     method: "POST",
     credentials: "same-origin",
-    headers: { "X-Requested-With": "pulsegrid" },
+    headers: { "X-Requested-With": "sentinel" },
   });
   setImpersonation(null);
   setSession(null);

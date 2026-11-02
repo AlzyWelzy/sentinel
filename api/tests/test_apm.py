@@ -64,7 +64,7 @@ async def send(tenant_id, host_id, service, spans):
                 "resource": {
                     "attributes": [
                         {"key": "service.name", "value": {"stringValue": service}},
-                        {"key": "pulsegrid.host_id", "value": {"stringValue": str(host_id)}},
+                        {"key": "sentinel.host_id", "value": {"stringValue": str(host_id)}},
                     ]
                 },
                 "scopeSpans": [{"spans": spans}],

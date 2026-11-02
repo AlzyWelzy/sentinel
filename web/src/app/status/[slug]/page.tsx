@@ -125,7 +125,7 @@ export default async function StatusPage({ params }: { params: Promise<{ slug: s
         )}
       </section>
       <footer className="mt-12 text-center text-xs text-ink-3">
-        Updated {new Date(page.updated_at).toUTCString()} · Powered by Pulsegrid
+        Updated {new Date(page.updated_at).toUTCString()} · Powered by Sentinel
       </footer>
     </main>
   );

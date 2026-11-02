@@ -81,7 +81,7 @@ func TestTLSExpiry(t *testing.T) {
 	}
 	found := false
 	for _, s := range samples {
-		if s.Name == "pulsegrid_check_tls_expiry_seconds" && s.Value > 0 {
+		if s.Name == "sentinel_check_tls_expiry_seconds" && s.Value > 0 {
 			found = true
 		}
 	}
@@ -202,7 +202,7 @@ func TestFailuresAreHeldUntilDelivered(t *testing.T) {
 	}
 	var up float64 = -1
 	for _, s := range samples {
-		if s.Name == "pulsegrid_check_up" {
+		if s.Name == "sentinel_check_up" {
 			up = s.Value
 		}
 	}

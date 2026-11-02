@@ -49,7 +49,7 @@ type checkJSON struct {
 	ProbeRegions    []string          `json:"probe_regions"`
 	MinFailing      int64             `json:"min_failing"`
 	Enabled         bool              `json:"enabled"`
-	// Terraform manages alert rules itself (pulsegrid_alert_rule, kind = "check").
+	// Terraform manages alert rules itself (sentinel_alert_rule, kind = "check").
 	Alert *bool `json:"alert,omitempty"`
 }
 
@@ -60,8 +60,8 @@ func (r *checkResource) Metadata(_ context.Context, req resource.MetadataRequest
 func (r *checkResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "A check: a port, URL, certificate, DNS record, file or log pattern, run by the agent on " +
-			"your servers, or (on_probes) an uptime check run from Pulsegrid's probe locations. " +
-			"Alert on it with a pulsegrid_alert_rule of kind \"check\" whose target is this check's id.",
+			"your servers, or (on_probes) an uptime check run from Sentinel's probe locations. " +
+			"Alert on it with a sentinel_alert_rule of kind \"check\" whose target is this check's id.",
 		Attributes: map[string]schema.Attribute{
 			"id":   schema.StringAttribute{Computed: true, PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 			"name": schema.StringAttribute{Required: true},

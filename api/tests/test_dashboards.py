@@ -37,8 +37,8 @@ async def test_dashboards_crud_and_isolation(alice: User, bob: User):
 async def test_compare_servers(alice: User, bob: User):
     tid = await alice.tenant_id()
     a, b = await insert_host(tid, "app-a"), await insert_host(tid, "app-b")
-    _push(tid, a, ["pulsegrid_cpu_usage_percent{} 21"])
-    _push(tid, b, ["pulsegrid_cpu_usage_percent{} 64"])
+    _push(tid, a, ["sentinel_cpu_usage_percent{} 21"])
+    _push(tid, b, ["sentinel_cpu_usage_percent{} 64"])
     now = int(time.time())
     r = await alice.request(
         "GET",

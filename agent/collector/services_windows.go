@@ -28,7 +28,7 @@ func serviceSamples(_ context.Context, names []string) []proto.Sample {
 		if !validServiceName(n) {
 			continue
 		}
-		out = append(out, sample("pulsegrid_service_up", boolValue(running(m, n)), "service", n))
+		out = append(out, sample("sentinel_service_up", boolValue(running(m, n)), "service", n))
 	}
 	return out
 }

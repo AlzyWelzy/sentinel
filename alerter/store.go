@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// The alerter connects as pulsegrid_service (BYPASSRLS): it evaluates every
+// The alerter connects as sentinel_service (BYPASSRLS): it evaluates every
 // tenant's rules. Every write takes tenant_id from the rule being evaluated,
 // and every query that touches hosts or channels filters on that tenant, so
 // one tenant's rule can never reach another tenant's hosts or contacts.
@@ -460,7 +460,7 @@ func (s *store) queueRuleAction(ctx context.Context, tx pgx.Tx, r rule, h host, 
 	}
 	if !slices.Contains(h.Allowed, *r.ActionName) {
 		return addEvent(ctx, tx, r.TenantID, incidentID, "action",
-			fmt.Sprintf("Action %s not run: this server doesn't allow it (pulsegrid-agent allow-action %s -- <command>)",
+			fmt.Sprintf("Action %s not run: this server doesn't allow it (sentinel-agent allow-action %s -- <command>)",
 				*r.ActionName, *r.ActionName), "alerter")
 	}
 	if _, err := tx.Exec(ctx, `

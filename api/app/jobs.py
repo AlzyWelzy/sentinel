@@ -31,7 +31,7 @@ from app.services import digest, oncall, rollout
 from app.services.heartbeats import redis
 from app.services.reports import build_summary, previous_month, render_html, render_text
 
-log = logging.getLogger("pulsegrid.jobs")
+log = logging.getLogger("sentinel.jobs")
 
 LOCK_ID = 0x50474A42  # "PGJB"
 ROLLUP_KEY = "pg:rollup:last_hour"
@@ -41,25 +41,25 @@ ROLLUP_BACKFILL_HOURS = 48
 
 # Raw series rolled up. Counters (… _total) keep their last value.
 ROLLUP_GAUGES = [
-    "pulsegrid_cpu_usage_percent",
-    "pulsegrid_cpu_mode_percent",
-    "pulsegrid_memory_used_percent",
-    "pulsegrid_swap_used_percent",
-    "pulsegrid_disk_used_percent",
-    "pulsegrid_disk_inodes_used_percent",
-    "pulsegrid_load",
-    "pulsegrid_processes_total",
-    "pulsegrid_check_up",
-    "pulsegrid_check_latency_seconds",
-    "pulsegrid_uptime_seconds",
+    "sentinel_cpu_usage_percent",
+    "sentinel_cpu_mode_percent",
+    "sentinel_memory_used_percent",
+    "sentinel_swap_used_percent",
+    "sentinel_disk_used_percent",
+    "sentinel_disk_inodes_used_percent",
+    "sentinel_load",
+    "sentinel_processes_total",
+    "sentinel_check_up",
+    "sentinel_check_latency_seconds",
+    "sentinel_uptime_seconds",
 ]
 ROLLUP_COUNTERS = [
-    "pulsegrid_network_bytes_total",
-    "pulsegrid_disk_read_bytes_total",
-    "pulsegrid_disk_written_bytes_total",
-    "pulsegrid_disk_reads_total",
-    "pulsegrid_disk_writes_total",
-    "pulsegrid_disk_io_time_seconds_total",
+    "sentinel_network_bytes_total",
+    "sentinel_disk_read_bytes_total",
+    "sentinel_disk_written_bytes_total",
+    "sentinel_disk_reads_total",
+    "sentinel_disk_writes_total",
+    "sentinel_disk_io_time_seconds_total",
 ]
 
 
@@ -110,7 +110,7 @@ async def send_monthly_reports(now: datetime) -> int:
             summary = await build_summary(db, tenant.id, start, end)
             account = tenant.display_name or tenant.email or "your account"
             payload = {
-                "subject": f"[Pulsegrid] Monitoring report for {start:%B %Y}",
+                "subject": f"[Sentinel] Monitoring report for {start:%B %Y}",
                 "text": render_text(summary, account),
                 "html": render_html(summary, account, settings.PUBLIC_APP_URL),
                 "event": {"type": "report", "month": f"{start:%Y-%m}"},
@@ -247,7 +247,7 @@ async def send_digests(now: datetime) -> int:
             account = tenant.display_name or tenant.email or "your account"
             payload = {
                 "subject": (
-                    f"[Pulsegrid] Your monitoring {'day' if days == 1 else 'week'}: "
+                    f"[Sentinel] Your monitoring {'day' if days == 1 else 'week'}: "
                     f"{d.opened} incident(s), {d.open_count} open"
                 ),
                 "text": digest.render_text(d, account),

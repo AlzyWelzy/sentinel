@@ -21,11 +21,11 @@ def upgrade() -> None:
         "CHECK (source IN ('console', 'user', 'team'))"
     )
     op.execute("ALTER TABLE tenants ADD COLUMN recommended_rules_at timestamptz")
-    op.execute("GRANT UPDATE (recommended_rules_at) ON tenants TO pulsegrid_service")
+    op.execute("GRANT UPDATE (recommended_rules_at) ON tenants TO sentinel_service")
 
 
 def downgrade() -> None:
-    op.execute("REVOKE UPDATE (recommended_rules_at) ON tenants FROM pulsegrid_service")
+    op.execute("REVOKE UPDATE (recommended_rules_at) ON tenants FROM sentinel_service")
     op.execute("ALTER TABLE tenants DROP COLUMN recommended_rules_at")
     op.execute("DELETE FROM notification_channels WHERE source = 'team'")
     op.execute(

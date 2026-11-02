@@ -24,7 +24,7 @@ import (
 func cmdUpdate(args []string) error {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 	stateDir := fs.String("state-dir", defaultStateDir(), "where the agent keeps its state")
-	restart := fs.String("restart", "", "service to restart after updating (e.g. pulsegrid-agent)")
+	restart := fs.String("restart", "", "service to restart after updating (e.g. sentinel-agent)")
 	fs.Parse(args)
 
 	st, err := loadState(*stateDir)
@@ -63,7 +63,7 @@ func cmdUpdate(args []string) error {
 	if err != nil {
 		return err
 	}
-	asset := fmt.Sprintf("pulsegrid-agent-%s-%s%s", runtime.GOOS, runtime.GOARCH, exeSuffix)
+	asset := fmt.Sprintf("sentinel-agent-%s-%s%s", runtime.GOOS, runtime.GOARCH, exeSuffix)
 	base := strings.TrimRight(cfg.DownloadURL, "/") + "/agent/" + cfg.LatestVersion + "/" + asset
 
 	sum, err := fetchChecksum(ctx, c.http, base+".sha256")
@@ -72,7 +72,7 @@ func cmdUpdate(args []string) error {
 	}
 	// Download next to the binary so the final rename stays on one filesystem
 	// and is atomic: the agent is never left with a half-written executable.
-	tmp, err := os.CreateTemp(filepath.Dir(self), ".pulsegrid-agent-update-*"+exeSuffix)
+	tmp, err := os.CreateTemp(filepath.Dir(self), ".sentinel-agent-update-*"+exeSuffix)
 	if err != nil {
 		return err
 	}

@@ -30,7 +30,7 @@ func postJSON(ctx context.Context, client *http.Client, target string, body any)
 		return permanent("invalid URL")
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Pulsegrid/1")
+	req.Header.Set("User-Agent", "Sentinel/1")
 	resp, err := client.Do(req)
 	if err != nil {
 		var perm *permanentError
@@ -103,7 +103,7 @@ func (s *discordSender) send(ctx context.Context, target string, m message) erro
 	if len(content) > 1990 {
 		content = content[:1990]
 	}
-	return postJSON(ctx, s.client, target, map[string]any{"content": content, "username": "Pulsegrid"})
+	return postJSON(ctx, s.client, target, map[string]any{"content": content, "username": "Sentinel"})
 }
 
 // ── Telegram ─────────────────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ func (s *telegramSender) send(ctx context.Context, target string, m message) err
 // ── PagerDuty (Events API v2) ────────────────────────────────────────────────
 
 // pagerDutySender triggers and resolves PagerDuty incidents, one per
-// Pulsegrid incident (dedup_key), so PagerDuty's own escalation and
+// Sentinel incident (dedup_key), so PagerDuty's own escalation and
 // acknowledgement take over. The target is an integration (routing) key.
 type pagerDutySender struct {
 	client *http.Client
@@ -147,14 +147,14 @@ func (s *pagerDutySender) send(ctx context.Context, target string, m message) er
 	dedup, _ := m.Event["incident_id"].(string)
 	if dedup == "" {
 		channel, _ := m.Event["channel_id"].(string)
-		dedup = "pulsegrid-" + kind + "-" + channel
+		dedup = "sentinel-" + kind + "-" + channel
 	}
 	event := func(action string) map[string]any {
 		e := map[string]any{"routing_key": target, "event_action": action, "dedup_key": dedup}
 		if action == "trigger" {
 			source, _ := m.Event["hostname"].(string)
 			if source == "" {
-				source = "pulsegrid"
+				source = "sentinel"
 			}
 			severity := "critical"
 			if kind == "verification" || kind == "test" {
@@ -225,10 +225,10 @@ func (s *voiceSender) send(ctx context.Context, to string, m message) error {
 func voiceTwiML(m message) string {
 	var say string
 	if m.Code != "" {
-		say = "Your Pulsegrid verification code is " + strings.Join(strings.Split(m.Code, ""), ", ") + "."
+		say = "Your Sentinel verification code is " + strings.Join(strings.Split(m.Code, ""), ", ") + "."
 	} else {
-		subject := strings.TrimPrefix(m.Subject, "[Pulsegrid] ")
-		say = "This is a Pulsegrid alert. " + subject + ". Please check your dashboard."
+		subject := strings.TrimPrefix(m.Subject, "[Sentinel] ")
+		say = "This is a Sentinel alert. " + subject + ". Please check your dashboard."
 	}
 	say = html.EscapeString(say)
 	return `<Response><Say voice="alice">` + say + `</Say><Pause length="1"/><Say voice="alice">` + say + `</Say></Response>`

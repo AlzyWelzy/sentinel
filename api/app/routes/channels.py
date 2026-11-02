@@ -247,11 +247,11 @@ async def _send_code(t: TenantContext, channel: NotificationChannel) -> None:
             channel_id=channel.id,
             kind="verification",
             payload={
-                "subject": "[Pulsegrid] Your verification code",
+                "subject": "[Sentinel] Your verification code",
                 # {{code}} is filled in at send time; the dispatcher drops the
                 # code from the stored payload once it's delivered.
                 "text": (
-                    "Your Pulsegrid verification code is {{code}}.\n\n"
+                    "Your Sentinel verification code is {{code}}.\n\n"
                     "Enter it in the dashboard to start receiving alerts here. "
                     "It expires in 30 minutes. If you didn't ask for this, ignore this message."
                 ),
@@ -403,8 +403,8 @@ async def send_test(channel_id: uuid.UUID, t: Tenant) -> None:
             channel_id=channel.id,
             kind="test",
             payload={
-                "subject": "[Pulsegrid] Test notification",
-                "text": "This is a test from Pulsegrid. Alerts for your servers will arrive here.",
+                "subject": "[Sentinel] Test notification",
+                "text": "This is a test from Sentinel. Alerts for your servers will arrive here.",
                 "event": {"type": "test", "channel_id": str(channel.id)},
             },
         )

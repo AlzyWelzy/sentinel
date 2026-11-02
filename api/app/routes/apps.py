@@ -25,82 +25,82 @@ from app.tenancy import Tenant, TenantContext
 router = APIRouter(prefix="/v1/hosts")
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
-CUSTOM_RE = re.compile(r"^pulsegrid_custom_[a-zA-Z0-9_]{1,150}$")
+CUSTOM_RE = re.compile(r"^sentinel_custom_[a-zA-Z0-9_]{1,150}$")
 
 # [title, query (SEL = the host and plugin matcher), unit, legend labels]
 PLUGIN_CHARTS: dict[str, list[tuple[str, str, str, list[str]]]] = {
     "mysql": [
-        ("Queries", "rate(pulsegrid_mysql_queries_total{SEL}[2m])", "ops_per_second", []),
-        ("Connections", "pulsegrid_mysql_connections{SEL}", "count", []),
-        ("Threads running", "pulsegrid_mysql_threads_running{SEL}", "count", []),
+        ("Queries", "rate(sentinel_mysql_queries_total{SEL}[2m])", "ops_per_second", []),
+        ("Connections", "sentinel_mysql_connections{SEL}", "count", []),
+        ("Threads running", "sentinel_mysql_threads_running{SEL}", "count", []),
         (
             "Slow queries",
-            "rate(pulsegrid_mysql_slow_queries_total{SEL}[5m]) * 60",
+            "rate(sentinel_mysql_slow_queries_total{SEL}[5m]) * 60",
             "per_minute",
             [],
         ),
         (
             "InnoDB disk reads",
-            "rate(pulsegrid_mysql_innodb_disk_reads_total{SEL}[2m])",
+            "rate(sentinel_mysql_innodb_disk_reads_total{SEL}[2m])",
             "ops_per_second",
             [],
         ),
-        ("Replication lag", "pulsegrid_mysql_replication_lag_seconds{SEL}", "seconds", []),
+        ("Replication lag", "sentinel_mysql_replication_lag_seconds{SEL}", "seconds", []),
     ],
     "postgres": [
         (
             "Transactions",
-            "sum(rate(pulsegrid_postgres_commits_total{SEL}[2m]) + rate(pulsegrid_postgres_rollbacks_total{SEL}[2m]))",
+            "sum(rate(sentinel_postgres_commits_total{SEL}[2m]) + rate(sentinel_postgres_rollbacks_total{SEL}[2m]))",
             "ops_per_second",
             [],
         ),
-        ("Connections", "pulsegrid_postgres_connections{SEL}", "count", ["state"]),
+        ("Connections", "sentinel_postgres_connections{SEL}", "count", ["state"]),
         (
             "Cache hit ratio",
-            "100 * sum(rate(pulsegrid_postgres_blocks_hit_total{SEL}[5m])) / clamp_min(sum(rate(pulsegrid_postgres_blocks_hit_total{SEL}[5m])) + sum(rate(pulsegrid_postgres_blocks_read_total{SEL}[5m])), 1)",
+            "100 * sum(rate(sentinel_postgres_blocks_hit_total{SEL}[5m])) / clamp_min(sum(rate(sentinel_postgres_blocks_hit_total{SEL}[5m])) + sum(rate(sentinel_postgres_blocks_read_total{SEL}[5m])), 1)",
             "percent",
             [],
         ),
-        ("Database size", "pulsegrid_postgres_database_size_bytes{SEL}", "bytes", ["database"]),
-        ("Deadlocks", "sum(increase(pulsegrid_postgres_deadlocks_total{SEL}[5m]))", "count", []),
+        ("Database size", "sentinel_postgres_database_size_bytes{SEL}", "bytes", ["database"]),
+        ("Deadlocks", "sum(increase(sentinel_postgres_deadlocks_total{SEL}[5m]))", "count", []),
         (
             "Longest transaction",
-            "pulsegrid_postgres_longest_transaction_seconds{SEL}",
+            "sentinel_postgres_longest_transaction_seconds{SEL}",
             "seconds",
             [],
         ),
-        ("Replication lag", "pulsegrid_postgres_replication_lag_seconds{SEL}", "seconds", []),
+        ("Replication lag", "sentinel_postgres_replication_lag_seconds{SEL}", "seconds", []),
     ],
     "redis": [
-        ("Commands", "rate(pulsegrid_redis_commands_total{SEL}[2m])", "ops_per_second", []),
-        ("Clients", "pulsegrid_redis_clients{SEL}", "count", []),
-        ("Memory used", "pulsegrid_redis_memory_used_bytes{SEL}", "bytes", []),
+        ("Commands", "rate(sentinel_redis_commands_total{SEL}[2m])", "ops_per_second", []),
+        ("Clients", "sentinel_redis_clients{SEL}", "count", []),
+        ("Memory used", "sentinel_redis_memory_used_bytes{SEL}", "bytes", []),
         (
             "Hit ratio",
-            "100 * rate(pulsegrid_redis_keyspace_hits_total{SEL}[5m]) / clamp_min(rate(pulsegrid_redis_keyspace_hits_total{SEL}[5m]) + rate(pulsegrid_redis_keyspace_misses_total{SEL}[5m]), 0.0001)",
+            "100 * rate(sentinel_redis_keyspace_hits_total{SEL}[5m]) / clamp_min(rate(sentinel_redis_keyspace_hits_total{SEL}[5m]) + rate(sentinel_redis_keyspace_misses_total{SEL}[5m]), 0.0001)",
             "percent",
             [],
         ),
-        ("Keys", "pulsegrid_redis_keys{SEL}", "count", []),
+        ("Keys", "sentinel_redis_keys{SEL}", "count", []),
         (
             "Evicted keys",
-            "rate(pulsegrid_redis_evicted_keys_total{SEL}[5m]) * 60",
+            "rate(sentinel_redis_evicted_keys_total{SEL}[5m]) * 60",
             "per_minute",
             [],
         ),
     ],
     "nginx": [
-        ("Requests", "rate(pulsegrid_nginx_requests_total{SEL}[2m])", "ops_per_second", []),
-        ("Active connections", "pulsegrid_nginx_connections_active{SEL}", "count", []),
-        ("Connections by state", "pulsegrid_nginx_connections{SEL}", "count", ["state"]),
+        ("Requests", "rate(sentinel_nginx_requests_total{SEL}[2m])", "ops_per_second", []),
+        ("Active connections", "sentinel_nginx_connections_active{SEL}", "count", []),
+        ("Connections by state", "sentinel_nginx_connections{SEL}", "count", ["state"]),
     ],
     "apache": [
-        ("Requests", "rate(pulsegrid_apache_requests_total{SEL}[2m])", "ops_per_second", []),
-        ("Busy workers", "pulsegrid_apache_workers_busy{SEL}", "count", []),
-        ("Idle workers", "pulsegrid_apache_workers_idle{SEL}", "count", []),
+        ("Requests", "rate(sentinel_apache_requests_total{SEL}[2m])", "ops_per_second", []),
+        ("Busy workers", "sentinel_apache_workers_busy{SEL}", "count", []),
+        ("Idle workers", "sentinel_apache_workers_idle{SEL}", "count", []),
         (
             "Traffic",
-            "rate(pulsegrid_apache_sent_kilobytes_total{SEL}[2m]) * 1024",
+            "rate(sentinel_apache_sent_kilobytes_total{SEL}[2m]) * 1024",
             "bytes_per_second",
             [],
         ),
@@ -108,31 +108,31 @@ PLUGIN_CHARTS: dict[str, list[tuple[str, str, str, list[str]]]] = {
     "docker": [
         (
             "Container CPU",
-            "rate(pulsegrid_container_cpu_seconds_total{SEL}[2m]) * 100",
+            "rate(sentinel_container_cpu_seconds_total{SEL}[2m]) * 100",
             "percent",
             ["container"],
         ),
-        ("Container memory", "pulsegrid_container_memory_bytes{SEL}", "bytes", ["container"]),
-        ("Containers by state", "pulsegrid_containers{SEL}", "count", ["state"]),
+        ("Container memory", "sentinel_container_memory_bytes{SEL}", "bytes", ["container"]),
+        ("Containers by state", "sentinel_containers{SEL}", "count", ["state"]),
     ],
     "smart": [
-        ("Disk health (1 = passing)", "pulsegrid_custom_smart_healthy{SEL}", "count", ["device"]),
+        ("Disk health (1 = passing)", "sentinel_custom_smart_healthy{SEL}", "count", ["device"]),
         (
             "Disk temperature (°C)",
-            "pulsegrid_custom_smart_temperature_celsius{SEL}",
+            "sentinel_custom_smart_temperature_celsius{SEL}",
             "count",
             ["device"],
         ),
         (
             "Reallocated sectors",
-            "pulsegrid_custom_smart_reallocated_sectors{SEL}",
+            "sentinel_custom_smart_reallocated_sectors{SEL}",
             "count",
             ["device"],
         ),
-        ("Pending sectors", "pulsegrid_custom_smart_pending_sectors{SEL}", "count", ["device"]),
+        ("Pending sectors", "sentinel_custom_smart_pending_sectors{SEL}", "count", ["device"]),
         (
             "NVMe wear (% used)",
-            "pulsegrid_custom_smart_nvme_percentage_used{SEL}",
+            "sentinel_custom_smart_nvme_percentage_used{SEL}",
             "percent",
             ["device"],
         ),
@@ -140,16 +140,16 @@ PLUGIN_CHARTS: dict[str, list[tuple[str, str, str, list[str]]]] = {
     "ipmi": [
         (
             "Temperatures (°C)",
-            'pulsegrid_custom_ipmi_sensor{SEL,unit="celsius"}',
+            'sentinel_custom_ipmi_sensor{SEL,unit="celsius"}',
             "count",
             ["sensor"],
         ),
-        ("Fans (RPM)", 'pulsegrid_custom_ipmi_sensor{SEL,unit="rpm"}', "count", ["sensor"]),
-        ("Voltages", 'pulsegrid_custom_ipmi_sensor{SEL,unit="volts"}', "count", ["sensor"]),
-        ("Power (W)", 'pulsegrid_custom_ipmi_sensor{SEL,unit="watts"}', "count", ["sensor"]),
+        ("Fans (RPM)", 'sentinel_custom_ipmi_sensor{SEL,unit="rpm"}', "count", ["sensor"]),
+        ("Voltages", 'sentinel_custom_ipmi_sensor{SEL,unit="volts"}', "count", ["sensor"]),
+        ("Power (W)", 'sentinel_custom_ipmi_sensor{SEL,unit="watts"}', "count", ["sensor"]),
         (
             "Sensors not OK",
-            "count(pulsegrid_custom_ipmi_sensor_ok{SEL} == 0) or vector(0)",
+            "count(sentinel_custom_ipmi_sensor_ok{SEL} == 0) or vector(0)",
             "count",
             [],
         ),
@@ -157,18 +157,18 @@ PLUGIN_CHARTS: dict[str, list[tuple[str, str, str, list[str]]]] = {
     "snmp": [
         (
             "Traffic in",
-            "rate(pulsegrid_custom_snmp_if_in_bytes_total{SEL}[2m])",
+            "rate(sentinel_custom_snmp_if_in_bytes_total{SEL}[2m])",
             "bytes_per_second",
             ["interface"],
         ),
         (
             "Traffic out",
-            "rate(pulsegrid_custom_snmp_if_out_bytes_total{SEL}[2m])",
+            "rate(sentinel_custom_snmp_if_out_bytes_total{SEL}[2m])",
             "bytes_per_second",
             ["interface"],
         ),
-        ("Interfaces up", "sum(pulsegrid_custom_snmp_if_up{SEL})", "count", []),
-        ("Uptime", "pulsegrid_custom_snmp_uptime_seconds{SEL} / 86400", "count", []),
+        ("Interfaces up", "sum(sentinel_custom_snmp_if_up{SEL})", "count", []),
+        ("Uptime", "sentinel_custom_snmp_uptime_seconds{SEL} / 86400", "count", []),
     ],
 }
 
@@ -216,7 +216,7 @@ async def plugins(host_id: uuid.UUID, t: Tenant) -> list[PluginOut]:
     host = await _host(t, host_id)
     try:
         up = await query_instant(
-            t.tenant_id, f"last_over_time(pulsegrid_plugin_up{{{_sel(host.id)}}}[5m])"
+            t.tenant_id, f"last_over_time(sentinel_plugin_up{{{_sel(host.id)}}}[5m])"
         )
     except MetricsUnavailable:
         up = []
@@ -274,16 +274,16 @@ async def containers(host_id: uuid.UUID, t: Tenant) -> list[ContainerOut]:
     sel = _sel(host.id)
     try:
         running = await query_instant(
-            t.tenant_id, f"last_over_time(pulsegrid_container_running{{{sel}}}[3m])"
+            t.tenant_id, f"last_over_time(sentinel_container_running{{{sel}}}[3m])"
         )
         cpu = await query_instant(
-            t.tenant_id, f"rate(pulsegrid_container_cpu_seconds_total{{{sel}}}[2m]) * 100"
+            t.tenant_id, f"rate(sentinel_container_cpu_seconds_total{{{sel}}}[2m]) * 100"
         )
         mem = await query_instant(
-            t.tenant_id, f"last_over_time(pulsegrid_container_memory_bytes{{{sel}}}[3m])"
+            t.tenant_id, f"last_over_time(sentinel_container_memory_bytes{{{sel}}}[3m])"
         )
         memp = await query_instant(
-            t.tenant_id, f"last_over_time(pulsegrid_container_memory_percent{{{sel}}}[3m])"
+            t.tenant_id, f"last_over_time(sentinel_container_memory_percent{{{sel}}}[3m])"
         )
     except MetricsUnavailable:
         raise HTTPException(status_code=503, detail="metrics store unavailable") from None
@@ -318,7 +318,7 @@ async def custom_metrics(host_id: uuid.UUID, t: Tenant) -> list[CustomMetricOut]
     try:
         rows = await query_instant(
             t.tenant_id,
-            f'count by (__name__) (last_over_time({{__name__=~"pulsegrid_custom_.+",{_sel(host.id)}}}[10m]))',
+            f'count by (__name__) (last_over_time({{__name__=~"sentinel_custom_.+",{_sel(host.id)}}}[10m]))',
         )
     except MetricsUnavailable:
         raise HTTPException(status_code=503, detail="metrics store unavailable") from None
@@ -346,4 +346,4 @@ async def custom_metric(
         )
     except MetricsUnavailable:
         raise HTTPException(status_code=503, detail="metrics store unavailable") from None
-    return ChartOut(title=name.removeprefix("pulsegrid_custom_"), unit="value", series=series)
+    return ChartOut(title=name.removeprefix("sentinel_custom_"), unit="value", series=series)

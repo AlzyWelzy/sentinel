@@ -11,12 +11,10 @@ class Settings(BaseSettings):
 
     # ── Postgres ─────────────────────────────────────────────────────────────
     # Customer requests run as the app role, so row-level security always applies.
-    DATABASE_APP_URL: str = (
-        "postgresql+asyncpg://pulsegrid_app:pulsegrid_app@localhost:5442/pulsegrid"
-    )
+    DATABASE_APP_URL: str = "postgresql+asyncpg://sentinel_app:sentinel_app@localhost:5442/sentinel"
     # Superadmin routes and the auth service work across tenants: BYPASSRLS service role.
     DATABASE_SERVICE_URL: str = (
-        "postgresql+asyncpg://pulsegrid_service:pulsegrid_service@localhost:5442/pulsegrid"
+        "postgresql+asyncpg://sentinel_service:sentinel_service@localhost:5442/sentinel"
     )
 
     REDIS_URL: str = "redis://localhost:6389/0"
@@ -47,7 +45,7 @@ class Settings(BaseSettings):
     AGENT_VERSION: str = "latest"
     AGENT_CANARY_PERCENT: int = 10
     # The self-updating agent container (deploy/agent-container).
-    AGENT_IMAGE: str = "ghcr.io/alzywelzy/pulsegrid-beyond-agent:latest"
+    AGENT_IMAGE: str = "ghcr.io/alzywelzy/sentinel-agent:latest"
     # Local directory served at /agent/ when present (dev builds of the agent binary).
     AGENT_DIST_DIR: str = "dist"
 

@@ -23,8 +23,8 @@ def _rls(table: str) -> None:
         f"CREATE POLICY tenant_isolation ON {table} "
         f"USING (tenant_id = {CURRENT_TENANT}) WITH CHECK (tenant_id = {CURRENT_TENANT})"
     )
-    op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO pulsegrid_app")
-    op.execute(f"GRANT SELECT ON {table} TO pulsegrid_service")
+    op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO sentinel_app")
+    op.execute(f"GRANT SELECT ON {table} TO sentinel_service")
 
 
 def upgrade() -> None:

@@ -10,7 +10,7 @@ from app.db import ServiceSession
 
 from .conftest import emailed_token
 
-CSRF = {"X-Requested-With": "pulsegrid"}
+CSRF = {"X-Requested-With": "sentinel"}
 PASSWORD = "a long enough password"
 
 

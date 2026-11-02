@@ -25,7 +25,7 @@ const (
 
 var logLevels = map[string]bool{"": true, "error": true, "warning": true, "info": true, "debug": true}
 
-// vlogs stores log lines in VictoriaLogs. Each Pulsegrid tenant writes to
+// vlogs stores log lines in VictoriaLogs. Each Sentinel tenant writes to
 // its own VictoriaLogs account (the AccountID header, tenants.logs_account_id),
 // so a query can only ever see its own account's lines.
 type vlogs struct {

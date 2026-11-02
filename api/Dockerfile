@@ -62,8 +62,8 @@ COPY deploy/caddy /deploy/caddy
 COPY deploy/postgres /deploy/postgres
 COPY deploy/tempo /deploy/tempo
 
-RUN useradd --system pulsegrid
-USER pulsegrid
+RUN useradd --system sentinel
+USER sentinel
 
 EXPOSE 8000
 CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]

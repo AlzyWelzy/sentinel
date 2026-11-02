@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.services import heartbeats
 
-log = logging.getLogger("pulsegrid.rollout")
+log = logging.getLogger("sentinel.rollout")
 
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$")
 # Health gate: judge a candidate once it has had time to reach its servers.

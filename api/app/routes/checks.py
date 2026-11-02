@@ -448,16 +448,16 @@ async def check_metrics(
     legend = ["probe", "host_id"]
     try:
         up = await query_instant(
-            t.tenant_id, f"avg(avg_over_time(pulsegrid_check_up{{{sel}}}[{seconds}s])) * 100"
+            t.tenant_id, f"avg(avg_over_time(sentinel_check_up{{{sel}}}[{seconds}s])) * 100"
         )
         lat = await query_instant(
             t.tenant_id,
-            f"avg(avg_over_time(pulsegrid_check_latency_seconds{{{sel}}}[{seconds}s])) * 1000",
+            f"avg(avg_over_time(sentinel_check_latency_seconds{{{sel}}}[{seconds}s])) * 1000",
         )
         series = {
             "latency": await query_series(
                 t.tenant_id,
-                f"pulsegrid_check_latency_seconds{{{sel}}} * 1000",
+                f"sentinel_check_latency_seconds{{{sel}}} * 1000",
                 end - seconds,
                 end,
                 step,
@@ -465,7 +465,7 @@ async def check_metrics(
             ),
             "up": await query_series(
                 t.tenant_id,
-                f"min_over_time(pulsegrid_check_up{{{sel}}}[{step}s])",
+                f"min_over_time(sentinel_check_up{{{sel}}}[{step}s])",
                 end - seconds,
                 end,
                 step,

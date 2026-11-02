@@ -1,7 +1,7 @@
 name: Release
 
 # Push a tag like v0.2.0 to publish images and agent binaries. Then set
-# PULSEGRID_VERSION / AGENT_VERSION in production.env and redeploy; agents
+# SENTINEL_VERSION / AGENT_VERSION in production.env and redeploy; agents
 # update themselves to AGENT_VERSION within a day.
 on:
   push:
@@ -52,7 +52,7 @@ jobs:
           # The API image carries the agent binaries of agent/VERSION.
           build-args: AGENT_VERSION=${{ steps.tag.outputs.agent }}
           push: true
-          tags: ghcr.io/${{ steps.tag.outputs.owner }}/pulsegrid-beyond-${{ matrix.name }}:${{ steps.tag.outputs.version }}
+          tags: ghcr.io/${{ steps.tag.outputs.owner }}/sentinel-${{ matrix.name }}:${{ steps.tag.outputs.version }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 

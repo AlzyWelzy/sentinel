@@ -344,23 +344,23 @@ def upgrade() -> None:
     # ── Grants ───────────────────────────────────────────────────────────────
     op.execute(
         "GRANT SELECT, INSERT, UPDATE, DELETE ON checks, host_actions, api_tokens, "
-        "status_pages, status_page_items TO pulsegrid_app"
+        "status_pages, status_page_items TO sentinel_app"
     )
-    op.execute("GRANT SELECT, INSERT ON incident_events TO pulsegrid_app")
-    op.execute("GRANT SELECT ON host_inventory TO pulsegrid_app")
-    op.execute("GRANT INSERT ON incidents TO pulsegrid_app")
-    op.execute("GRANT UPDATE (monthly_report) ON tenants TO pulsegrid_app")
+    op.execute("GRANT SELECT, INSERT ON incident_events TO sentinel_app")
+    op.execute("GRANT SELECT ON host_inventory TO sentinel_app")
+    op.execute("GRANT INSERT ON incidents TO sentinel_app")
+    op.execute("GRANT UPDATE (monthly_report) ON tenants TO sentinel_app")
     op.execute(
-        "GRANT SELECT, UPDATE ON checks, status_pages, status_page_items TO pulsegrid_service"
+        "GRANT SELECT, UPDATE ON checks, status_pages, status_page_items TO sentinel_service"
     )
     op.execute(
         "GRANT SELECT, INSERT, UPDATE, DELETE ON incident_events, host_actions, host_inventory "
-        "TO pulsegrid_service"
+        "TO sentinel_service"
     )
-    op.execute("GRANT SELECT, UPDATE ON api_tokens TO pulsegrid_service")
-    op.execute("GRANT UPDATE ON alert_rules TO pulsegrid_service")
+    op.execute("GRANT SELECT, UPDATE ON api_tokens TO sentinel_service")
+    op.execute("GRANT UPDATE ON alert_rules TO sentinel_service")
     # The alerter removes push subscriptions the browser has dropped.
-    op.execute("GRANT DELETE ON notification_channels TO pulsegrid_service")
+    op.execute("GRANT DELETE ON notification_channels TO sentinel_service")
 
 
 def downgrade() -> None:

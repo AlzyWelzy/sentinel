@@ -24,7 +24,7 @@ import { canEdit, useMe } from "@/lib/session";
 
 const TYPES: Record<string, { label: string; placeholder: string }> = {
   email: { label: "Email", placeholder: "oncall@example.com" },
-  webhook: { label: "Webhook", placeholder: "https://example.com/hooks/pulsegrid" },
+  webhook: { label: "Webhook", placeholder: "https://example.com/hooks/sentinel" },
   slack: { label: "Slack", placeholder: "https://hooks.slack.com/services/…" },
   teams: { label: "Microsoft Teams", placeholder: "https://….webhook.office.com/…" },
   discord: { label: "Discord", placeholder: "https://discord.com/api/webhooks/…" },

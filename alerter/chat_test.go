@@ -45,7 +45,7 @@ func (rec *recorder) server(t *testing.T) *httptest.Server {
 }
 
 var alertMsg = message{
-	Subject: "[Pulsegrid] FIRING: CPU on web-1",
+	Subject: "[Sentinel] FIRING: CPU on web-1",
 	Text:    "CPU usage is 97% <script>",
 	Event:   map[string]any{"type": "alert_firing", "incident_id": "inc-1", "hostname": "web-1"},
 }
@@ -59,14 +59,14 @@ func TestSlackTeamsDiscord(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if !strings.Contains(rec.bodies[0]["text"].(string), "*[Pulsegrid] FIRING: CPU on web-1*") {
+	if !strings.Contains(rec.bodies[0]["text"].(string), "*[Sentinel] FIRING: CPU on web-1*") {
 		t.Errorf("slack: %v", rec.bodies[0])
 	}
 	att := rec.bodies[1]["attachments"].([]any)[0].(map[string]any)
 	if att["contentType"] != "application/vnd.microsoft.card.adaptive" {
 		t.Errorf("teams: %v", rec.bodies[1])
 	}
-	if !strings.HasPrefix(rec.bodies[2]["content"].(string), "**[Pulsegrid]") {
+	if !strings.HasPrefix(rec.bodies[2]["content"].(string), "**[Sentinel]") {
 		t.Errorf("discord: %v", rec.bodies[2])
 	}
 }
@@ -120,7 +120,7 @@ func TestPagerDuty(t *testing.T) {
 	for _, b := range rec.bodies {
 		actions = append(actions, b["event_action"].(string)+":"+b["dedup_key"].(string))
 	}
-	want := "trigger:inc-1,resolve:inc-1,trigger:pulsegrid-test-c1,resolve:pulsegrid-test-c1"
+	want := "trigger:inc-1,resolve:inc-1,trigger:sentinel-test-c1,resolve:sentinel-test-c1"
 	if strings.Join(actions, ",") != want {
 		t.Errorf("got %v", actions)
 	}

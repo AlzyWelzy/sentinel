@@ -23,28 +23,28 @@ type metricDef struct {
 }
 
 var alertMetrics = map[string]metricDef{
-	"cpu":         {name: "pulsegrid_cpu_usage_percent", label: "CPU usage", unit: "%"},
-	"memory":      {name: "pulsegrid_memory_used_percent", label: "Memory usage", unit: "%"},
-	"swap":        {name: "pulsegrid_swap_used_percent", label: "Swap usage", unit: "%"},
-	"disk":        {name: "pulsegrid_disk_used_percent", label: "Disk usage", unit: "%"},
-	"load1":       {name: "pulsegrid_load", matcher: `period="1m"`, label: "Load (1m)"},
-	"load5":       {name: "pulsegrid_load", matcher: `period="5m"`, label: "Load (5m)"},
-	"iowait":      {name: "pulsegrid_cpu_mode_percent", matcher: `mode="iowait"`, label: "CPU iowait", unit: "%"},
-	"steal":       {name: "pulsegrid_cpu_mode_percent", matcher: `mode="steal"`, label: "CPU steal", unit: "%"},
-	"inodes":      {name: "pulsegrid_disk_inodes_used_percent", label: "Inode usage", unit: "%"},
-	"disk_busy":   {name: "pulsegrid_disk_io_time_seconds_total", rate: true, scale: 100, label: "Disk busy time", unit: "%"},
-	"network_in":  {name: "pulsegrid_network_bytes_total", matcher: `direction="rx"`, rate: true, scale: 8 / 1e6, fold: "sum", label: "Network in", unit: " Mbit/s"},
-	"network_out": {name: "pulsegrid_network_bytes_total", matcher: `direction="tx"`, rate: true, scale: 8 / 1e6, fold: "sum", label: "Network out", unit: " Mbit/s"},
+	"cpu":         {name: "sentinel_cpu_usage_percent", label: "CPU usage", unit: "%"},
+	"memory":      {name: "sentinel_memory_used_percent", label: "Memory usage", unit: "%"},
+	"swap":        {name: "sentinel_swap_used_percent", label: "Swap usage", unit: "%"},
+	"disk":        {name: "sentinel_disk_used_percent", label: "Disk usage", unit: "%"},
+	"load1":       {name: "sentinel_load", matcher: `period="1m"`, label: "Load (1m)"},
+	"load5":       {name: "sentinel_load", matcher: `period="5m"`, label: "Load (5m)"},
+	"iowait":      {name: "sentinel_cpu_mode_percent", matcher: `mode="iowait"`, label: "CPU iowait", unit: "%"},
+	"steal":       {name: "sentinel_cpu_mode_percent", matcher: `mode="steal"`, label: "CPU steal", unit: "%"},
+	"inodes":      {name: "sentinel_disk_inodes_used_percent", label: "Inode usage", unit: "%"},
+	"disk_busy":   {name: "sentinel_disk_io_time_seconds_total", rate: true, scale: 100, label: "Disk busy time", unit: "%"},
+	"network_in":  {name: "sentinel_network_bytes_total", matcher: `direction="rx"`, rate: true, scale: 8 / 1e6, fold: "sum", label: "Network in", unit: " Mbit/s"},
+	"network_out": {name: "sentinel_network_bytes_total", matcher: `direction="tx"`, rate: true, scale: 8 / 1e6, fold: "sum", label: "Network out", unit: " Mbit/s"},
 }
 
 // Process, service, plugin and container rules read what the agent reports:
 // a count of matching processes, or 1/0. All breach below 1.
 var targetMetrics = map[string]struct{ name, label string }{
-	"process_down":   {"pulsegrid_watched_process_count", "process"},
-	"service_down":   {"pulsegrid_service_up", "service"},
-	"plugin_down":    {"pulsegrid_plugin_up", "plugin"},
-	"container_down": {"pulsegrid_container_running", "container"},
-	"check":          {"pulsegrid_check_up", "check_id"},
+	"process_down":   {"sentinel_watched_process_count", "process"},
+	"service_down":   {"sentinel_service_up", "service"},
+	"plugin_down":    {"sentinel_plugin_up", "plugin"},
+	"container_down": {"sentinel_container_running", "container"},
+	"check":          {"sentinel_check_up", "check_id"},
 }
 
 var customNameRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]{0,150}$`)
@@ -99,7 +99,7 @@ func ruleQuery(r rule) (string, error) {
 				ms = append(ms, k+"="+strconv.Quote(r.Labels[k]))
 			}
 		}
-		name := "pulsegrid_custom_" + strings.TrimPrefix(r.Target, "pulsegrid_custom_")
+		name := "sentinel_custom_" + strings.TrimPrefix(r.Target, "sentinel_custom_")
 		def := metricDef{name: name}
 		sel := name + matchers(ms...)
 		return aggregate(def, r, sel), nil
@@ -144,7 +144,7 @@ func ruleQuery(r rule) (string, error) {
 // probeCheckQuery counts, for an uptime check run by the probes, how many
 // probe locations currently see it failing, and how many report at all.
 func probeCheckQuery(checkID string) (failing, total string) {
-	sel := fmt.Sprintf("last_over_time(pulsegrid_check_up{check_id=%q}[3m])", checkID)
+	sel := fmt.Sprintf("last_over_time(sentinel_check_up{check_id=%q}[3m])", checkID)
 	return fmt.Sprintf("sum(%s < bool 1)", sel), fmt.Sprintf("count(%s)", sel)
 }
 

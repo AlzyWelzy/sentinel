@@ -76,7 +76,7 @@ func TestOversizedBodyIs413(t *testing.T) {
 
 func TestBatchesOutsideTheClockWindowAreDropped(t *testing.T) {
 	now := time.Now()
-	sample := []proto.Sample{{Name: "pulsegrid_cpu_usage_percent", Value: 1}}
+	sample := []proto.Sample{{Name: "sentinel_cpu_usage_percent", Value: 1}}
 	req := proto.MetricsRequest{Batches: []proto.Batch{
 		{TimestampMs: now.UnixMilli(), Samples: sample},
 		{TimestampMs: now.Add(-24 * time.Hour).UnixMilli(), Samples: sample},

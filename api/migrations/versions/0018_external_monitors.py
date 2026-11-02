@@ -39,8 +39,8 @@ def upgrade() -> None:
         "CREATE POLICY tenant_isolation ON external_monitors "
         f"USING (tenant_id = {CURRENT_TENANT}) WITH CHECK (tenant_id = {CURRENT_TENANT})"
     )
-    op.execute("GRANT SELECT ON external_monitors TO pulsegrid_app")
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON external_monitors TO pulsegrid_service")
+    op.execute("GRANT SELECT ON external_monitors TO sentinel_app")
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON external_monitors TO sentinel_service")
     op.execute("ALTER TABLE status_page_items ADD COLUMN external_key text")
     op.execute("ALTER TABLE status_page_items DROP CONSTRAINT status_page_items_check")
     op.execute(

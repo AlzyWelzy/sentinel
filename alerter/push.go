@@ -86,7 +86,7 @@ func (e *httpStatusError) Error() string { return "push service returned " + e.s
 
 func pushContent(m message) pushPayload {
 	p := pushPayload{Title: m.Subject, Body: firstLines(m.Text, 3)}
-	p.Title = strings.TrimPrefix(p.Title, "[Pulsegrid] ")
+	p.Title = strings.TrimPrefix(p.Title, "[Sentinel] ")
 	if m.Event != nil {
 		if v, ok := m.Event["summary"].(string); ok && v != "" {
 			p.Title = v

@@ -89,7 +89,7 @@ func (r *alertRuleResource) Metadata(_ context.Context, req resource.MetadataReq
 
 func (r *alertRuleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "An alert rule: when it fires, Pulsegrid opens an incident and notifies contacts.",
+		Description: "An alert rule: when it fires, Sentinel opens an incident and notifies contacts.",
 		Attributes: map[string]schema.Attribute{
 			"id":   schema.StringAttribute{Computed: true, PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 			"name": schema.StringAttribute{Required: true},

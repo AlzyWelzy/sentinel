@@ -27,10 +27,10 @@ import (
 const (
 	autoconfigRev    = "5"
 	autoconfigMarker = ".autoconfig" // in the config dir: the revision, or "off"
-	autoconfigNote   = "# Written by pulsegrid-agent autoconfig. Delete this line before editing, or updates may refresh the file."
+	autoconfigNote   = "# Written by sentinel-agent autoconfig. Delete this line before editing, or updates may refresh the file."
 )
 
-// cmdAutoconfig: pulsegrid-agent autoconfig [--no-logs] [--off]. Run as root.
+// cmdAutoconfig: sentinel-agent autoconfig [--no-logs] [--off]. Run as root.
 // Finds what runs on this server (journal and log files, Redis, nginx,
 // Apache, Docker, PostgreSQL, MySQL/MariaDB, SMART/IPMI) and writes the
 // config for each. Files that already exist are left alone.
@@ -47,7 +47,7 @@ func cmdAutoconfig(args []string) error {
 		return nil
 	}
 	if os.Geteuid() != 0 {
-		return errors.New("run as root: sudo pulsegrid-agent autoconfig")
+		return errors.New("run as root: sudo sentinel-agent autoconfig")
 	}
 	marker := filepath.Join(*configDir, autoconfigMarker)
 	if *off {
@@ -193,7 +193,7 @@ func autoconfigure(dir, svcUser string, noLogs bool) bool {
 	// A BMC device that returns no sensor readings would alert forever; drop
 	// the IPMI plugin we wrote there.
 	ipmi := filepath.Join(pdir, "ipmi.conf")
-	if b, err := os.ReadFile(ipmi); err == nil && strings.Contains(string(b), "Written by pulsegrid-agent enable-hardware") {
+	if b, err := os.ReadFile(ipmi); err == nil && strings.Contains(string(b), "Written by sentinel-agent enable-hardware") {
 		if err := probePlugin(ipmi); err != nil && strings.Contains(err.Error(), "no sensor readings") {
 			os.Remove(ipmi)
 			note(true, "IPMI off: the BMC returns no sensor readings")
@@ -223,7 +223,7 @@ func logsConf() string {
 func refreshLogsConf(path string) bool {
 	b, err := os.ReadFile(path)
 	ours := strings.HasPrefix(string(b), autoconfigNote+"\n") ||
-		strings.HasPrefix(string(b), "# Written by pulsegrid-agent autoconfig. Edit freely; it is never overwritten.\n") // rev 1
+		strings.HasPrefix(string(b), "# Written by sentinel-agent autoconfig. Edit freely; it is never overwritten.\n") // rev 1
 	if err != nil || !ours {
 		return false
 	}
@@ -247,11 +247,11 @@ func nginxStatus() string {
 			return u
 		}
 	}
-	conf := "/etc/nginx/conf.d/pulsegrid-status.conf"
+	conf := "/etc/nginx/conf.d/sentinel-status.conf"
 	if !exists("/etc/nginx/conf.d") || exists(conf) {
 		return ""
 	}
-	body := autoconfigNote + "\n# Local-only status page for the Pulsegrid agent.\n" +
+	body := autoconfigNote + "\n# Local-only status page for the Sentinel agent.\n" +
 		"server {\n    listen 127.0.0.1:8899;\n    access_log off;\n    location = /stub_status { stub_status; }\n}\n"
 	if os.WriteFile(conf, []byte(body), 0o644) != nil {
 		return ""
@@ -297,7 +297,7 @@ GRANT pg_monitor TO "%[1]s";
 	return fmt.Sprintf("host=%s user=%s dbname=postgres", sock, svcUser)
 }
 
-// setupMySQL creates a 'pulsegrid'@'localhost' user with a random password
+// setupMySQL creates a 'sentinel'@'localhost' user with a random password
 // (stored 0640 for the agent's group), using root's local socket login.
 func setupMySQL(svcUser string) string {
 	client, ok := findTool("mysql")
@@ -313,9 +313,9 @@ func setupMySQL(svcUser string) string {
 	buf := make([]byte, 16)
 	rand.Read(buf)
 	pw := hex.EncodeToString(buf)
-	sql := fmt.Sprintf(`CREATE USER IF NOT EXISTS 'pulsegrid'@'localhost' IDENTIFIED BY '%[1]s';
-ALTER USER 'pulsegrid'@'localhost' IDENTIFIED BY '%[1]s';
-GRANT PROCESS, REPLICATION CLIENT ON *.* TO 'pulsegrid'@'localhost';
+	sql := fmt.Sprintf(`CREATE USER IF NOT EXISTS 'sentinel'@'localhost' IDENTIFIED BY '%[1]s';
+ALTER USER 'sentinel'@'localhost' IDENTIFIED BY '%[1]s';
+GRANT PROCESS, REPLICATION CLIENT ON *.* TO 'sentinel'@'localhost';
 `, pw)
 	// root over the socket, else Debian's maintenance login.
 	logins := [][]string{{"-u", "root", "--protocol=socket", "-S", sock}}
@@ -338,7 +338,7 @@ GRANT PROCESS, REPLICATION CLIENT ON *.* TO 'pulsegrid'@'localhost';
 		fmt.Printf("autoconfig: MySQL found but neither root nor debian.cnf could log in: %s\n", strings.TrimSpace(string(last)))
 		return ""
 	}
-	return fmt.Sprintf("pulsegrid:%s@unix(%s)/", pw, sock)
+	return fmt.Sprintf("sentinel:%s@unix(%s)/", pw, sock)
 }
 
 func probePlugin(path string) error {
@@ -470,11 +470,11 @@ func apacheStatus() bool {
 			}
 		}
 	case exists("/etc/httpd/conf.d"):
-		conf := "/etc/httpd/conf.d/pulsegrid-status.conf"
+		conf := "/etc/httpd/conf.d/sentinel-status.conf"
 		if exists(conf) {
 			return false
 		}
-		body := autoconfigNote + "\n# Local-only status page for the Pulsegrid agent.\n<Location \"/server-status\">\n    SetHandler server-status\n    Require local\n</Location>\n"
+		body := autoconfigNote + "\n# Local-only status page for the Sentinel agent.\n<Location \"/server-status\">\n    SetHandler server-status\n    Require local\n</Location>\n"
 		if os.WriteFile(conf, []byte(body), 0o644) != nil {
 			return false
 		}

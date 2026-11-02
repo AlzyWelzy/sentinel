@@ -17,9 +17,9 @@ import (
 
 // hostAttr is set by ingest on every trace from the host token; whatever an
 // application put there is replaced.
-const hostAttr = "pulsegrid.host_id"
+const hostAttr = "sentinel.host_id"
 
-// tempo stores traces, one Tempo tenant (X-Scope-OrgID) per Pulsegrid tenant.
+// tempo stores traces, one Tempo tenant (X-Scope-OrgID) per Sentinel tenant.
 type tempo struct {
 	baseURL string
 	client  *http.Client
@@ -40,7 +40,7 @@ func decodeTraces(contentType string, body []byte) (*collectortrace.ExportTraceS
 	return req, nil
 }
 
-// stampHost sets pulsegrid.host_id on every resource and counts spans.
+// stampHost sets sentinel.host_id on every resource and counts spans.
 func stampHost(req *collectortrace.ExportTraceServiceRequest, hostID string) int {
 	spans := 0
 	for _, rs := range req.ResourceSpans {

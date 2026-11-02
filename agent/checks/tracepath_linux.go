@@ -47,7 +47,7 @@ func tracePath(ctx context.Context, ip netip.Addr, max int) ([]proto.Hop, string
 			sa = &unix.SockaddrInet4{Port: port, Addr: ip.As4()}
 		}
 		start := time.Now()
-		if err := unix.Sendto(fd, []byte("pulsegrid"), 0, sa); err != nil {
+		if err := unix.Sendto(fd, []byte("sentinel"), 0, sa); err != nil {
 			// Some kernels report the previous hop's error on send: read it.
 			_ = err
 		}

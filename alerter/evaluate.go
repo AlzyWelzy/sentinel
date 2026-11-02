@@ -398,7 +398,7 @@ func (e *evaluator) mountDetail(ctx context.Context, r rule, h host) string {
 	}
 	free := map[string]float64{}
 	if r.Metric == "disk" {
-		free, _ = e.queryVectorBy(ctx, r.TenantID, fmt.Sprintf("max by (mountpoint) (last_over_time(pulsegrid_disk_free_bytes{host_id=%q}[5m]))", h.ID), "mountpoint")
+		free, _ = e.queryVectorBy(ctx, r.TenantID, fmt.Sprintf("max by (mountpoint) (last_over_time(sentinel_disk_free_bytes{host_id=%q}[5m]))", h.ID), "mountpoint")
 	}
 	hit := func(m string) bool { return breached(r.Operator, used[m], r.Threshold) }
 	if r.Kind == "forecast" {
@@ -550,7 +550,7 @@ func (e *evaluator) message(r rule, h host, o observation, kind, incidentID stri
 	text += fmt.Sprintf("Time: %s\n", time.Now().UTC().Format(time.RFC1123))
 	text += e.links(incidentID, !resolved)
 	return message{
-		Subject: fmt.Sprintf("[Pulsegrid] %s: %s", state, subject),
+		Subject: fmt.Sprintf("[Sentinel] %s: %s", state, subject),
 		Text:    text,
 		Event: map[string]any{
 			"type":        kind,
@@ -723,7 +723,7 @@ func (e *evaluator) escalationMessage(esc escalation, now time.Time) message {
 		esc.Summary, open, esc.Hostname, esc.RuleName, esc.OpenedAt.UTC().Format(time.RFC1123), esc.Level+1, esc.Steps)
 	text += e.links(esc.IncidentID, true)
 	return message{
-		Subject: fmt.Sprintf("[Pulsegrid] ESCALATED: %s (unacknowledged %s)", esc.Summary, open),
+		Subject: fmt.Sprintf("[Sentinel] ESCALATED: %s (unacknowledged %s)", esc.Summary, open),
 		Text:    text,
 		Event: map[string]any{
 			"type":        "alert_escalation",
@@ -747,7 +747,7 @@ func (e *evaluator) pluginDetail(ctx context.Context, r rule, h host, act action
 	if act != actionOpen {
 		return "", ""
 	}
-	q := fmt.Sprintf("last_over_time(pulsegrid_plugin_up%s[3m]) == 0",
+	q := fmt.Sprintf("last_over_time(sentinel_plugin_up%s[3m]) == 0",
 		matchers(fmt.Sprintf("host_id=%q", h.ID), map[bool]string{true: "", false: "plugin=" + strconv.Quote(r.Target)}[r.Target == ""]))
 	down, _ := e.queryLabel(ctx, r.TenantID, q, "plugin")
 	invNames, invDetail := e.store.failingPlugins(ctx, h.ID, r.Target)

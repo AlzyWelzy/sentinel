@@ -19,18 +19,18 @@ STEP = 60
 
 # metric: (series name, fixed matcher, is counter, scale, fold)
 METRICS: dict[str, tuple[str, str, bool, float, str]] = {
-    "cpu": ("pulsegrid_cpu_usage_percent", "", False, 1, "max"),
-    "memory": ("pulsegrid_memory_used_percent", "", False, 1, "max"),
-    "swap": ("pulsegrid_swap_used_percent", "", False, 1, "max"),
-    "disk": ("pulsegrid_disk_used_percent", "", False, 1, "max"),
-    "load1": ("pulsegrid_load", 'period="1m"', False, 1, "max"),
-    "load5": ("pulsegrid_load", 'period="5m"', False, 1, "max"),
-    "iowait": ("pulsegrid_cpu_mode_percent", 'mode="iowait"', False, 1, "max"),
-    "steal": ("pulsegrid_cpu_mode_percent", 'mode="steal"', False, 1, "max"),
-    "inodes": ("pulsegrid_disk_inodes_used_percent", "", False, 1, "max"),
-    "disk_busy": ("pulsegrid_disk_io_time_seconds_total", "", True, 100, "max"),
-    "network_in": ("pulsegrid_network_bytes_total", 'direction="rx"', True, 8 / 1e6, "sum"),
-    "network_out": ("pulsegrid_network_bytes_total", 'direction="tx"', True, 8 / 1e6, "sum"),
+    "cpu": ("sentinel_cpu_usage_percent", "", False, 1, "max"),
+    "memory": ("sentinel_memory_used_percent", "", False, 1, "max"),
+    "swap": ("sentinel_swap_used_percent", "", False, 1, "max"),
+    "disk": ("sentinel_disk_used_percent", "", False, 1, "max"),
+    "load1": ("sentinel_load", 'period="1m"', False, 1, "max"),
+    "load5": ("sentinel_load", 'period="5m"', False, 1, "max"),
+    "iowait": ("sentinel_cpu_mode_percent", 'mode="iowait"', False, 1, "max"),
+    "steal": ("sentinel_cpu_mode_percent", 'mode="steal"', False, 1, "max"),
+    "inodes": ("sentinel_disk_inodes_used_percent", "", False, 1, "max"),
+    "disk_busy": ("sentinel_disk_io_time_seconds_total", "", True, 100, "max"),
+    "network_in": ("sentinel_network_bytes_total", 'direction="rx"', True, 8 / 1e6, "sum"),
+    "network_out": ("sentinel_network_bytes_total", 'direction="tx"', True, 8 / 1e6, "sum"),
 }
 
 
@@ -75,7 +75,7 @@ def build_query(
         if fixed:
             ms.insert(0, fixed)
     else:  # custom: names and label keys were validated by RuleIn
-        name, rate, scale, fold = "pulsegrid_custom_" + (target or ""), False, 1, "max"
+        name, rate, scale, fold = "sentinel_custom_" + (target or ""), False, 1, "max"
         ms += [f'{k}="{v}"' for k, v in sorted(labels.items()) if k != "tenant_id"]
     sel = name + "{" + ",".join(ms) + "}"
     window = f"{max(window_seconds, 60)}s"

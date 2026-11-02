@@ -6,7 +6,7 @@ import { Providers } from "@/lib/session";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "Pulsegrid", template: "%s · Pulsegrid" },
+  title: { default: "Sentinel", template: "%s · Sentinel" },
   description: "Server and uptime monitoring.",
 };
 

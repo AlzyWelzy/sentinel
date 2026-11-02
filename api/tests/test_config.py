@@ -10,7 +10,7 @@ PROD = {
     "AUTH_SECRET": "s" * 48,
     "COOKIE_SECURE": "true",
     "TURNSTILE_SECRET_KEY": "turnstile-secret",
-    "PUBLIC_APP_URL": "https://pulsegrid.example.com",
+    "PUBLIC_APP_URL": "https://sentinel.example.com",
 }
 
 
@@ -38,7 +38,7 @@ def test_a_private_install_may_turn_the_captcha_off(prod_env):
         ("AUTH_SECRET", "short"),
         ("COOKIE_SECURE", "false"),
         ("TURNSTILE_SECRET_KEY", ""),
-        ("PUBLIC_APP_URL", "http://pulsegrid.example.com"),
+        ("PUBLIC_APP_URL", "http://sentinel.example.com"),
     ],
 )
 def test_production_refuses_unsafe_config(prod_env, key, value):

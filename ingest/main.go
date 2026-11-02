@@ -37,7 +37,7 @@ type config struct {
 func loadConfig() config {
 	return config{
 		ListenAddr:        env("LISTEN_ADDR", ":8080"),
-		DatabaseURL:       env("DATABASE_URL", "postgres://pulsegrid_service:pulsegrid_service@localhost:5432/pulsegrid"),
+		DatabaseURL:       env("DATABASE_URL", "postgres://sentinel_service:sentinel_service@localhost:5432/sentinel"),
 		RedisURL:          env("REDIS_URL", "redis://localhost:6379/0"),
 		VictoriaMetrics:   env("VICTORIAMETRICS_URL", "http://localhost:8428"),
 		PublicIngestURL:   env("PUBLIC_INGEST_URL", "http://localhost:8080"),

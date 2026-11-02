@@ -79,19 +79,19 @@ async def servers_overview(t: Tenant) -> FleetOverview:
     available = True
     try:
         cpu = await _latest(
-            t.tenant_id, "max by (host_id) (last_over_time(pulsegrid_cpu_usage_percent[3m]))"
+            t.tenant_id, "max by (host_id) (last_over_time(sentinel_cpu_usage_percent[3m]))"
         )
         mem = await _latest(
-            t.tenant_id, "max by (host_id) (last_over_time(pulsegrid_memory_used_percent[3m]))"
+            t.tenant_id, "max by (host_id) (last_over_time(sentinel_memory_used_percent[3m]))"
         )
         disk = await _latest(
-            t.tenant_id, "max by (host_id) (last_over_time(pulsegrid_disk_used_percent[5m]))"
+            t.tenant_id, "max by (host_id) (last_over_time(sentinel_disk_used_percent[5m]))"
         )
         load = await _latest(
-            t.tenant_id, 'max by (host_id) (last_over_time(pulsegrid_load{period="1m"}[3m]))'
+            t.tenant_id, 'max by (host_id) (last_over_time(sentinel_load{period="1m"}[3m]))'
         )
         uptime = await _latest(
-            t.tenant_id, "max by (host_id) (last_over_time(pulsegrid_uptime_seconds[3m]))"
+            t.tenant_id, "max by (host_id) (last_over_time(sentinel_uptime_seconds[3m]))"
         )
     except MetricsUnavailable:
         cpu = mem = disk = load = uptime = {}
@@ -175,15 +175,15 @@ async def disks_for(tenant_id: uuid.UUID, host_id: uuid.UUID) -> list[DiskOut]:
         }
 
     try:
-        used_pct = await by_mount(f"last_over_time(pulsegrid_disk_used_percent{{{sel}}}[10m])")
-        free = await by_mount(f"last_over_time(pulsegrid_disk_free_bytes{{{sel}}}[10m])")
-        total = await by_mount(f"last_over_time(pulsegrid_disk_total_bytes{{{sel}}}[10m])")
-        used = await by_mount(f"last_over_time(pulsegrid_disk_used_bytes{{{sel}}}[10m])")
-        inodes = await by_mount(f"last_over_time(pulsegrid_disk_inodes_used_percent{{{sel}}}[10m])")
+        used_pct = await by_mount(f"last_over_time(sentinel_disk_used_percent{{{sel}}}[10m])")
+        free = await by_mount(f"last_over_time(sentinel_disk_free_bytes{{{sel}}}[10m])")
+        total = await by_mount(f"last_over_time(sentinel_disk_total_bytes{{{sel}}}[10m])")
+        used = await by_mount(f"last_over_time(sentinel_disk_used_bytes{{{sel}}}[10m])")
+        inodes = await by_mount(f"last_over_time(sentinel_disk_inodes_used_percent{{{sel}}}[10m])")
         predicted = await by_mount(
-            f"predict_linear(pulsegrid_disk_used_percent{{{sel}}}[24h], 7 * 86400)"
+            f"predict_linear(sentinel_disk_used_percent{{{sel}}}[24h], 7 * 86400)"
         )
-        slope = await by_mount(f"deriv(pulsegrid_disk_used_percent{{{sel}}}[24h])")
+        slope = await by_mount(f"deriv(sentinel_disk_used_percent{{{sel}}}[24h])")
     except MetricsUnavailable:
         raise HTTPException(status_code=503, detail="Metrics are unavailable right now") from None
     out = []
@@ -330,13 +330,13 @@ async def summary_for(db, tenant_id: uuid.UUID, host: Host, range_seconds: int) 
         observed = min(range_seconds, max(now - int(host.created_at.timestamp()), 0))
         if observed >= PUSH_SECONDS:
             pushes = await one(
-                f"count_over_time(pulsegrid_uptime_seconds{{{sel}}}[{range_seconds}s])"
+                f"count_over_time(sentinel_uptime_seconds{{{sel}}}[{range_seconds}s])"
             )
             availability = round(min((pushes or 0) / (observed / PUSH_SECONDS) * 100, 100.0), 2)
-        uptime = await one(f"last_over_time(pulsegrid_uptime_seconds{{{sel}}}[10m])")
-        processes = await one(f"last_over_time(pulsegrid_processes_total{{{sel}}}[10m])")
-        sessions = await one(f"last_over_time(pulsegrid_users_logged_in{{{sel}}}[10m])")
-        open_files = await one(f"last_over_time(pulsegrid_open_files{{{sel}}}[10m])")
+        uptime = await one(f"last_over_time(sentinel_uptime_seconds{{{sel}}}[10m])")
+        processes = await one(f"last_over_time(sentinel_processes_total{{{sel}}}[10m])")
+        sessions = await one(f"last_over_time(sentinel_users_logged_in{{{sel}}}[10m])")
+        open_files = await one(f"last_over_time(sentinel_open_files{{{sel}}}[10m])")
     except MetricsUnavailable:
         pass
     inv = await db.scalar(select(HostInventory).where(HostInventory.host_id == host.id))
@@ -405,12 +405,12 @@ async def forecast_for(tenant_id: uuid.UUID, host_id: uuid.UUID, days: int) -> F
     start = now - 14 * 86400
     sel = f'host_id="{host_id}"'
     wanted = [
-        ("cpu", "CPU", f"avg_over_time(pulsegrid_cpu_usage_percent{{{sel}}}[1h])", []),
-        ("memory", "Memory", f"avg_over_time(pulsegrid_memory_used_percent{{{sel}}}[1h])", []),
+        ("cpu", "CPU", f"avg_over_time(sentinel_cpu_usage_percent{{{sel}}}[1h])", []),
+        ("memory", "Memory", f"avg_over_time(sentinel_memory_used_percent{{{sel}}}[1h])", []),
         (
             "disk",
             "Disk",
-            f"avg_over_time(pulsegrid_disk_used_percent{{{sel}}}[1h])",
+            f"avg_over_time(sentinel_disk_used_percent{{{sel}}}[1h])",
             ["mountpoint"],
         ),
     ]

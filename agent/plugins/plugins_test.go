@@ -20,7 +20,7 @@ func TestParseNginx(t *testing.T) {
 	for _, x := range s {
 		got[x.Name+x.Labels["state"]] = x.Value
 	}
-	if got["pulsegrid_nginx_requests_total"] != 42 || got["pulsegrid_nginx_connections_active"] != 3 || got["pulsegrid_nginx_connectionswaiting"] != 2 {
+	if got["sentinel_nginx_requests_total"] != 42 || got["sentinel_nginx_connections_active"] != 3 || got["sentinel_nginx_connectionswaiting"] != 2 {
 		t.Fatalf("%v", got)
 	}
 }
@@ -38,7 +38,7 @@ func TestParseRedisInfo(t *testing.T) {
 	for _, x := range s {
 		got[x.Name] = x.Value
 	}
-	if got["pulsegrid_redis_clients"] != 5 || got["pulsegrid_redis_keys"] != 15 || got["pulsegrid_redis_is_master"] != 1 {
+	if got["sentinel_redis_clients"] != 5 || got["sentinel_redis_keys"] != 15 || got["sentinel_redis_is_master"] != 1 {
 		t.Fatalf("%v", got)
 	}
 }
@@ -58,7 +58,7 @@ bad line here
 	if len(s) != 3 {
 		t.Fatalf("got %d samples: %+v", len(s), s)
 	}
-	if s[0].Name != "pulsegrid_custom_http_requests_total" || s[0].Labels["method"] != "get" || s[0].Labels["tenant_id"] != "" {
+	if s[0].Name != "sentinel_custom_http_requests_total" || s[0].Labels["method"] != "get" || s[0].Labels["tenant_id"] != "" {
 		t.Fatalf("%+v", s[0])
 	}
 	if s[2].Labels["a"] != `x"y` {
@@ -90,7 +90,7 @@ func TestLoadAndScript(t *testing.T) {
 	}
 	var found bool
 	for _, s := range res[0].Samples {
-		if s.Name == "pulsegrid_custom_jobs_waiting" && s.Value == 4 && s.Labels["plugin"] == "jobs" && s.Labels["queue"] == "mail" {
+		if s.Name == "sentinel_custom_jobs_waiting" && s.Value == 4 && s.Labels["plugin"] == "jobs" && s.Labels["queue"] == "mail" {
 			found = true
 		}
 	}
@@ -105,7 +105,7 @@ func TestRedisDown(t *testing.T) {
 		t.Fatalf("%+v", res[0].Status)
 	}
 	last := res[0].Samples[len(res[0].Samples)-1]
-	if last.Name != "pulsegrid_plugin_up" || last.Value != 0 {
+	if last.Name != "sentinel_plugin_up" || last.Value != 0 {
 		t.Fatalf("%+v", last)
 	}
 }

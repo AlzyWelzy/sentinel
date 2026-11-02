@@ -17,7 +17,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         expected = "sha256=" + hmac.new(SECRET, body, hashlib.sha256).hexdigest()
-        ok = hmac.compare_digest(expected, self.headers.get("X-Pulsegrid-Signature", ""))
+        ok = hmac.compare_digest(expected, self.headers.get("X-Sentinel-Signature", ""))
         with open(OUT, "a") as f:
             f.write(json.dumps({"signature_valid": ok, "body": json.loads(body)}) + "\n")
         self.send_response(200 if ok else 401)

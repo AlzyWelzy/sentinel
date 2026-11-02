@@ -14,8 +14,8 @@ func TestReadEventLogWindows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	marker := fmt.Sprintf("pulsegrid test %d", time.Now().UnixNano())
-	if out, err := exec.Command("eventcreate", "/T", "WARNING", "/ID", "999", "/L", "APPLICATION", "/SO", "PulsegridTest", "/D", marker).CombinedOutput(); err != nil {
+	marker := fmt.Sprintf("sentinel test %d", time.Now().UnixNano())
+	if out, err := exec.Command("eventcreate", "/T", "WARNING", "/ID", "999", "/L", "APPLICATION", "/SO", "SentinelTest", "/D", marker).CombinedOutput(); err != nil {
 		t.Skipf("eventcreate (needs admin): %v %s", err, out)
 	}
 	var found bool
@@ -28,7 +28,7 @@ func TestReadEventLogWindows(t *testing.T) {
 		for _, e := range entries {
 			if strings.Contains(e.Line, marker) {
 				found = true
-				if e.Source != "eventlog/Application/PulsegridTest" || e.Level != "warning" {
+				if e.Source != "eventlog/Application/SentinelTest" || e.Level != "warning" {
 					t.Fatalf("entry %+v", e)
 				}
 			}

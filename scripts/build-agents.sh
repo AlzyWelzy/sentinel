@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds the agent for every released platform, with a .sha256 next to each
-# binary (install.sh, install.ps1 and `pulsegrid-agent update` verify them).
+# binary (install.sh, install.ps1 and `sentinel-agent update` verify them).
 # Used by `make agent`, the API image build and the release workflow.
 #
 #   scripts/build-agents.sh <version> <output dir>
@@ -18,7 +18,7 @@ for target in $TARGETS; do
     arch=${target#*/}
     ext=""
     [ "$os" = windows ] && ext=.exe
-    name="pulsegrid-agent-$os-$arch$ext"
+    name="sentinel-agent-$os-$arch$ext"
     echo "building $name"
     CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
         -ldflags="-s -w -X main.version=$VERSION" -o "$OUT/$name" ./agent

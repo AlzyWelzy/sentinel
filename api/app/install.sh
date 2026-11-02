@@ -1,9 +1,9 @@
 #!/bin/sh
-# Pulsegrid agent installer for Linux, FreeBSD, OpenBSD and NetBSD.
+# Sentinel agent installer for Linux, FreeBSD, OpenBSD and NetBSD.
 #   curl -fsSL __DOWNLOAD_URL__/install.sh | sudo sh -s -- --key <install key> [--tags web,production]
 #   (FreeBSD without curl: fetch -qo - ... | sh -s -- ...; OpenBSD: ftp -o - ... | doas sh -s -- ...)
 #
-# Served by the Pulsegrid API with the URLs below filled in from its config.
+# Served by the Sentinel API with the URLs below filled in from its config.
 # Windows uses install.ps1 instead.
 set -eu
 # Non-interactive root shells (ssh, some sudo setups, NetBSD) often leave the
@@ -15,14 +15,14 @@ DOWNLOAD_URL="__DOWNLOAD_URL__"
 INGEST_URL="__INGEST_URL__"
 VERSION="__AGENT_VERSION__"
 
-BIN=/usr/local/bin/pulsegrid-agent
-STATE_DIR=/var/lib/pulsegrid
+BIN=/usr/local/bin/sentinel-agent
+STATE_DIR=/var/lib/sentinel
 # Plugin and action files: written by root only, read by the agent.
-CONFIG_DIR=/etc/pulsegrid
-SERVICE=pulsegrid-agent
-RC_SERVICE=pulsegrid_agent # rc.subr names can't contain dashes
+CONFIG_DIR=/etc/sentinel
+SERVICE=sentinel-agent
+RC_SERVICE=sentinel_agent # rc.subr names can't contain dashes
 
-die() { echo "pulsegrid: $*" >&2; exit 1; }
+die() { echo "sentinel: $*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 KEY=""
@@ -54,8 +54,8 @@ case "$(uname -m)" in
     *) die "unsupported CPU architecture: $(uname -m)" ;;
 esac
 # OpenBSD convention: daemon accounts start with an underscore.
-SERVICE_USER=pulsegrid
-[ "$os" = openbsd ] && SERVICE_USER=_pulsegrid
+SERVICE_USER=sentinel
+[ "$os" = openbsd ] && SERVICE_USER=_sentinel
 
 fetch_url() {
     if have curl; then
@@ -84,9 +84,9 @@ sha256_of() {
 create_user() {
     id "$SERVICE_USER" >/dev/null 2>&1 && return 0
     case "$os" in
-        freebsd) pw useradd "$SERVICE_USER" -d /nonexistent -s /usr/sbin/nologin -c "Pulsegrid agent" ;;
-        openbsd) useradd -d /var/empty -s /sbin/nologin -c "Pulsegrid agent" "$SERVICE_USER" ;;
-        netbsd) useradd -d /nonexistent -s /sbin/nologin -c "Pulsegrid agent" "$SERVICE_USER" ;;
+        freebsd) pw useradd "$SERVICE_USER" -d /nonexistent -s /usr/sbin/nologin -c "Sentinel agent" ;;
+        openbsd) useradd -d /var/empty -s /sbin/nologin -c "Sentinel agent" "$SERVICE_USER" ;;
+        netbsd) useradd -d /nonexistent -s /sbin/nologin -c "Sentinel agent" "$SERVICE_USER" ;;
         *)
             if have useradd; then
                 useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
@@ -103,10 +103,10 @@ create_user() {
 schedule_updates_with_cron() {
     minute=$(awk 'BEGIN { srand(); print int(rand() * 60) }')
     # Hourly: the updater only downloads when a new version is advertised.
-    { crontab -l 2>/dev/null | grep -v "pulsegrid" || true
-      echo "$minute * * * * $BIN update --state-dir $STATE_DIR --restart $SERVICE >/dev/null 2>&1 # pulsegrid"
+    { crontab -l 2>/dev/null | grep -v "sentinel" || true
+      echo "$minute * * * * $BIN update --state-dir $STATE_DIR --restart $SERVICE >/dev/null 2>&1 # sentinel"
       if [ $# -gt 0 ]; then
-          echo "* * * * * ($1) >/dev/null 2>&1 # pulsegrid watchdog"
+          echo "* * * * * ($1) >/dev/null 2>&1 # sentinel watchdog"
       fi
     } | crontab -
 }
@@ -118,12 +118,12 @@ setup_config_dir() {
     chown root "$CONFIG_DIR" "$CONFIG_DIR/plugins.d" "$CONFIG_DIR/scripts"
     chmod 0755 "$CONFIG_DIR" "$CONFIG_DIR/plugins.d" "$CONFIG_DIR/scripts"
     # Ours, so rewritten on every install to describe this version.
-    cat >"$CONFIG_DIR/README" <<'PULSEGRID_README'
-Pulsegrid agent configuration (root-owned; the agent only reads it).
+    cat >"$CONFIG_DIR/README" <<'SENTINEL_README'
+Sentinel agent configuration (root-owned; the agent only reads it).
 
-The installer ran "pulsegrid-agent autoconfig", which found the services here
+The installer ran "sentinel-agent autoconfig", which found the services here
 and wrote their files below. Run it again after installing new services;
-"pulsegrid-agent autoconfig --off" stops it running on updates.
+"sentinel-agent autoconfig --off" stops it running on updates.
 
 plugins.d/<name>.conf   one plugin per file, "key = value" lines:
     type = mysql        dsn = monitor:secret@tcp(127.0.0.1:3306)/
@@ -133,16 +133,16 @@ plugins.d/<name>.conf   one plugin per file, "key = value" lines:
     type = apache       url = http://127.0.0.1/server-status?auto
     type = docker       socket = /var/run/docker.sock  (add the agent's user to the docker group)
     type = prometheus   url = http://127.0.0.1:9100/metrics   (include = regexp)
-    type = script       command = /etc/pulsegrid/scripts/my-metrics.sh  (prints "name value" lines)
+    type = script       command = /etc/sentinel/scripts/my-metrics.sh  (prints "name value" lines)
     type = snmp         address = 10.0.0.2   community = public   (or version = 3, user, auth_*, priv_*)
                         interfaces = true    oids = ups_load=1.3.6.1.2.1.33.1.4.4.1.5.1
-  Disk health (SMART) and board sensors (IPMI): sudo pulsegrid-agent enable-hardware
+  Disk health (SMART) and board sensors (IPMI): sudo sentinel-agent enable-hardware
   Files holding passwords: chmod 0640 and chgrp them to the agent's group.
-  Test them with: pulsegrid-agent plugins
+  Test them with: sentinel-agent plugins
 
 actions.conf            actions the dashboard may run on this server. Manage with:
-    sudo pulsegrid-agent allow-action restart-nginx -- /usr/bin/systemctl restart nginx
-    sudo pulsegrid-agent allow-action --remove restart-nginx
+    sudo sentinel-agent allow-action restart-nginx -- /usr/bin/systemctl restart nginx
+    sudo sentinel-agent allow-action --remove restart-nginx
 
 logs.conf               log files to ship for log search (nothing is shipped without it):
     dir = /var/log      (every text log under it; rotated copies and binary files skipped)
@@ -156,14 +156,14 @@ apm.conf                receive OpenTelemetry traces from apps on this server:
     listen = 127.0.0.1:4318
   Then run your apps with OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
   (and OTEL_SERVICE_NAME=<name>); traces appear under APM in the dashboard.
-PULSEGRID_README
+SENTINEL_README
     chmod 0644 "$CONFIG_DIR/README"
 }
 
 install_systemd() {
     cat >/etc/systemd/system/$SERVICE.service <<EOF
 [Unit]
-Description=Pulsegrid monitoring agent
+Description=Sentinel monitoring agent
 After=network-online.target
 Wants=network-online.target
 
@@ -182,7 +182,7 @@ WantedBy=multi-user.target
 EOF
     cat >/etc/systemd/system/$SERVICE-update.service <<EOF
 [Unit]
-Description=Update the Pulsegrid agent
+Description=Update the Sentinel agent
 After=network-online.target
 Wants=network-online.target
 
@@ -192,7 +192,7 @@ ExecStart=$BIN update --state-dir $STATE_DIR --restart $SERVICE
 EOF
     cat >/etc/systemd/system/$SERVICE-update.timer <<EOF
 [Unit]
-Description=Check for Pulsegrid agent updates hourly
+Description=Check for Sentinel agent updates hourly
 
 [Timer]
 OnBootSec=10min
@@ -212,7 +212,7 @@ EOF
     # stop it for good: systemctl disable --now $SERVICE-watchdog.timer
     cat >/etc/systemd/system/$SERVICE-watchdog.service <<EOF
 [Unit]
-Description=Keep the Pulsegrid agent running
+Description=Keep the Sentinel agent running
 
 [Service]
 Type=oneshot
@@ -220,7 +220,7 @@ ExecStart=/bin/systemctl start $SERVICE.service
 EOF
     cat >/etc/systemd/system/$SERVICE-watchdog.timer <<EOF
 [Unit]
-Description=Start the Pulsegrid agent if it was stopped
+Description=Start the Sentinel agent if it was stopped
 
 [Timer]
 OnBootSec=2min
@@ -237,7 +237,7 @@ EOF
 install_openrc() {
     cat >/etc/init.d/$SERVICE <<EOF
 #!/sbin/openrc-run
-description="Pulsegrid monitoring agent"
+description="Sentinel monitoring agent"
 command="$BIN"
 command_args="run --state-dir $STATE_DIR"
 command_user="$SERVICE_USER"
@@ -302,7 +302,7 @@ EOF
 
 install_netbsd() {
     # NetBSD's rc.subr finds a service by executable name unless given a
-    # pidfile, which would also match (and kill) `pulsegrid-agent update`
+    # pidfile, which would also match (and kill) `sentinel-agent update`
     # while it restarts the agent. The agent writes its own pidfile.
     cat >/etc/rc.d/$RC_SERVICE <<EOF
 #!/bin/sh
@@ -336,7 +336,7 @@ EOF
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-asset="pulsegrid-agent-$os-$arch"
+asset="sentinel-agent-$os-$arch"
 echo "Downloading $asset ($VERSION)..."
 fetch_url "$DOWNLOAD_URL/agent/$VERSION/$asset" "$tmp/$asset"
 fetch_url "$DOWNLOAD_URL/agent/$VERSION/$asset.sha256" "$tmp/$asset.sha256"
@@ -387,4 +387,4 @@ case "$os" in
         ;;
 esac
 
-echo "Pulsegrid agent installed and running."
+echo "Sentinel agent installed and running."

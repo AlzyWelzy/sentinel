@@ -24,7 +24,7 @@ def upgrade() -> None:
             ADD COLUMN digest_timezone text NOT NULL DEFAULT 'Asia/Kolkata',
             ADD COLUMN digest_sent_at timestamptz
     """)
-    op.execute("GRANT UPDATE (digest, digest_hour, digest_timezone) ON tenants TO pulsegrid_app")
+    op.execute("GRANT UPDATE (digest, digest_hour, digest_timezone) ON tenants TO sentinel_app")
     op.execute("ALTER TABLE outbound_messages DROP CONSTRAINT outbound_messages_kind_check")
     op.execute(
         "ALTER TABLE outbound_messages ADD CONSTRAINT outbound_messages_kind_check CHECK (kind IN "

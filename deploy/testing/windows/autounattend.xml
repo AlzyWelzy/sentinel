@@ -37,8 +37,8 @@
       </ImageInstall>
       <UserData>
         <AcceptEula>true</AcceptEula>
-        <FullName>Pulsegrid Test</FullName>
-        <Organization>Pulsegrid</Organization>
+        <FullName>Sentinel Test</FullName>
+        <Organization>Sentinel</Organization>
       </UserData>
     </component>
   </settings>

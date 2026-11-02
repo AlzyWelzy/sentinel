@@ -119,21 +119,21 @@ func TestWatchedProcesses(t *testing.T) {
 		t.Fatal(err)
 	}
 	self := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
-	c.Watch([]string{self, "no-such-process-pulsegrid"}, nil)
+	c.Watch([]string{self, "no-such-process-sentinel"}, nil)
 	samples, err := c.Collect(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	counts := map[string]float64{}
 	for _, s := range samples {
-		if s.Name == "pulsegrid_watched_process_count" {
+		if s.Name == "sentinel_watched_process_count" {
 			counts[s.Labels["process"]] = s.Value
 		}
 	}
-	if counts["no-such-process-pulsegrid"] != 0 {
+	if counts["no-such-process-sentinel"] != 0 {
 		t.Errorf("missing process: %v", counts)
 	}
-	if _, reported := counts["no-such-process-pulsegrid"]; !reported {
+	if _, reported := counts["no-such-process-sentinel"]; !reported {
 		t.Error("an absent watched process must report 0, not nothing")
 	}
 	// Process names are truncated on some systems (15 characters on Linux).

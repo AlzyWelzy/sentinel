@@ -21,11 +21,11 @@ func convert(r proto.MetricsRequest) ([]byte, int, int) {
 }
 
 func TestHostIDComesFromIngest(t *testing.T) {
-	body, kept, dropped := convert(req(proto.Sample{Name: "pulsegrid_cpu_usage_percent", Value: 12.5}))
+	body, kept, dropped := convert(req(proto.Sample{Name: "sentinel_cpu_usage_percent", Value: 12.5}))
 	if kept != 1 || dropped != 0 {
 		t.Fatalf("kept=%d dropped=%d", kept, dropped)
 	}
-	want := `pulsegrid_cpu_usage_percent{host_id="host-1"} 12.5 1700000000000` + "\n"
+	want := `sentinel_cpu_usage_percent{host_id="host-1"} 12.5 1700000000000` + "\n"
 	if string(body) != want {
 		t.Fatalf("got %q, want %q", body, want)
 	}
@@ -35,7 +35,7 @@ func TestHostIDComesFromIngest(t *testing.T) {
 // the labels that decide ownership.
 func TestReservedLabelsRejected(t *testing.T) {
 	for _, label := range []string{"tenant_id", "host_id"} {
-		s := proto.Sample{Name: "pulsegrid_cpu_usage_percent", Value: 1, Labels: map[string]string{label: "someone-else"}}
+		s := proto.Sample{Name: "sentinel_cpu_usage_percent", Value: 1, Labels: map[string]string{label: "someone-else"}}
 		body, kept, dropped := convert(req(s))
 		if kept != 0 || dropped != 1 || len(body) != 0 {
 			t.Fatalf("%s: sample with reserved label was accepted: %q", label, body)
@@ -45,9 +45,9 @@ func TestReservedLabelsRejected(t *testing.T) {
 
 func TestInvalidNamesDropped(t *testing.T) {
 	cases := []proto.Sample{
-		{Name: "node_cpu_seconds_total"},    // not in our namespace
-		{Name: "pulsegrid_cpu{evil=\"x\"}"}, // injection via name
-		{Name: "pulsegrid_ok", Labels: map[string]string{"Bad-Label": "x"}},
+		{Name: "node_cpu_seconds_total"},   // not in our namespace
+		{Name: "sentinel_cpu{evil=\"x\"}"}, // injection via name
+		{Name: "sentinel_ok", Labels: map[string]string{"Bad-Label": "x"}},
 	}
 	_, kept, dropped := convert(req(cases...))
 	if kept != 0 || dropped != len(cases) {
@@ -56,7 +56,7 @@ func TestInvalidNamesDropped(t *testing.T) {
 }
 
 func TestLabelValuesEscaped(t *testing.T) {
-	s := proto.Sample{Name: "pulsegrid_disk_used_percent", Value: 1, Labels: map[string]string{
+	s := proto.Sample{Name: "sentinel_disk_used_percent", Value: 1, Labels: map[string]string{
 		"mountpoint": "/a\"},tenant_id=\"x",
 	}}
 	body, kept, _ := convert(req(s))
@@ -74,18 +74,18 @@ func TestCheckSamplesRouted(t *testing.T) {
 		"public": {Check: proto.Check{ID: "public"}, TenantID: "t2", OnProbes: true},
 	}}
 	r := req(
-		proto.Sample{Name: "pulsegrid_check_up", Value: 1, Labels: map[string]string{"check_id": "own"}},
-		proto.Sample{Name: "pulsegrid_check_up", Value: 0, Labels: map[string]string{"check_id": "public", "probe": "spoofed"}},
-		proto.Sample{Name: "pulsegrid_check_up", Value: 1, Labels: map[string]string{"check_id": "someone-elses"}},
+		proto.Sample{Name: "sentinel_check_up", Value: 1, Labels: map[string]string{"check_id": "own"}},
+		proto.Sample{Name: "sentinel_check_up", Value: 0, Labels: map[string]string{"check_id": "public", "probe": "spoofed"}},
+		proto.Sample{Name: "sentinel_check_up", Value: 1, Labels: map[string]string{"check_id": "someone-elses"}},
 	)
 	bodies, kept, dropped := toPrometheusText(r, host1, hc, time.UnixMilli(r.Batches[0].TimestampMs))
 	if kept != 2 || dropped != 1 {
 		t.Fatalf("kept=%d dropped=%d", kept, dropped)
 	}
-	if got := string(bodies["t1"]); got != `pulsegrid_check_up{host_id="host-1",check_id="own"} 1 1700000000000`+"\n" {
+	if got := string(bodies["t1"]); got != `sentinel_check_up{host_id="host-1",check_id="own"} 1 1700000000000`+"\n" {
 		t.Fatalf("t1: %q", got)
 	}
-	if got := string(bodies["t2"]); got != `pulsegrid_check_up{probe="region1",check_id="public"} 0 1700000000000`+"\n" {
+	if got := string(bodies["t2"]); got != `sentinel_check_up{probe="region1",check_id="public"} 0 1700000000000`+"\n" {
 		t.Fatalf("t2: %q", got)
 	}
 }

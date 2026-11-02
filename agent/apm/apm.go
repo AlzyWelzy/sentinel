@@ -1,7 +1,7 @@
 // Package apm receives OpenTelemetry traces from applications on the same
 // server (OTLP over HTTP, the standard port 4318) and forwards them to
-// Pulsegrid with the agent's own credentials, so applications need no
-// Pulsegrid key: point them at OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318.
+// Sentinel with the agent's own credentials, so applications need no
+// Sentinel key: point them at OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318.
 //
 // Opt-in on the server, root-owned like plugins:
 //

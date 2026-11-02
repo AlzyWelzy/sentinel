@@ -34,13 +34,13 @@ from app.routes import (
     v1,
 )
 
-app = FastAPI(title="Pulsegrid API", version="0.9.0", root_path=settings.API_ROOT_PATH)
+app = FastAPI(title="Sentinel API", version="0.9.0", root_path=settings.API_ROOT_PATH)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_methods=["*"],
-    allow_headers=["Authorization", "Content-Type", "X-Pulsegrid-Account", "X-Requested-With"],
+    allow_headers=["Authorization", "Content-Type", "X-Sentinel-Account", "X-Requested-With"],
     allow_credentials=True,
 )
 

@@ -33,7 +33,7 @@ func TestPushSender(t *testing.T) {
 		"auth":   "tBHItJI5svbpez7KI4CCXg",
 	}
 	p := &pushSender{publicKey: pub, privateKey: priv, subject: "mailto:t@example.com", client: srv.Client()}
-	m := message{Subject: "[Pulsegrid] FIRING: x", Text: "x", Event: map[string]any{
+	m := message{Subject: "[Sentinel] FIRING: x", Text: "x", Event: map[string]any{
 		"type": "alert_firing", "summary": "nginx is down on web1", "condition": "Service nginx is stopped",
 		"severity": "critical", "incident_id": "i1", "url": "https://console/x"}}
 	if err := p.sendWithConfig(context.Background(), srv.URL, cfg, m); err != nil {

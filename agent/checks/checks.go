@@ -258,10 +258,10 @@ func (r *Runner) run(ctx context.Context, s *scheduled) (proto.CheckResult, []pr
 	}
 	s.lastOK = out.ok
 	samples := []proto.Sample{
-		sample("pulsegrid_check_up", boolValue(out.ok), c.ID),
+		sample("sentinel_check_up", boolValue(out.ok), c.ID),
 	}
 	if c.Type != "file" && c.Type != "log" {
-		samples = append(samples, sample("pulsegrid_check_latency_seconds", latency.Seconds(), c.ID))
+		samples = append(samples, sample("sentinel_check_latency_seconds", latency.Seconds(), c.ID))
 	}
 	for name, v := range out.extra {
 		samples = append(samples, sample(name, v, c.ID))
@@ -341,7 +341,7 @@ func (r *Runner) checkHTTP(ctx context.Context, c proto.Check) outcome {
 	if err != nil {
 		return outcome{detail: "invalid URL"}
 	}
-	req.Header.Set("User-Agent", "Pulsegrid-Monitor/"+r.version)
+	req.Header.Set("User-Agent", "Sentinel-Monitor/"+r.version)
 	client := r.client
 	if c.Params["tls_skip_verify"] == "true" || c.Params["public_only"] == "true" {
 		t := http.DefaultTransport.(*http.Transport).Clone()
@@ -367,9 +367,9 @@ func (r *Runner) checkHTTP(ctx context.Context, c proto.Check) outcome {
 	}
 	defer resp.Body.Close()
 	latency := time.Since(start)
-	extra := map[string]float64{"pulsegrid_check_http_status": float64(resp.StatusCode)}
+	extra := map[string]float64{"sentinel_check_http_status": float64(resp.StatusCode)}
 	if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
-		extra["pulsegrid_check_tls_expiry_seconds"] = time.Until(resp.TLS.PeerCertificates[0].NotAfter).Seconds()
+		extra["sentinel_check_tls_expiry_seconds"] = time.Until(resp.TLS.PeerCertificates[0].NotAfter).Seconds()
 	}
 	lo, hi := statusRange(c.Params["expect_status"])
 	if resp.StatusCode < lo || resp.StatusCode > hi {
@@ -387,7 +387,7 @@ func (r *Runner) checkHTTP(ctx context.Context, c proto.Check) outcome {
 		}
 	}
 	if days := intParam(c.Params, "tls_expiry_days", 0); days > 0 {
-		if left, ok := extra["pulsegrid_check_tls_expiry_seconds"]; ok && left < float64(days)*86400 {
+		if left, ok := extra["sentinel_check_tls_expiry_seconds"]; ok && left < float64(days)*86400 {
 			return outcome{detail: fmt.Sprintf("certificate expires in %.0f days", left/86400), latency: latency, extra: extra}
 		}
 	}
@@ -429,7 +429,7 @@ func checkTLS(ctx context.Context, c proto.Check) outcome {
 		return outcome{detail: "no certificate", latency: latency}
 	}
 	left := time.Until(certs[0].NotAfter)
-	extra := map[string]float64{"pulsegrid_check_tls_expiry_seconds": left.Seconds()}
+	extra := map[string]float64{"sentinel_check_tls_expiry_seconds": left.Seconds()}
 	days := intParam(c.Params, "tls_expiry_days", 14)
 	detail := fmt.Sprintf("certificate valid for %.0f more days (%s)", left.Hours()/24, certs[0].Subject.CommonName)
 	if left < time.Duration(days)*24*time.Hour {
@@ -503,10 +503,10 @@ func checkDNS(ctx context.Context, c proto.Check) outcome {
 func checkFile(c proto.Check, st *checkState) outcome {
 	fi, err := os.Stat(c.Target)
 	exists := err == nil
-	extra := map[string]float64{"pulsegrid_file_exists": boolValue(exists)}
+	extra := map[string]float64{"sentinel_file_exists": boolValue(exists)}
 	if exists {
-		extra["pulsegrid_file_size_bytes"] = float64(fi.Size())
-		extra["pulsegrid_file_age_seconds"] = time.Since(fi.ModTime()).Seconds()
+		extra["sentinel_file_size_bytes"] = float64(fi.Size())
+		extra["sentinel_file_age_seconds"] = time.Since(fi.ModTime()).Seconds()
 	}
 	mode := orDefault(c.Params["mode"], "exists")
 	switch mode {
@@ -612,7 +612,7 @@ func checkLog(c proto.Check, st *checkState) outcome {
 	inode := fileID(fi)
 	if !st.logPrimed {
 		st.logPrimed, st.logOffset, st.logInode = true, fi.Size(), inode
-		return outcome{ok: true, detail: "watching for new lines", extra: map[string]float64{"pulsegrid_log_matches": 0}}
+		return outcome{ok: true, detail: "watching for new lines", extra: map[string]float64{"sentinel_log_matches": 0}}
 	}
 	if inode != st.logInode || fi.Size() < st.logOffset {
 		st.logOffset, st.logInode = 0, inode
@@ -640,7 +640,7 @@ func checkLog(c proto.Check, st *checkState) outcome {
 		}
 	}
 	st.logOffset += read
-	extra := map[string]float64{"pulsegrid_log_matches": float64(matches)}
+	extra := map[string]float64{"sentinel_log_matches": float64(matches)}
 	if matches >= threshold {
 		return outcome{detail: fmt.Sprintf("%d matching lines; last: %s", matches, last), extra: extra}
 	}
@@ -683,7 +683,7 @@ func truncate(s string, n int) string {
 func readErr(path string, err error) string {
 	if errors.Is(err, os.ErrPermission) {
 		return "the agent can't read " + path + ": add its user to the file's group " +
-			"(on Debian/Ubuntu: sudo usermod -aG adm pulsegrid && sudo systemctl restart pulsegrid-agent)"
+			"(on Debian/Ubuntu: sudo usermod -aG adm sentinel && sudo systemctl restart sentinel-agent)"
 	}
 	return cleanErr(err)
 }

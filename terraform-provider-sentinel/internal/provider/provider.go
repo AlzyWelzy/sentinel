@@ -1,6 +1,6 @@
-// Package provider is the Terraform provider for Pulsegrid server monitoring:
+// Package provider is the Terraform provider for Sentinel server monitoring:
 // alert rules, checks, maintenance windows, status pages and install keys as
-// code, using a Pulsegrid API token.
+// code, using a Sentinel API token.
 package provider
 
 import (
@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-type pulsegridProvider struct{ version string }
+type sentinelProvider struct{ version string }
 
 type providerModel struct {
 	APIURL types.String `tfsdk:"api_url"`
@@ -23,48 +23,48 @@ type providerModel struct {
 
 // New returns the provider factory.
 func New(version string) func() provider.Provider {
-	return func() provider.Provider { return &pulsegridProvider{version: version} }
+	return func() provider.Provider { return &sentinelProvider{version: version} }
 }
 
-func (p *pulsegridProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
-	resp.TypeName = "pulsegrid"
+func (p *sentinelProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
+	resp.TypeName = "sentinel"
 	resp.Version = p.version
 }
 
-func (p *pulsegridProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
+func (p *sentinelProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manage Pulsegrid server monitoring as code. Authenticate with an API token " +
+		Description: "Manage Sentinel server monitoring as code. Authenticate with an API token " +
 			"(Monitoring → Servers → API in the console) that is not read-only.",
 		Attributes: map[string]schema.Attribute{
 			"api_url": schema.StringAttribute{
 				Optional:    true,
-				Description: "Pulsegrid API base URL, e.g. https://<console host>/api/pulsegrid. Defaults to $PULSEGRID_API_URL.",
+				Description: "Sentinel API base URL, e.g. https://<console host>/api/sentinel. Defaults to $SENTINEL_API_URL.",
 			},
 			"token": schema.StringAttribute{
 				Optional:    true,
 				Sensitive:   true,
-				Description: "API token (pgt_…). Defaults to $PULSEGRID_TOKEN.",
+				Description: "API token (pgt_…). Defaults to $SENTINEL_TOKEN.",
 			},
 		},
 	}
 }
 
-func (p *pulsegridProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+func (p *sentinelProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var cfg providerModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	url := firstSet(cfg.APIURL.ValueString(), os.Getenv("PULSEGRID_API_URL"))
-	token := firstSet(cfg.Token.ValueString(), os.Getenv("PULSEGRID_TOKEN"))
+	url := firstSet(cfg.APIURL.ValueString(), os.Getenv("SENTINEL_API_URL"))
+	token := firstSet(cfg.Token.ValueString(), os.Getenv("SENTINEL_TOKEN"))
 	if url == "" {
 		resp.Diagnostics.AddError("Missing API URL",
-			"Set api_url in the provider block or PULSEGRID_API_URL, e.g. https://<console host>/api/pulsegrid.")
+			"Set api_url in the provider block or SENTINEL_API_URL, e.g. https://<console host>/api/sentinel.")
 		return
 	}
 	if token == "" {
 		resp.Diagnostics.AddError("Missing API token",
-			"Set token in the provider block or PULSEGRID_TOKEN. Create one under Monitoring → Servers → API, with read-only off.")
+			"Set token in the provider block or SENTINEL_TOKEN. Create one under Monitoring → Servers → API, with read-only off.")
 		return
 	}
 	client := newClient(url, token, p.version)
@@ -72,7 +72,7 @@ func (p *pulsegridProvider) Configure(ctx context.Context, req provider.Configur
 	resp.ResourceData = client
 }
 
-func (p *pulsegridProvider) Resources(context.Context) []func() resource.Resource {
+func (p *sentinelProvider) Resources(context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		newAlertRuleResource,
 		newCheckResource,
@@ -82,7 +82,7 @@ func (p *pulsegridProvider) Resources(context.Context) []func() resource.Resourc
 	}
 }
 
-func (p *pulsegridProvider) DataSources(context.Context) []func() datasource.DataSource {
+func (p *sentinelProvider) DataSources(context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{newHostsDataSource}
 }
 

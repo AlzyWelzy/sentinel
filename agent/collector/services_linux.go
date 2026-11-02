@@ -29,7 +29,7 @@ func serviceSamples(ctx context.Context, names []string) []proto.Sample {
 	if systemd {
 		if failed, err := exec.CommandContext(ctx, systemctl, "list-units", "--state=failed",
 			"--no-legend", "--plain", "--no-pager").Output(); err == nil {
-			out = append(out, sample("pulsegrid_systemd_failed_units", float64(countLines(failed))))
+			out = append(out, sample("sentinel_systemd_failed_units", float64(countLines(failed))))
 		}
 	}
 	var valid []string
@@ -45,7 +45,7 @@ func serviceSamples(ctx context.Context, names []string) []proto.Sample {
 		return append(out, systemdServices(ctx, systemctl, valid)...)
 	}
 	for _, n := range valid {
-		out = append(out, sample("pulsegrid_service_up", boolValue(sysvRunning(ctx, n)), "service", n))
+		out = append(out, sample("sentinel_service_up", boolValue(sysvRunning(ctx, n)), "service", n))
 	}
 	return out
 }
@@ -68,7 +68,7 @@ func systemdServices(ctx context.Context, systemctl string, names []string) []pr
 	out := make([]proto.Sample, 0, len(names))
 	for i, n := range names {
 		up := states[i] == "active" || states[i] == "reloading"
-		out = append(out, sample("pulsegrid_service_up", boolValue(up), "service", n))
+		out = append(out, sample("sentinel_service_up", boolValue(up), "service", n))
 	}
 	return out
 }

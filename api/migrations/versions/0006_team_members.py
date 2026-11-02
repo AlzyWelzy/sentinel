@@ -4,10 +4,10 @@ users as viewer, operator or admin.
 - tenant_members: invited by email; the row is claimed (source and
   external_account_id filled in) the first time that console user, signed in
   with that verified email, opens the shared account.
-- pulsegrid_member_tenant(): SECURITY DEFINER, because the caller's own
+- sentinel_member_tenant(): SECURITY DEFINER, because the caller's own
   tenant isn't the shared one and RLS would hide the row. Returns the role
   and the shared tenant's status, or nothing.
-- pulsegrid_member_accounts(): the accounts a console user belongs to, for
+- sentinel_member_accounts(): the accounts a console user belongs to, for
   the account switcher.
 
 Revision ID: 0006
@@ -51,13 +51,13 @@ def upgrade() -> None:
         f"USING (tenant_id = {CURRENT_TENANT}) "
         f"WITH CHECK (tenant_id = {CURRENT_TENANT})"
     )
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_members TO pulsegrid_app")
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_members TO sentinel_app")
 
     # A row matches the caller by identity once claimed, or by verified email
     # while still an invitation. Claiming pins it to that console user, so a
     # later account with the same email can't take it over.
     op.execute("""
-        CREATE FUNCTION pulsegrid_member_tenant(
+        CREATE FUNCTION sentinel_member_tenant(
             p_tenant uuid, p_source text, p_external_id text, p_email text, p_name text
         )
         RETURNS TABLE (out_role text, out_status text)
@@ -92,7 +92,7 @@ def upgrade() -> None:
         $$
     """)
     op.execute("""
-        CREATE FUNCTION pulsegrid_member_accounts(p_source text, p_external_id text, p_email text)
+        CREATE FUNCTION sentinel_member_accounts(p_source text, p_external_id text, p_email text)
         RETURNS TABLE (out_tenant_id uuid, out_name text, out_email text, out_role text)
         LANGUAGE sql
         STABLE
@@ -109,14 +109,14 @@ def upgrade() -> None:
         $$
     """)
     for fn in (
-        "pulsegrid_member_tenant(uuid, text, text, text, text)",
-        "pulsegrid_member_accounts(text, text, text)",
+        "sentinel_member_tenant(uuid, text, text, text, text)",
+        "sentinel_member_accounts(text, text, text)",
     ):
         op.execute(f"REVOKE ALL ON FUNCTION {fn} FROM PUBLIC")
-        op.execute(f"GRANT EXECUTE ON FUNCTION {fn} TO pulsegrid_app")
+        op.execute(f"GRANT EXECUTE ON FUNCTION {fn} TO sentinel_app")
 
 
 def downgrade() -> None:
-    op.execute("DROP FUNCTION pulsegrid_member_accounts(text, text, text)")
-    op.execute("DROP FUNCTION pulsegrid_member_tenant(uuid, text, text, text, text)")
+    op.execute("DROP FUNCTION sentinel_member_accounts(text, text, text)")
+    op.execute("DROP FUNCTION sentinel_member_tenant(uuid, text, text, text, text)")
     op.execute("DROP TABLE tenant_members")

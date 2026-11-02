@@ -4,7 +4,7 @@
 // stay backward compatible: add optional fields, never rename or repurpose one.
 package proto
 
-// RegisterRequest is sent once, by `pulsegrid-agent register`, with the install key.
+// RegisterRequest is sent once, by `sentinel-agent register`, with the install key.
 type RegisterRequest struct {
 	InstallKey      string `json:"install_key"`
 	MachineID       string `json:"machine_id"`
@@ -30,8 +30,8 @@ type RegisterResponse struct {
 type AgentConfig struct {
 	IngestURL       string `json:"ingest_url"`
 	IntervalSeconds int    `json:"interval_seconds"`
-	// LatestVersion and DownloadURL drive `pulsegrid-agent update`. Binaries
-	// live at <DownloadURL>/agent/<LatestVersion>/pulsegrid-agent-<os>-<arch>.
+	// LatestVersion and DownloadURL drive `sentinel-agent update`. Binaries
+	// live at <DownloadURL>/agent/<LatestVersion>/sentinel-agent-<os>-<arch>.
 	LatestVersion string `json:"latest_version,omitempty"`
 	DownloadURL   string `json:"download_url,omitempty"`
 	// Processes and services to report on even when absent or stopped. They
@@ -72,7 +72,7 @@ type Check struct {
 }
 
 // CheckResult is the outcome of one check run. Status is also sent as the
-// samples pulsegrid_check_up / pulsegrid_check_latency_seconds; this carries
+// samples sentinel_check_up / sentinel_check_latency_seconds; this carries
 // the human-readable detail for alert messages and the dashboard.
 type CheckResult struct {
 	ID          string     `json:"id"`
@@ -181,7 +181,7 @@ type MetricsResponse struct {
 }
 
 // Sample is one measurement. Names follow Prometheus conventions
-// (pulsegrid_<thing>_<unit>, counters end in _total).
+// (sentinel_<thing>_<unit>, counters end in _total).
 type Sample struct {
 	Name   string            `json:"name"`
 	Labels map[string]string `json:"labels,omitempty"`

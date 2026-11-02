@@ -1584,7 +1584,7 @@ export interface paths {
         /**
          * Create Organisation
          * @description Another organisation, owned by you. Switch to it with its id in
-         *     X-Pulsegrid-Account.
+         *     X-Sentinel-Account.
          */
         post: operations["create_organisation_v1_organisations_post"];
         delete?: never;

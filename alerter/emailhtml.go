@@ -72,5 +72,5 @@ var alertEmail = template.Must(template.New("alert").Parse(`<!doctype html>
 {{if .URL}}<a href="{{.URL}}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600">View incident</a>{{end}}
 {{if and .AckURL (not .Resolved)}}<a href="{{.AckURL}}" style="display:inline-block;margin-left:8px;border:1px solid #cbd5e1;color:#0f172a;text-decoration:none;padding:9px 18px;border-radius:8px;font-size:14px;font-weight:600">Acknowledge</a>{{end}}
 </td></tr>
-<tr><td style="padding:14px 24px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">Sent by Pulsegrid server monitoring. Manage contacts and alert rules in the console under Monitoring → Servers.</td></tr>
+<tr><td style="padding:14px 24px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">Sent by Sentinel server monitoring. Manage contacts and alert rules in the console under Monitoring → Servers.</td></tr>
 </table></body></html>`))

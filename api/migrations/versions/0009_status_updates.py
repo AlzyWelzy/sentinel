@@ -40,8 +40,8 @@ def upgrade() -> None:
         "CREATE POLICY tenant_isolation ON status_page_updates "
         f"USING (tenant_id = {CURRENT_TENANT}) WITH CHECK (tenant_id = {CURRENT_TENANT})"
     )
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON status_page_updates TO pulsegrid_app")
-    op.execute("GRANT SELECT ON status_page_updates TO pulsegrid_service")
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON status_page_updates TO sentinel_app")
+    op.execute("GRANT SELECT ON status_page_updates TO sentinel_service")
 
 
 def downgrade() -> None:

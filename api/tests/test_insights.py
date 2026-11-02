@@ -133,19 +133,15 @@ def test_backtest_query_matches_the_alerter():
     from app.services.backtest import build_query
 
     q = build_query("metric", "cpu", None, {}, "last", 300, None, None)
-    assert q == "max by (host_id) (last_over_time(pulsegrid_cpu_usage_percent{}[3m]))"
+    assert q == "max by (host_id) (last_over_time(sentinel_cpu_usage_percent{}[3m]))"
     q = build_query("metric", "cpu", None, {}, "avg", 600, None, ["a", "b"])
-    assert (
-        q == 'max by (host_id) (avg_over_time(pulsegrid_cpu_usage_percent{host_id=~"a|b"}[600s]))'
-    )
+    assert q == 'max by (host_id) (avg_over_time(sentinel_cpu_usage_percent{host_id=~"a|b"}[600s]))'
     q = build_query("metric", "network_in", None, {}, "last", 300, None, None)
     assert q.startswith(
-        '(sum by (host_id) (rate(pulsegrid_network_bytes_total{direction="rx"}[3m])))'
+        '(sum by (host_id) (rate(sentinel_network_bytes_total{direction="rx"}[3m])))'
     )
     q = build_query("custom", None, "jobs_waiting", {"queue": "mail"}, "max", 300, None, None)
-    assert (
-        q == 'max by (host_id) (max_over_time(pulsegrid_custom_jobs_waiting{queue="mail"}[300s]))'
-    )
+    assert q == 'max by (host_id) (max_over_time(sentinel_custom_jobs_waiting{queue="mail"}[300s]))'
 
 
 def test_backtest_simulation():

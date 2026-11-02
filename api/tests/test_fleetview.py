@@ -25,14 +25,14 @@ async def test_overview_and_disks(alice: User, bob: User, client):
         tid,
         busy,
         [
-            "pulsegrid_cpu_usage_percent{} 91.2",
-            "pulsegrid_memory_used_percent{} 70",
-            'pulsegrid_disk_used_percent{mountpoint="/",device="/dev/sda1"} 82',
-            'pulsegrid_disk_used_percent{mountpoint="/data",device="/dev/sdb1"} 40',
-            'pulsegrid_disk_free_bytes{mountpoint="/",device="/dev/sda1"} 18000000000',
-            'pulsegrid_disk_total_bytes{mountpoint="/",device="/dev/sda1",fstype="ext4"} 1e11',
-            'pulsegrid_disk_used_bytes{mountpoint="/",device="/dev/sda1"} 82000000000',
-            'pulsegrid_load{period="1m"} 3.5',
+            "sentinel_cpu_usage_percent{} 91.2",
+            "sentinel_memory_used_percent{} 70",
+            'sentinel_disk_used_percent{mountpoint="/",device="/dev/sda1"} 82',
+            'sentinel_disk_used_percent{mountpoint="/data",device="/dev/sdb1"} 40',
+            'sentinel_disk_free_bytes{mountpoint="/",device="/dev/sda1"} 18000000000',
+            'sentinel_disk_total_bytes{mountpoint="/",device="/dev/sda1",fstype="ext4"} 1e11',
+            'sentinel_disk_used_bytes{mountpoint="/",device="/dev/sda1"} 82000000000',
+            'sentinel_load{period="1m"} 3.5',
         ],
     )
     async with ServiceSession() as db, db.begin():
@@ -101,9 +101,9 @@ async def test_server_summary(alice: User, bob: User, client):
         tid,
         host,
         [
-            "pulsegrid_uptime_seconds{} 7200",
-            "pulsegrid_processes_total{} 140",
-            "pulsegrid_open_files{} 2944",
+            "sentinel_uptime_seconds{} 7200",
+            "sentinel_processes_total{} 140",
+            "sentinel_open_files{} 2944",
         ],
     )
     async with ServiceSession() as db, db.begin():
@@ -151,7 +151,7 @@ async def test_notes_deliveries_and_forecast(alice: User, bob: User, client):
     r = await alice.request("GET", f"/v1/deliveries?host_id={host}")
     assert r.status_code == 200 and r.json() == []
 
-    _push(tid, host, ["pulsegrid_cpu_usage_percent{} 12"])
+    _push(tid, host, ["sentinel_cpu_usage_percent{} 12"])
     r = await alice.request("GET", f"/v1/hosts/{host}/forecast")
     assert r.status_code == 200, r.text
     f = r.json()

@@ -163,7 +163,7 @@ async def groups(
     status = {s.id: s.status for s in overview.servers}
     hosts = await _hosts(t)
     try:
-        pushes = await _by_host(t.tenant_id, f"count_over_time(pulsegrid_uptime_seconds[{range}s])")
+        pushes = await _by_host(t.tenant_id, f"count_over_time(sentinel_uptime_seconds[{range}s])")
     except MetricsUnavailable:
         pushes = None
     now = time.time()
@@ -240,13 +240,13 @@ async def capacity(t: Tenant, days: Annotated[int, Query(ge=1, le=90)] = 7) -> l
             t.tenant_id, f"max_over_time(({_all(COMPARE['memory'])})[{w}:5m])"
         )
         disk_now = await _by_host(
-            t.tenant_id, "max by (host_id) (last_over_time(pulsegrid_disk_used_percent[10m]))"
+            t.tenant_id, "max by (host_id) (last_over_time(sentinel_disk_used_percent[10m]))"
         )
         # Days until full per host: the fastest-filling filesystem.
         full = await _by_host(
             t.tenant_id,
-            "min by (host_id) ((100 - last_over_time(pulsegrid_disk_used_percent[10m])) / "
-            "(deriv(pulsegrid_disk_used_percent[24h]) * 86400 > 0))",
+            "min by (host_id) ((100 - last_over_time(sentinel_disk_used_percent[10m])) / "
+            "(deriv(sentinel_disk_used_percent[24h]) * 86400 > 0))",
         )
     except MetricsUnavailable:
         cpu_avg = cpu_peak = mem_avg = mem_peak = disk_now = full = {}
@@ -582,10 +582,10 @@ async def restarts(t: Tenant, days: Annotated[int, Query(ge=1, le=90)] = 30) -> 
     names = {str(h.id): h for h in await _hosts(t)}
     try:
         resets = await _by_host(
-            t.tenant_id, f"max by (host_id) (resets(pulsegrid_uptime_seconds[{days}d]))"
+            t.tenant_id, f"max by (host_id) (resets(sentinel_uptime_seconds[{days}d]))"
         )
         up = await _by_host(
-            t.tenant_id, "max by (host_id) (last_over_time(pulsegrid_uptime_seconds[10m]))"
+            t.tenant_id, "max by (host_id) (last_over_time(sentinel_uptime_seconds[10m]))"
         )
     except MetricsUnavailable:
         resets, up = {}, {}

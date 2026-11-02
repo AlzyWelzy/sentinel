@@ -48,7 +48,7 @@ func collectDocker(ctx context.Context, c Config) ([]proto.Sample, error) {
 		states[ct.State]++
 		name := strings.TrimPrefix(firstOr(ct.Names, ct.ID[:12]), "/")
 		running := ct.State == "running"
-		out = append(out, sample("pulsegrid_container_running", boolValue(running), "container", name, "image", trimImage(ct.Image)))
+		out = append(out, sample("sentinel_container_running", boolValue(running), "container", name, "image", trimImage(ct.Image)))
 		if !running || i >= maxContainers {
 			continue
 		}
@@ -68,7 +68,7 @@ func collectDocker(ctx context.Context, c Config) ([]proto.Sample, error) {
 	}
 	wg.Wait()
 	for st, n := range states {
-		out = append(out, sample("pulsegrid_containers", n, "state", st))
+		out = append(out, sample("sentinel_containers", n, "state", st))
 	}
 	return out, nil
 }
@@ -112,17 +112,17 @@ func containerStats(ctx context.Context, client *http.Client, id, name string) (
 		if cpus == 0 {
 			cpus = 1
 		}
-		out = append(out, sample("pulsegrid_container_cpu_percent", cpuDelta/sysDelta*cpus*100, l...))
+		out = append(out, sample("sentinel_container_cpu_percent", cpuDelta/sysDelta*cpus*100, l...))
 	}
-	out = append(out, sample("pulsegrid_container_cpu_seconds_total", float64(s.CPUStats.CPUUsage.TotalUsage)/1e9, l...))
+	out = append(out, sample("sentinel_container_cpu_seconds_total", float64(s.CPUStats.CPUUsage.TotalUsage)/1e9, l...))
 	// Like `docker stats`: page cache that can be reclaimed isn't "used".
 	mem := float64(s.MemoryStats.Usage)
 	if cache, ok := s.MemoryStats.Stats["inactive_file"]; ok && float64(cache) < mem {
 		mem -= float64(cache)
 	}
-	out = append(out, sample("pulsegrid_container_memory_bytes", mem, l...))
+	out = append(out, sample("sentinel_container_memory_bytes", mem, l...))
 	if s.MemoryStats.Limit > 0 {
-		out = append(out, sample("pulsegrid_container_memory_percent", mem/float64(s.MemoryStats.Limit)*100, l...))
+		out = append(out, sample("sentinel_container_memory_percent", mem/float64(s.MemoryStats.Limit)*100, l...))
 	}
 	var rx, tx float64
 	for _, n := range s.Networks {
@@ -130,8 +130,8 @@ func containerStats(ctx context.Context, client *http.Client, id, name string) (
 		tx += float64(n.TxBytes)
 	}
 	out = append(out,
-		sample("pulsegrid_container_network_received_bytes_total", rx, l...),
-		sample("pulsegrid_container_network_sent_bytes_total", tx, l...))
+		sample("sentinel_container_network_received_bytes_total", rx, l...),
+		sample("sentinel_container_network_sent_bytes_total", tx, l...))
 	return out, nil
 }
 

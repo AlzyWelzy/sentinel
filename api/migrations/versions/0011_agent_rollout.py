@@ -35,7 +35,7 @@ def upgrade() -> None:
             CHECK (candidate_version IS NOT NULL OR candidate_percent = 0)
         )
     """)
-    op.execute("GRANT SELECT, INSERT, UPDATE ON agent_rollout TO pulsegrid_service")
+    op.execute("GRANT SELECT, INSERT, UPDATE ON agent_rollout TO sentinel_service")
     op.execute(
         f"ALTER TABLE tenants ADD COLUMN agent_version_pin text CHECK (agent_version_pin ~ {VERSION})"
     )

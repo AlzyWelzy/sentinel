@@ -13,13 +13,13 @@ jobs:
     runs-on: ubuntu-24.04
     defaults:
       run:
-        working-directory: terraform-provider-pulsegrid
+        working-directory: terraform-provider-sentinel
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: terraform-provider-pulsegrid/go.mod
-          cache-dependency-path: terraform-provider-pulsegrid/go.sum
+          go-version-file: terraform-provider-sentinel/go.mod
+          cache-dependency-path: terraform-provider-sentinel/go.sum
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - run: go build ./...
@@ -63,12 +63,12 @@ jobs:
       postgres:
         image: postgres:18.6-alpine
         env:
-          POSTGRES_DB: pulsegrid
-          POSTGRES_USER: pulsegrid
-          POSTGRES_PASSWORD: pulsegrid
+          POSTGRES_DB: sentinel
+          POSTGRES_USER: sentinel
+          POSTGRES_PASSWORD: sentinel
         ports: ["5442:5432"]
         options: >-
-          --health-cmd "pg_isready -U pulsegrid" --health-interval 5s --health-retries 20
+          --health-cmd "pg_isready -U sentinel" --health-interval 5s --health-retries 20
       redis:
         image: redis:8.10.3-alpine
         ports: ["6389:6379"]
@@ -77,8 +77,8 @@ jobs:
         image: victoriametrics/victoria-metrics:v1.155.0
         ports: ["8438:8428"]
     env:
-      PGPASSWORD: pulsegrid
-      DATABASE_OWNER_URL: postgresql+asyncpg://pulsegrid:pulsegrid@localhost:5442/pulsegrid
+      PGPASSWORD: sentinel
+      DATABASE_OWNER_URL: postgresql+asyncpg://sentinel:sentinel@localhost:5442/sentinel
     defaults:
       run:
         working-directory: api
@@ -92,10 +92,10 @@ jobs:
       - name: Create database roles
         working-directory: .
         env:
-          POSTGRES_USER: pulsegrid
-          POSTGRES_DB: pulsegrid
-          PULSEGRID_APP_PASSWORD: pulsegrid_app
-          PULSEGRID_SERVICE_PASSWORD: pulsegrid_service
+          POSTGRES_USER: sentinel
+          POSTGRES_DB: sentinel
+          SENTINEL_APP_PASSWORD: sentinel_app
+          SENTINEL_SERVICE_PASSWORD: sentinel_service
         # init-roles.sh calls psql without a host; point it at the service.
         run: PGHOST=localhost PGPORT=5442 sh deploy/postgres/init-roles.sh
       - run: uv run alembic upgrade head

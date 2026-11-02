@@ -15,18 +15,18 @@ import (
 // MySQL / MariaDB status counters and gauges worth charting. Counters end in
 // _total so the dashboard rates them.
 var mysqlStatus = map[string]string{
-	"Threads_connected":                "pulsegrid_mysql_connections",
-	"Threads_running":                  "pulsegrid_mysql_threads_running",
-	"Max_used_connections":             "pulsegrid_mysql_max_used_connections",
-	"Questions":                        "pulsegrid_mysql_queries_total",
-	"Slow_queries":                     "pulsegrid_mysql_slow_queries_total",
-	"Aborted_connects":                 "pulsegrid_mysql_aborted_connects_total",
-	"Bytes_received":                   "pulsegrid_mysql_received_bytes_total",
-	"Bytes_sent":                       "pulsegrid_mysql_sent_bytes_total",
-	"Innodb_buffer_pool_reads":         "pulsegrid_mysql_innodb_disk_reads_total",
-	"Innodb_buffer_pool_read_requests": "pulsegrid_mysql_innodb_read_requests_total",
-	"Innodb_row_lock_waits":            "pulsegrid_mysql_innodb_row_lock_waits_total",
-	"Uptime":                           "pulsegrid_mysql_uptime_seconds",
+	"Threads_connected":                "sentinel_mysql_connections",
+	"Threads_running":                  "sentinel_mysql_threads_running",
+	"Max_used_connections":             "sentinel_mysql_max_used_connections",
+	"Questions":                        "sentinel_mysql_queries_total",
+	"Slow_queries":                     "sentinel_mysql_slow_queries_total",
+	"Aborted_connects":                 "sentinel_mysql_aborted_connects_total",
+	"Bytes_received":                   "sentinel_mysql_received_bytes_total",
+	"Bytes_sent":                       "sentinel_mysql_sent_bytes_total",
+	"Innodb_buffer_pool_reads":         "sentinel_mysql_innodb_disk_reads_total",
+	"Innodb_buffer_pool_read_requests": "sentinel_mysql_innodb_read_requests_total",
+	"Innodb_row_lock_waits":            "sentinel_mysql_innodb_row_lock_waits_total",
+	"Uptime":                           "sentinel_mysql_uptime_seconds",
 }
 
 // collectMySQL: dsn = user:pass@tcp(host:3306)/ (go-sql-driver format).
@@ -63,14 +63,14 @@ func collectMySQL(ctx context.Context, c Config) ([]proto.Sample, error) {
 	}
 	var maxConn float64
 	if err := db.QueryRowContext(ctx, "SELECT @@max_connections").Scan(&maxConn); err == nil {
-		out = append(out, sample("pulsegrid_mysql_max_connections", maxConn))
+		out = append(out, sample("sentinel_mysql_max_connections", maxConn))
 	}
 	// Replication lag, when this is a replica. Both statement names exist
 	// across MySQL 8.0/8.4 and MariaDB; ignore errors (not a replica, or no
 	// REPLICATION CLIENT privilege).
 	for _, q := range []string{"SHOW REPLICA STATUS", "SHOW SLAVE STATUS"} {
 		if lag, ok := replicaLag(ctx, db, q); ok {
-			out = append(out, sample("pulsegrid_mysql_replication_lag_seconds", lag))
+			out = append(out, sample("sentinel_mysql_replication_lag_seconds", lag))
 			break
 		}
 	}
@@ -132,11 +132,11 @@ func collectPostgres(ctx context.Context, c Config) ([]proto.Sample, error) {
 		return nil, err
 	}
 	out = append(out,
-		sample("pulsegrid_postgres_connections", active, "state", "active"),
-		sample("pulsegrid_postgres_connections", idle, "state", "idle"),
-		sample("pulsegrid_postgres_connections", idleTx, "state", "idle_in_transaction"),
-		sample("pulsegrid_postgres_connections_total", total),
-		sample("pulsegrid_postgres_max_connections", maxConn),
+		sample("sentinel_postgres_connections", active, "state", "active"),
+		sample("sentinel_postgres_connections", idle, "state", "idle"),
+		sample("sentinel_postgres_connections", idleTx, "state", "idle_in_transaction"),
+		sample("sentinel_postgres_connections_total", total),
+		sample("sentinel_postgres_max_connections", maxConn),
 	)
 
 	rows, err := conn.Query(ctx, `
@@ -155,13 +155,13 @@ func collectPostgres(ctx context.Context, c Config) ([]proto.Sample, error) {
 			return nil, err
 		}
 		out = append(out,
-			sample("pulsegrid_postgres_commits_total", commits, "database", name),
-			sample("pulsegrid_postgres_rollbacks_total", rollbacks, "database", name),
-			sample("pulsegrid_postgres_blocks_read_total", reads, "database", name),
-			sample("pulsegrid_postgres_blocks_hit_total", hits, "database", name),
-			sample("pulsegrid_postgres_deadlocks_total", deadlocks, "database", name),
-			sample("pulsegrid_postgres_rows_written_total", writes, "database", name),
-			sample("pulsegrid_postgres_database_size_bytes", size, "database", name),
+			sample("sentinel_postgres_commits_total", commits, "database", name),
+			sample("sentinel_postgres_rollbacks_total", rollbacks, "database", name),
+			sample("sentinel_postgres_blocks_read_total", reads, "database", name),
+			sample("sentinel_postgres_blocks_hit_total", hits, "database", name),
+			sample("sentinel_postgres_deadlocks_total", deadlocks, "database", name),
+			sample("sentinel_postgres_rows_written_total", writes, "database", name),
+			sample("sentinel_postgres_database_size_bytes", size, "database", name),
 		)
 	}
 	rows.Close()
@@ -174,14 +174,14 @@ func collectPostgres(ctx context.Context, c Config) ([]proto.Sample, error) {
 	if err := conn.QueryRow(ctx, `
 		SELECT CASE WHEN pg_is_in_recovery()
 		            THEN extract(epoch FROM now() - pg_last_xact_replay_timestamp()) END`).Scan(&lag); err == nil && lag != nil {
-		out = append(out, sample("pulsegrid_postgres_replication_lag_seconds", *lag))
+		out = append(out, sample("sentinel_postgres_replication_lag_seconds", *lag))
 	}
 	var longest *float64
 	if err := conn.QueryRow(ctx, `
 		SELECT extract(epoch FROM max(now() - xact_start))
 		  FROM pg_stat_activity WHERE state <> 'idle' AND xact_start IS NOT NULL
 		   AND backend_type = 'client backend'`).Scan(&longest); err == nil && longest != nil {
-		out = append(out, sample("pulsegrid_postgres_longest_transaction_seconds", *longest))
+		out = append(out, sample("sentinel_postgres_longest_transaction_seconds", *longest))
 	}
 	return out, nil
 }

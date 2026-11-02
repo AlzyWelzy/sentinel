@@ -4,9 +4,9 @@ This is the one place tenant identity is decided:
 
 1. The caller is identified from Beyond's own access token or an API token
    (never from the request body).
-2. The organisation is the one named in X-Pulsegrid-Account, which must be
+2. The organisation is the one named in X-Sentinel-Account, which must be
    one the user is a member of; otherwise their default organisation
-   (pulsegrid_default_tenant(), which creates one for a new user). A
+   (sentinel_default_tenant(), which creates one for a new user). A
    superadmin reaches another organisation only through an impersonation,
    which is audited and read-only unless they asked for writes.
 3. `app.tenant_id` is set for this transaction, and RLS does the rest.
@@ -40,7 +40,7 @@ bearer = HTTPBearer(auto_error=False)
 READ_ONLY_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
-ACCOUNT_HEADER = "X-Pulsegrid-Account"
+ACCOUNT_HEADER = "X-Sentinel-Account"
 
 # Stored role names; the web app shows operator as "member" and viewer as
 # "read-only".
@@ -160,7 +160,7 @@ async def bind_default_tenant(db: AsyncSession, principal: Principal) -> tuple[u
         await db.execute(
             text(
                 "SELECT out_tenant_id, out_status, out_role "
-                "FROM pulsegrid_default_tenant(:u, :m, :n)"
+                "FROM sentinel_default_tenant(:u, :m, :n)"
             ),
             {"u": principal.user_id, "m": principal.email, "n": principal.name},
         )
@@ -185,7 +185,7 @@ async def bind_member_tenant(
     tenant_id = _tenant_uuid(shared)
     row = (
         await db.execute(
-            text("SELECT out_role, out_status FROM pulsegrid_member_tenant(:t, :u)"),
+            text("SELECT out_role, out_status FROM sentinel_member_tenant(:t, :u)"),
             {"t": tenant_id, "u": principal.user_id},
         )
     ).one_or_none()

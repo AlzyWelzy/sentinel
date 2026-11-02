@@ -28,7 +28,7 @@ func TestWebhookRefusesPrivateAddresses(t *testing.T) {
 func TestWebhookSignsBody(t *testing.T) {
 	var sig string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sig = r.Header.Get("X-Pulsegrid-Signature")
+		sig = r.Header.Get("X-Sentinel-Signature")
 	}))
 	defer srv.Close()
 	if err := newWebhookSender("secret", true).send(context.Background(), srv.URL, message{Subject: "s"}); err != nil {

@@ -207,18 +207,18 @@ async def build(db: AsyncSession, tenant_id: uuid.UUID, days: int) -> Insights:
         return {lbl.get(label, ""): v for lbl, v in await query_instant(tenant_id, query)}
 
     try:
-        metrics["cpu_avg"] = await by("host_id", "avg_over_time(pulsegrid_cpu_usage_percent[7d])")
+        metrics["cpu_avg"] = await by("host_id", "avg_over_time(sentinel_cpu_usage_percent[7d])")
         metrics["cpu_p95"] = await by(
-            "host_id", "quantile_over_time(0.95, pulsegrid_cpu_usage_percent[7d])"
+            "host_id", "quantile_over_time(0.95, sentinel_cpu_usage_percent[7d])"
         )
-        metrics["mem_avg"] = await by("host_id", "avg_over_time(pulsegrid_memory_used_percent[7d])")
-        metrics["mem_max"] = await by("host_id", "max_over_time(pulsegrid_memory_used_percent[7d])")
+        metrics["mem_avg"] = await by("host_id", "avg_over_time(sentinel_memory_used_percent[7d])")
+        metrics["mem_max"] = await by("host_id", "max_over_time(sentinel_memory_used_percent[7d])")
         if checks:
             up = await by(
-                "check_id", f"avg by (check_id) (avg_over_time(pulsegrid_check_up[{days}d])) * 100"
+                "check_id", f"avg by (check_id) (avg_over_time(sentinel_check_up[{days}d])) * 100"
             )
             up_1h = await by(
-                "check_id", "avg by (check_id) (avg_over_time(pulsegrid_check_up[1h])) * 100"
+                "check_id", "avg by (check_id) (avg_over_time(sentinel_check_up[1h])) * 100"
             )
     except MetricsUnavailable:
         out.metrics_available = False

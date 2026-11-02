@@ -32,119 +32,119 @@ def _read_write(read: str, write: str) -> str:
 
 
 CATALOG: dict[str, MetricDef] = {
-    "cpu": MetricDef("pulsegrid_cpu_usage_percent{SEL}", "percent", []),
+    "cpu": MetricDef("sentinel_cpu_usage_percent{SEL}", "percent", []),
     # Where CPU time goes, idle left out so the busy modes are readable.
-    "cpu_modes": MetricDef('pulsegrid_cpu_mode_percent{SEL,mode!="idle"}', "percent", ["mode"]),
-    "cpu_cores": MetricDef("pulsegrid_cpu_core_usage_percent{SEL}", "percent", ["core"]),
-    "memory": MetricDef("pulsegrid_memory_used_percent{SEL}", "percent", []),
-    "swap": MetricDef("pulsegrid_swap_used_percent{SEL}", "percent", []),
-    "disk": MetricDef("pulsegrid_disk_used_percent{SEL}", "percent", ["mountpoint"]),
-    "inodes": MetricDef("pulsegrid_disk_inodes_used_percent{SEL}", "percent", ["mountpoint"]),
+    "cpu_modes": MetricDef('sentinel_cpu_mode_percent{SEL,mode!="idle"}', "percent", ["mode"]),
+    "cpu_cores": MetricDef("sentinel_cpu_core_usage_percent{SEL}", "percent", ["core"]),
+    "memory": MetricDef("sentinel_memory_used_percent{SEL}", "percent", []),
+    "swap": MetricDef("sentinel_swap_used_percent{SEL}", "percent", []),
+    "disk": MetricDef("sentinel_disk_used_percent{SEL}", "percent", ["mountpoint"]),
+    "inodes": MetricDef("sentinel_disk_inodes_used_percent{SEL}", "percent", ["mountpoint"]),
     "disk_io": MetricDef(
-        _read_write("pulsegrid_disk_read_bytes_total", "pulsegrid_disk_written_bytes_total"),
+        _read_write("sentinel_disk_read_bytes_total", "sentinel_disk_written_bytes_total"),
         "bytes_per_second",
         ["direction"],
     ),
     "disk_iops": MetricDef(
-        _read_write("pulsegrid_disk_reads_total", "pulsegrid_disk_writes_total"),
+        _read_write("sentinel_disk_reads_total", "sentinel_disk_writes_total"),
         "ops_per_second",
         ["direction"],
     ),
     "disk_busy": MetricDef(
-        "rate(pulsegrid_disk_io_time_seconds_total{SEL}[2m]) * 100", "percent", ["device"]
+        "rate(sentinel_disk_io_time_seconds_total{SEL}[2m]) * 100", "percent", ["device"]
     ),
-    "load": MetricDef("pulsegrid_load{SEL}", "load", ["period"]),
+    "load": MetricDef("sentinel_load{SEL}", "load", ["period"]),
     "network": MetricDef(
-        "sum by (direction) (rate(pulsegrid_network_bytes_total{SEL}[2m]))",
+        "sum by (direction) (rate(sentinel_network_bytes_total{SEL}[2m]))",
         "bytes_per_second",
         ["direction"],
     ),
-    "processes": MetricDef("pulsegrid_processes_total{SEL}", "count", []),
+    "processes": MetricDef("sentinel_processes_total{SEL}", "count", []),
     # Where memory goes, and paging.
     "memory_breakdown": MetricDef(
-        'pulsegrid_memory_bytes{SEL,kind=~"used|cached|buffers|free"}', "bytes", ["kind"]
+        'sentinel_memory_bytes{SEL,kind=~"used|cached|buffers|free"}', "bytes", ["kind"]
     ),
     "swap_io": MetricDef(
-        "sum by (direction) (rate(pulsegrid_swap_io_bytes_total{SEL}[2m]))",
+        "sum by (direction) (rate(sentinel_swap_io_bytes_total{SEL}[2m]))",
         "bytes_per_second",
         ["direction"],
     ),
     "page_faults": MetricDef(
-        "sum by (kind) (rate(pulsegrid_memory_page_faults_total{SEL}[2m]))",
+        "sum by (kind) (rate(sentinel_memory_page_faults_total{SEL}[2m]))",
         "ops_per_second",
         ["kind"],
     ),
     # Average time per read and write, and how many requests wait.
     "disk_latency": MetricDef(
-        "label_set(sum(rate(pulsegrid_disk_read_time_seconds_total{SEL}[2m])) * 1000 / "
-        'clamp_min(sum(rate(pulsegrid_disk_reads_total{SEL}[2m])), 0.001), "op", "read") or '
-        "label_set(sum(rate(pulsegrid_disk_write_time_seconds_total{SEL}[2m])) * 1000 / "
-        'clamp_min(sum(rate(pulsegrid_disk_writes_total{SEL}[2m])), 0.001), "op", "write")',
+        "label_set(sum(rate(sentinel_disk_read_time_seconds_total{SEL}[2m])) * 1000 / "
+        'clamp_min(sum(rate(sentinel_disk_reads_total{SEL}[2m])), 0.001), "op", "read") or '
+        "label_set(sum(rate(sentinel_disk_write_time_seconds_total{SEL}[2m])) * 1000 / "
+        'clamp_min(sum(rate(sentinel_disk_writes_total{SEL}[2m])), 0.001), "op", "write")',
         "ms",
         ["op"],
     ),
     "disk_queue": MetricDef(
-        "sum(rate(pulsegrid_disk_weighted_io_seconds_total{SEL}[2m]))", "count", []
+        "sum(rate(sentinel_disk_weighted_io_seconds_total{SEL}[2m]))", "count", []
     ),
     "network_interfaces": MetricDef(
-        "sum by (interface, direction) (rate(pulsegrid_network_bytes_total{SEL}[2m]))",
+        "sum by (interface, direction) (rate(sentinel_network_bytes_total{SEL}[2m]))",
         "bytes_per_second",
         ["interface", "direction"],
     ),
     "network_packets": MetricDef(
-        "sum by (direction) (rate(pulsegrid_network_packets_total{SEL}[2m]))",
+        "sum by (direction) (rate(sentinel_network_packets_total{SEL}[2m]))",
         "ops_per_second",
         ["direction"],
     ),
     "network_errors": MetricDef(
-        'label_set(sum(rate(pulsegrid_network_errors_total{SEL}[2m])), "what", "errors") or '
-        'label_set(sum(rate(pulsegrid_network_drops_total{SEL}[2m])), "what", "drops")',
+        'label_set(sum(rate(sentinel_network_errors_total{SEL}[2m])), "what", "errors") or '
+        'label_set(sum(rate(sentinel_network_drops_total{SEL}[2m])), "what", "drops")',
         "ops_per_second",
         ["what"],
     ),
-    "tcp_connections": MetricDef("pulsegrid_tcp_connections{SEL}", "count", ["state"]),
+    "tcp_connections": MetricDef("sentinel_tcp_connections{SEL}", "count", ["state"]),
     "context_switches": MetricDef(
-        'label_set(rate(pulsegrid_context_switches_total{SEL}[2m]), "what", "context switches") or '
-        'label_set(rate(pulsegrid_interrupts_total{SEL}[2m]), "what", "interrupts")',
+        'label_set(rate(sentinel_context_switches_total{SEL}[2m]), "what", "context switches") or '
+        'label_set(rate(sentinel_interrupts_total{SEL}[2m]), "what", "interrupts")',
         "ops_per_second",
         ["what"],
     ),
-    "proc_states": MetricDef("pulsegrid_procs{SEL}", "count", ["state"]),
-    "threads": MetricDef("pulsegrid_threads_total{SEL}", "count", []),
+    "proc_states": MetricDef("sentinel_procs{SEL}", "count", ["state"]),
+    "threads": MetricDef("sentinel_threads_total{SEL}", "count", []),
     "pressure": MetricDef(
-        'pulsegrid_pressure_percent{SEL,window="60"}', "percent", ["resource", "kind"]
+        'sentinel_pressure_percent{SEL,window="60"}', "percent", ["resource", "kind"]
     ),
-    "users_logged_in": MetricDef("pulsegrid_users_logged_in{SEL}", "count", []),
-    "open_files": MetricDef("pulsegrid_open_files{SEL}", "count", []),
-    "user_cpu": MetricDef("pulsegrid_user_cpu_percent{SEL}", "percent", ["user"]),
-    "user_memory": MetricDef("pulsegrid_user_memory_bytes{SEL}", "bytes", ["user"]),
-    "process_cpu": MetricDef("pulsegrid_process_cpu_percent{SEL}", "percent", ["process"]),
-    "process_memory": MetricDef("pulsegrid_process_memory_bytes{SEL}", "bytes", ["process"]),
+    "users_logged_in": MetricDef("sentinel_users_logged_in{SEL}", "count", []),
+    "open_files": MetricDef("sentinel_open_files{SEL}", "count", []),
+    "user_cpu": MetricDef("sentinel_user_cpu_percent{SEL}", "percent", ["user"]),
+    "user_memory": MetricDef("sentinel_user_memory_bytes{SEL}", "bytes", ["user"]),
+    "process_cpu": MetricDef("sentinel_process_cpu_percent{SEL}", "percent", ["process"]),
+    "process_memory": MetricDef("sentinel_process_memory_bytes{SEL}", "bytes", ["process"]),
 }
 
 
 # One line per server, for comparing servers: each metric folded to a single
 # value per host (the fullest disk, total network, CPU busy time...).
 COMPARE: dict[str, str] = {
-    "cpu": "max by (host_id) (pulsegrid_cpu_usage_percent{SEL})",
-    "cpu_modes": 'sum by (host_id) (pulsegrid_cpu_mode_percent{SEL,mode!="idle"})',
-    "cpu_cores": "max by (host_id) (pulsegrid_cpu_core_usage_percent{SEL})",
-    "memory": "max by (host_id) (pulsegrid_memory_used_percent{SEL})",
-    "swap": "max by (host_id) (pulsegrid_swap_used_percent{SEL})",
-    "disk": "max by (host_id) (pulsegrid_disk_used_percent{SEL})",
-    "inodes": "max by (host_id) (pulsegrid_disk_inodes_used_percent{SEL})",
+    "cpu": "max by (host_id) (sentinel_cpu_usage_percent{SEL})",
+    "cpu_modes": 'sum by (host_id) (sentinel_cpu_mode_percent{SEL,mode!="idle"})',
+    "cpu_cores": "max by (host_id) (sentinel_cpu_core_usage_percent{SEL})",
+    "memory": "max by (host_id) (sentinel_memory_used_percent{SEL})",
+    "swap": "max by (host_id) (sentinel_swap_used_percent{SEL})",
+    "disk": "max by (host_id) (sentinel_disk_used_percent{SEL})",
+    "inodes": "max by (host_id) (sentinel_disk_inodes_used_percent{SEL})",
     "disk_io": (
-        "sum by (host_id) (rate(pulsegrid_disk_read_bytes_total{SEL}[2m])) + "
-        "sum by (host_id) (rate(pulsegrid_disk_written_bytes_total{SEL}[2m]))"
+        "sum by (host_id) (rate(sentinel_disk_read_bytes_total{SEL}[2m])) + "
+        "sum by (host_id) (rate(sentinel_disk_written_bytes_total{SEL}[2m]))"
     ),
     "disk_iops": (
-        "sum by (host_id) (rate(pulsegrid_disk_reads_total{SEL}[2m])) + "
-        "sum by (host_id) (rate(pulsegrid_disk_writes_total{SEL}[2m]))"
+        "sum by (host_id) (rate(sentinel_disk_reads_total{SEL}[2m])) + "
+        "sum by (host_id) (rate(sentinel_disk_writes_total{SEL}[2m]))"
     ),
-    "disk_busy": "max by (host_id) (rate(pulsegrid_disk_io_time_seconds_total{SEL}[2m]) * 100)",
-    "load": 'max by (host_id) (pulsegrid_load{SEL,period="1m"})',
-    "network": "sum by (host_id) (rate(pulsegrid_network_bytes_total{SEL}[2m]))",
-    "processes": "max by (host_id) (pulsegrid_processes_total{SEL})",
+    "disk_busy": "max by (host_id) (rate(sentinel_disk_io_time_seconds_total{SEL}[2m]) * 100)",
+    "load": 'max by (host_id) (sentinel_load{SEL,period="1m"})',
+    "network": "sum by (host_id) (rate(sentinel_network_bytes_total{SEL}[2m]))",
+    "processes": "max by (host_id) (sentinel_processes_total{SEL})",
 }
 
 

@@ -231,8 +231,8 @@ async def doctor(host_id: uuid.UUID, t: Tenant) -> DoctorOut:
                 title="Never reported",
                 detail="The agent registered but has sent no data.",
                 fix=(
-                    "On the server: systemctl status pulsegrid-agent (Windows: Get-Service "
-                    "pulsegrid-agent). It needs outbound HTTPS to the ingest URL."
+                    "On the server: systemctl status sentinel-agent (Windows: Get-Service "
+                    "sentinel-agent). It needs outbound HTTPS to the ingest URL."
                 ),
             )
         )
@@ -247,8 +247,8 @@ async def doctor(host_id: uuid.UUID, t: Tenant) -> DoctorOut:
                     "blocks it."
                 ),
                 fix=(
-                    "Check the server is up, then: systemctl restart pulsegrid-agent, and "
-                    "journalctl -u pulsegrid-agent."
+                    "Check the server is up, then: systemctl restart sentinel-agent, and "
+                    "journalctl -u sentinel-agent."
                 ),
             )
         )
@@ -273,7 +273,7 @@ async def doctor(host_id: uuid.UUID, t: Tenant) -> DoctorOut:
                     "Agents update themselves within the hour. One that stays behind can't reach "
                     "the download URL, or runs in a container without the self-updating image."
                 ),
-                fix="On the server, as root: pulsegrid-agent update",
+                fix="On the server, as root: sentinel-agent update",
             )
         )
     else:
@@ -324,7 +324,7 @@ async def doctor(host_id: uuid.UUID, t: Tenant) -> DoctorOut:
 
     try:
         plugins = await metrics.query_instant(
-            t.tenant_id, f'pulsegrid_plugin_up{{host_id="{host.id}"}} == 0'
+            t.tenant_id, f'sentinel_plugin_up{{host_id="{host.id}"}} == 0'
         )
         for labels, _ in plugins:
             name = labels.get("plugin", "a plugin")
@@ -334,7 +334,7 @@ async def doctor(host_id: uuid.UUID, t: Tenant) -> DoctorOut:
                     title=f"Plugin {name} failing",
                     detail="It runs but can't collect (wrong credentials, socket or URL).",
                     fix=(
-                        "On the server: pulsegrid-agent plugins (tests every plugin file and says "
+                        "On the server: sentinel-agent plugins (tests every plugin file and says "
                         "what's wrong)"
                     ),
                 )

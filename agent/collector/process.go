@@ -63,24 +63,24 @@ func (c *gopsutilCollector) processSamples(ctx context.Context) []proto.Sample {
 	if !ok {
 		return nil
 	}
-	out := []proto.Sample{sample("pulsegrid_processes_total", float64(total))}
+	out := []proto.Sample{sample("sentinel_processes_total", float64(total))}
 	if runtime.GOOS != "windows" {
-		out = append(out, sample("pulsegrid_procs", float64(c.procs.zombies), "state", "zombie"))
+		out = append(out, sample("sentinel_procs", float64(c.procs.zombies), "state", "zombie"))
 	}
 	if c.procs.threads > 0 {
-		out = append(out, sample("pulsegrid_threads_total", float64(c.procs.threads)))
+		out = append(out, sample("sentinel_threads_total", float64(c.procs.threads)))
 	}
 	for _, u := range topByCPUAndMemory(c.procs.users, topProcesses) {
 		out = append(out,
-			sample("pulsegrid_user_cpu_percent", u.cpu, "user", u.name),
-			sample("pulsegrid_user_memory_bytes", u.memory, "user", u.name),
+			sample("sentinel_user_cpu_percent", u.cpu, "user", u.name),
+			sample("sentinel_user_memory_bytes", u.memory, "user", u.name),
 		)
 	}
 	for _, u := range topByCPUAndMemory(usage, topProcesses) {
 		out = append(out,
-			sample("pulsegrid_process_cpu_percent", u.cpu, "process", u.name),
-			sample("pulsegrid_process_memory_bytes", u.memory, "process", u.name),
-			sample("pulsegrid_process_count", float64(u.count), "process", u.name),
+			sample("sentinel_process_cpu_percent", u.cpu, "process", u.name),
+			sample("sentinel_process_memory_bytes", u.memory, "process", u.name),
+			sample("sentinel_process_count", float64(u.count), "process", u.name),
 		)
 	}
 	for _, want := range c.watchProcesses {
@@ -90,7 +90,7 @@ func (c *gopsutilCollector) processSamples(ctx context.Context) []proto.Sample {
 				n += u.count
 			}
 		}
-		out = append(out, sample("pulsegrid_watched_process_count", float64(n), "process", want))
+		out = append(out, sample("sentinel_watched_process_count", float64(n), "process", want))
 	}
 	return out
 }

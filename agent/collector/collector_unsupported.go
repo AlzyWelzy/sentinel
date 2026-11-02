@@ -10,7 +10,7 @@ import (
 	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
-var errUnsupported = errors.New("pulsegrid agent doesn't support " + runtime.GOOS + " yet")
+var errUnsupported = errors.New("sentinel agent doesn't support " + runtime.GOOS + " yet")
 
 func New() (Collector, error) { return nil, errUnsupported }
 

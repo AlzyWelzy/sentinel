@@ -16,7 +16,7 @@ import (
 // output. It runs as the agent's unprivileged user.
 //
 //	type = script
-//	command = /etc/pulsegrid/scripts/queue-depth.sh
+//	command = /etc/sentinel/scripts/queue-depth.sh
 //
 // The program must be owned by root and not writable by others, like the
 // plugin file itself.

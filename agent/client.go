@@ -55,7 +55,7 @@ func (c *client) do(ctx context.Context, method, url, token string, in, out any)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "pulsegrid-agent/"+version)
+	req.Header.Set("User-Agent", "sentinel-agent/"+version)
 	if gzipped {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
@@ -108,7 +108,7 @@ func (c *client) traces(ctx context.Context, baseURL, token, contentType string,
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "pulsegrid-agent/"+version)
+	req.Header.Set("User-Agent", "sentinel-agent/"+version)
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Authorization", "Bearer "+token)

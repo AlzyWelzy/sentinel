@@ -8,8 +8,8 @@ organisation, which are the owner's. tenancy.py enforces the role on every
 request; the checks here only cover what's specific to members (nobody
 but the owner touches the owner's row).
 
-A user picks the organisation with X-Pulsegrid-Account; membership is
-checked in the database (pulsegrid_member_tenant()), never trusted from
+A user picks the organisation with X-Sentinel-Account; membership is
+checked in the database (sentinel_member_tenant()), never trusted from
 the client.
 """
 
@@ -89,7 +89,7 @@ async def my_accounts(t: Tenant) -> list[AccountOut]:
     p = t.principal
     if p.user_id is None or p.impersonated:
         return []
-    rows = await t.db.execute(text("SELECT * FROM pulsegrid_member_accounts(:u)"), {"u": p.user_id})
+    rows = await t.db.execute(text("SELECT * FROM sentinel_member_accounts(:u)"), {"u": p.user_id})
     return [
         AccountOut(tenant_id=r.out_tenant_id, name=r.out_name, email=r.out_email, role=r.out_role)
         for r in rows
@@ -105,18 +105,18 @@ async def create_organisation(
     body: OrganisationIn, t: UserTenant, tasks: BackgroundTasks
 ) -> AccountOut:
     """Another organisation, owned by you. Switch to it with its id in
-    X-Pulsegrid-Account."""
+    X-Sentinel-Account."""
     p = t.principal
     if p.user_id is None or p.impersonated:
         raise HTTPException(status_code=403, detail="Sign in as yourself to do this")
     owned = await t.db.scalar(
-        text("SELECT count(*) FROM pulsegrid_member_accounts(:u) WHERE out_role = 'owner'"),
+        text("SELECT count(*) FROM sentinel_member_accounts(:u) WHERE out_role = 'owner'"),
         {"u": p.user_id},
     )
     if (owned or 0) >= 10:
         raise HTTPException(status_code=409, detail="You own 10 organisations already")
     tenant_id = await t.db.scalar(
-        text("SELECT pulsegrid_create_tenant(:u, :e, :n)"),
+        text("SELECT sentinel_create_tenant(:u, :e, :n)"),
         {"u": p.user_id, "e": p.email, "n": body.name.strip()},
     )
     from app.routes.alerts import ensure_recommended

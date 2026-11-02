@@ -8,10 +8,10 @@ How tenant isolation works in Postgres:
   after it works out who the caller is (see app/tenancy.py).
 - If `app.tenant_id` isn't set, the policy matches nothing, so a forgotten
   setting returns no rows instead of everyone's rows.
-- The API's `pulsegrid_app` role is not the table owner and has no BYPASSRLS,
+- The API's `sentinel_app` role is not the table owner and has no BYPASSRLS,
   so the policies always apply to it, even if a query forgets `WHERE tenant_id`.
 - The caller's tenant has to be looked up before `app.tenant_id` is known, so
-  that lookup goes through `pulsegrid_resolve_tenant()`, a SECURITY DEFINER
+  that lookup goes through `sentinel_resolve_tenant()`, a SECURITY DEFINER
   function that runs as the owner and does exactly one job.
 
 Revision ID: 0001
@@ -119,7 +119,7 @@ def upgrade() -> None:
     # creation it also adds the console email as the default alert channel; on
     # later calls it keeps that channel in step if the console email changed.
     op.execute("""
-        CREATE FUNCTION pulsegrid_resolve_tenant(
+        CREATE FUNCTION sentinel_resolve_tenant(
             p_source text, p_external_id text, p_email text, p_name text
         )
         RETURNS TABLE (out_tenant_id uuid, out_status text)
@@ -174,29 +174,26 @@ def upgrade() -> None:
         END
         $$
     """)
-    op.execute(
-        "REVOKE ALL ON FUNCTION pulsegrid_resolve_tenant(text, text, text, text) FROM PUBLIC"
-    )
+    op.execute("REVOKE ALL ON FUNCTION sentinel_resolve_tenant(text, text, text, text) FROM PUBLIC")
 
     # ── Grants ───────────────────────────────────────────────────────────────
-    # pulsegrid_app: customer requests. RLS applies to every statement.
-    op.execute("GRANT SELECT ON tenants TO pulsegrid_app")
+    # sentinel_app: customer requests. RLS applies to every statement.
+    op.execute("GRANT SELECT ON tenants TO sentinel_app")
     op.execute(
         "GRANT SELECT, INSERT, UPDATE, DELETE ON agent_keys, hosts, notification_channels "
-        "TO pulsegrid_app"
+        "TO sentinel_app"
     )
     op.execute(
-        "GRANT EXECUTE ON FUNCTION pulsegrid_resolve_tenant(text, text, text, text) "
-        "TO pulsegrid_app"
+        "GRANT EXECUTE ON FUNCTION sentinel_resolve_tenant(text, text, text, text) TO sentinel_app"
     )
 
-    # pulsegrid_service: ingest and /internal/* routes. BYPASSRLS, so keep its
+    # sentinel_service: ingest and /internal/* routes. BYPASSRLS, so keep its
     # grants to what those two actually do.
-    op.execute("GRANT SELECT, UPDATE, DELETE ON tenants TO pulsegrid_service")
-    op.execute("GRANT SELECT ON agent_keys, notification_channels TO pulsegrid_service")
-    op.execute("GRANT SELECT, INSERT, UPDATE ON hosts TO pulsegrid_service")
+    op.execute("GRANT SELECT, UPDATE, DELETE ON tenants TO sentinel_service")
+    op.execute("GRANT SELECT ON agent_keys, notification_channels TO sentinel_service")
+    op.execute("GRANT SELECT, INSERT, UPDATE ON hosts TO sentinel_service")
 
 
 def downgrade() -> None:
-    op.execute("DROP FUNCTION pulsegrid_resolve_tenant(text, text, text, text)")
+    op.execute("DROP FUNCTION sentinel_resolve_tenant(text, text, text, text)")
     op.execute("DROP TABLE notification_channels, hosts, agent_keys, tenants")

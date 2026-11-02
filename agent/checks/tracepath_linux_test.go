@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-// Needs the internet: PULSEGRID_NET_TESTS=1 go test ./agent/checks -run Trace
+// Needs the internet: SENTINEL_NET_TESTS=1 go test ./agent/checks -run Trace
 func TestTracePathToTheInternet(t *testing.T) {
-	if os.Getenv("PULSEGRID_NET_TESTS") == "" {
-		t.Skip("set PULSEGRID_NET_TESTS=1")
+	if os.Getenv("SENTINEL_NET_TESTS") == "" {
+		t.Skip("set SENTINEL_NET_TESTS=1")
 	}
 	hops, note := tracePath(context.Background(), netip.MustParseAddr("1.1.1.1"), 20)
 	if note != "" || len(hops) == 0 {

@@ -27,7 +27,7 @@ func TestGroupHostDownMergesPerContact(t *testing.T) {
 	if strings.Join(g.ids, ",") != "1,2" {
 		t.Fatalf("ids %v", g.ids)
 	}
-	if g.item.Payload.Subject != "[Pulsegrid] FIRING: 2 servers are not reporting" {
+	if g.item.Payload.Subject != "[Sentinel] FIRING: 2 servers are not reporting" {
 		t.Fatalf("subject %q", g.item.Payload.Subject)
 	}
 	if g.item.Payload.Event["hostname"] != "web1, web2" || !strings.Contains(g.item.Payload.Text, "- web1\n- web2") {

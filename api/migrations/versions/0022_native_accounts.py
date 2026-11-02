@@ -16,7 +16,7 @@
 - account_emails: the outbox for emails that belong to no tenant (verify,
   reset, invitations). The alerter sends them with the same retries as
   alerts.
-- pulsegrid_resolve_tenant() is replaced by pulsegrid_default_tenant(user):
+- sentinel_resolve_tenant() is replaced by sentinel_default_tenant(user):
   the user's first organisation, created when they have none.
 
 Revision ID: 0022
@@ -134,15 +134,15 @@ def upgrade() -> None:
     op.execute("ALTER TABLE tenants ALTER COLUMN source SET DEFAULT 'beyond'")
     op.execute("ALTER TABLE tenants ALTER COLUMN digest_timezone SET DEFAULT 'UTC'")
 
-    op.execute("DROP FUNCTION pulsegrid_member_accounts(text, text, text)")
-    op.execute("DROP FUNCTION pulsegrid_member_tenant(uuid, text, text, text, text)")
-    op.execute("DROP FUNCTION pulsegrid_resolve_tenant(text, text, text, text)")
+    op.execute("DROP FUNCTION sentinel_member_accounts(text, text, text)")
+    op.execute("DROP FUNCTION sentinel_member_tenant(uuid, text, text, text, text)")
+    op.execute("DROP FUNCTION sentinel_resolve_tenant(text, text, text, text)")
 
     # The caller's organisation when they name none: the one they own, else
     # the first they joined. A user with none gets one (onboarding names
     # it), with their verified email as its first alert contact.
     op.execute("""
-        CREATE FUNCTION pulsegrid_default_tenant(p_user uuid, p_email text, p_name text)
+        CREATE FUNCTION sentinel_default_tenant(p_user uuid, p_email text, p_name text)
         RETURNS TABLE (out_tenant_id uuid, out_status text, out_role text)
         LANGUAGE plpgsql
         SECURITY DEFINER
@@ -185,7 +185,7 @@ def upgrade() -> None:
     """)
     # Creating another organisation (from the organisation switcher).
     op.execute("""
-        CREATE FUNCTION pulsegrid_create_tenant(p_user uuid, p_email text, p_name text)
+        CREATE FUNCTION sentinel_create_tenant(p_user uuid, p_email text, p_name text)
         RETURNS uuid
         LANGUAGE plpgsql
         SECURITY DEFINER
@@ -206,7 +206,7 @@ def upgrade() -> None:
         $$
     """)
     op.execute("""
-        CREATE FUNCTION pulsegrid_member_tenant(p_tenant uuid, p_user uuid)
+        CREATE FUNCTION sentinel_member_tenant(p_tenant uuid, p_user uuid)
         RETURNS TABLE (out_role text, out_status text)
         LANGUAGE plpgsql
         SECURITY DEFINER
@@ -229,7 +229,7 @@ def upgrade() -> None:
         $$
     """)
     op.execute("""
-        CREATE FUNCTION pulsegrid_member_accounts(p_user uuid)
+        CREATE FUNCTION sentinel_member_accounts(p_user uuid)
         RETURNS TABLE (out_tenant_id uuid, out_name text, out_email text, out_role text)
         LANGUAGE sql
         STABLE
@@ -243,35 +243,35 @@ def upgrade() -> None:
         $$
     """)
     for fn in (
-        "pulsegrid_default_tenant(uuid, text, text)",
-        "pulsegrid_create_tenant(uuid, text, text)",
-        "pulsegrid_member_tenant(uuid, uuid)",
-        "pulsegrid_member_accounts(uuid)",
+        "sentinel_default_tenant(uuid, text, text)",
+        "sentinel_create_tenant(uuid, text, text)",
+        "sentinel_member_tenant(uuid, uuid)",
+        "sentinel_member_accounts(uuid)",
     ):
         op.execute(f"REVOKE ALL ON FUNCTION {fn} FROM PUBLIC")
-        op.execute(f"GRANT EXECUTE ON FUNCTION {fn} TO pulsegrid_app")
+        op.execute(f"GRANT EXECUTE ON FUNCTION {fn} TO sentinel_app")
 
     # Owners rename their organisation.
-    op.execute("GRANT UPDATE (display_name, updated_at) ON tenants TO pulsegrid_app")
+    op.execute("GRANT UPDATE (display_name, updated_at) ON tenants TO sentinel_app")
 
     # Only the auth service (service role) touches accounts.
     op.execute(
         "GRANT SELECT, INSERT, UPDATE, DELETE ON users, user_sessions, auth_tokens, "
-        "impersonations, account_emails TO pulsegrid_service"
+        "impersonations, account_emails TO sentinel_service"
     )
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_members TO pulsegrid_service")
-    op.execute("GRANT INSERT ON tenants, notification_channels TO pulsegrid_service")
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_members TO sentinel_service")
+    op.execute("GRANT INSERT ON tenants, notification_channels TO sentinel_service")
 
 
 def downgrade() -> None:
     for fn in (
-        "pulsegrid_default_tenant(uuid, text, text)",
-        "pulsegrid_create_tenant(uuid, text, text)",
-        "pulsegrid_member_tenant(uuid, uuid)",
-        "pulsegrid_member_accounts(uuid)",
+        "sentinel_default_tenant(uuid, text, text)",
+        "sentinel_create_tenant(uuid, text, text)",
+        "sentinel_member_tenant(uuid, uuid)",
+        "sentinel_member_accounts(uuid)",
     ):
         op.execute(f"DROP FUNCTION {fn}")
-    op.execute("REVOKE UPDATE (display_name, updated_at) ON tenants FROM pulsegrid_app")
+    op.execute("REVOKE UPDATE (display_name, updated_at) ON tenants FROM sentinel_app")
     op.execute("DELETE FROM tenant_members WHERE role = 'owner'")
     op.execute("DROP INDEX tenant_members_one_owner")
     op.execute("DROP INDEX tenant_members_user")
@@ -294,19 +294,19 @@ def downgrade() -> None:
     # against. Earlier migrations' downgrades drop them by signature, so
     # empty versions are put back for a full downgrade (CI runs one).
     op.execute("""
-        CREATE FUNCTION pulsegrid_member_tenant(
+        CREATE FUNCTION sentinel_member_tenant(
             p_tenant uuid, p_source text, p_external_id text, p_email text, p_name text
         ) RETURNS TABLE (out_role text, out_status text) LANGUAGE sql SECURITY DEFINER
         SET search_path = pg_catalog, public AS $$ SELECT NULL::text, NULL::text WHERE false $$
     """)
     op.execute("""
-        CREATE FUNCTION pulsegrid_member_accounts(p_source text, p_external_id text, p_email text)
+        CREATE FUNCTION sentinel_member_accounts(p_source text, p_external_id text, p_email text)
         RETURNS TABLE (out_tenant_id uuid, out_name text, out_email text, out_role text)
         LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, public
         AS $$ SELECT NULL::uuid, NULL::text, NULL::text, NULL::text WHERE false $$
     """)
     op.execute("""
-        CREATE FUNCTION pulsegrid_resolve_tenant(
+        CREATE FUNCTION sentinel_resolve_tenant(
             p_source text, p_external_id text, p_email text, p_name text
         ) RETURNS TABLE (out_tenant_id uuid, out_status text) LANGUAGE sql SECURITY DEFINER
         SET search_path = pg_catalog, public

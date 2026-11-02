@@ -360,13 +360,13 @@ async def test_processes_endpoint(alice: User, bob: User):
         tid,
         host,
         [
-            'pulsegrid_process_cpu_percent{process="nginx"} 12.5',
-            'pulsegrid_process_memory_bytes{process="nginx"} 1048576',
-            'pulsegrid_process_count{process="nginx"} 4',
-            'pulsegrid_process_cpu_percent{process="postgres"} 30',
-            'pulsegrid_process_memory_bytes{process="postgres"} 2048',
-            'pulsegrid_process_count{process="postgres"} 9',
-            "pulsegrid_processes_total{} 211",
+            'sentinel_process_cpu_percent{process="nginx"} 12.5',
+            'sentinel_process_memory_bytes{process="nginx"} 1048576',
+            'sentinel_process_count{process="nginx"} 4',
+            'sentinel_process_cpu_percent{process="postgres"} 30',
+            'sentinel_process_memory_bytes{process="postgres"} 2048',
+            'sentinel_process_count{process="postgres"} 9',
+            "sentinel_processes_total{} 211",
         ],
     )
     r = await alice.request("GET", f"/v1/hosts/{host}/processes")
@@ -400,9 +400,9 @@ async def test_checks_endpoint(alice: User):
         tid,
         host,
         [
-            'pulsegrid_service_up{service="nginx"} 1',
-            'pulsegrid_service_up{service="redis"} 0',
-            "pulsegrid_systemd_failed_units{} 2",
+            'sentinel_service_up{service="nginx"} 1',
+            'sentinel_service_up{service="redis"} 0',
+            "sentinel_systemd_failed_units{} 2",
         ],
     )
     r = await alice.request("GET", f"/v1/hosts/{host}/checks")
@@ -424,9 +424,9 @@ async def test_new_chart_metrics_are_queryable(alice: User):
         tid,
         host,
         [
-            'pulsegrid_cpu_mode_percent{mode="steal"} 7',
-            'pulsegrid_cpu_mode_percent{mode="idle"} 80',
-            'pulsegrid_cpu_core_usage_percent{core="0"} 50',
+            'sentinel_cpu_mode_percent{mode="steal"} 7',
+            'sentinel_cpu_mode_percent{mode="idle"} 80',
+            'sentinel_cpu_core_usage_percent{core="0"} 50',
         ],
     )
     now = int(time.time())

@@ -78,22 +78,22 @@ func platformActivity() []proto.Sample {
 	var out []proto.Sample
 	root := procRoot()
 	if n, ok := interrupts(filepath.Join(root, "stat")); ok {
-		out = append(out, sample("pulsegrid_interrupts_total", n))
+		out = append(out, sample("sentinel_interrupts_total", n))
 	}
 	counts := map[string]int{}
 	for _, f := range []string{"net/tcp", "net/tcp6"} {
 		countTCP(filepath.Join(root, f), counts)
 	}
 	for state, n := range counts {
-		out = append(out, sample("pulsegrid_tcp_connections", float64(n), "state", state))
+		out = append(out, sample("sentinel_tcp_connections", float64(n), "state", state))
 	}
 	for _, res := range []string{"cpu", "memory", "io"} {
 		out = append(out, pressure(filepath.Join(root, "pressure", res), res)...)
 	}
 	if open, max, ok := openFiles(filepath.Join(root, "sys", "fs", "file-nr")); ok {
-		out = append(out, sample("pulsegrid_open_files", open))
+		out = append(out, sample("sentinel_open_files", open))
 		if max > 0 && max < 1<<40 { // newer kernels report a meaningless 2^63-1
-			out = append(out, sample("pulsegrid_open_files_limit", max))
+			out = append(out, sample("sentinel_open_files_limit", max))
 		}
 	}
 	return out
@@ -179,7 +179,7 @@ func parsePressure(text, resource string) []proto.Sample {
 				continue
 			}
 			if n, err := strconv.ParseFloat(v, 64); err == nil {
-				out = append(out, sample("pulsegrid_pressure_percent", n,
+				out = append(out, sample("sentinel_pressure_percent", n,
 					"resource", resource, "kind", kind, "window", strings.TrimPrefix(k, "avg")))
 			}
 		}

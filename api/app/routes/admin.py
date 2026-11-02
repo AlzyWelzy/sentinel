@@ -288,11 +288,11 @@ class StaffHost(HostOut):
 
 # Latest value per server across every account, for the staff list.
 _LATEST = {
-    "cpu": "max by (host_id) (last_over_time(pulsegrid_cpu_usage_percent[3m]))",
-    "memory": "max by (host_id) (last_over_time(pulsegrid_memory_used_percent[3m]))",
-    "disk": "max by (host_id) (last_over_time(pulsegrid_disk_used_percent[5m]))",
-    "load1": 'max by (host_id) (last_over_time(pulsegrid_load{period="1m"}[3m]))',
-    "uptime_seconds": "max by (host_id) (last_over_time(pulsegrid_uptime_seconds[3m]))",
+    "cpu": "max by (host_id) (last_over_time(sentinel_cpu_usage_percent[3m]))",
+    "memory": "max by (host_id) (last_over_time(sentinel_memory_used_percent[3m]))",
+    "disk": "max by (host_id) (last_over_time(sentinel_disk_used_percent[5m]))",
+    "load1": 'max by (host_id) (last_over_time(sentinel_load{period="1m"}[3m]))',
+    "uptime_seconds": "max by (host_id) (last_over_time(sentinel_uptime_seconds[3m]))",
 }
 
 

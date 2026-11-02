@@ -94,7 +94,7 @@ async def run_action(host_id: uuid.UUID, body: ActionIn, t: Tenant) -> ActionOut
             status_code=422,
             detail=(
                 f"This server doesn't allow {body.name!r}. An administrator can allow it "
-                f"on the server with: sudo pulsegrid-agent allow-action {body.name} "
+                f"on the server with: sudo sentinel-agent allow-action {body.name} "
                 "-- /full/path/to/command"
             ),
         )

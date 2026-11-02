@@ -162,7 +162,7 @@ func mergeHostDown(a, b message) message {
 	ev["incident_id"], ev["url"] = "", ""
 	text := fmt.Sprintf("%s: %s\n\n%s\n\nServers:\n- %s\n\nTime: %s\n",
 		state, summary, condition, strings.Join(all, "\n- "), time.Now().UTC().Format(time.RFC1123))
-	return message{Subject: "[Pulsegrid] " + state + ": " + summary, Text: text, Event: ev}
+	return message{Subject: "[Sentinel] " + state + ": " + summary, Text: text, Event: ev}
 }
 
 // dispatchAccountEmails sends the API's account emails, with the same

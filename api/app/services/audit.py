@@ -12,7 +12,7 @@ from fastapi import Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-log = logging.getLogger("pulsegrid.audit")
+log = logging.getLogger("sentinel.audit")
 
 MAX_DETAILS = 4000
 REDACT = ("password", "secret", "token", "key", "auth", "code", "p256dh", "webhook_url")

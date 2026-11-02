@@ -42,9 +42,9 @@ def upgrade() -> None:
         "CREATE POLICY tenant_isolation ON audit_events "
         f"USING (tenant_id = {CURRENT_TENANT}) WITH CHECK (tenant_id = {CURRENT_TENANT})"
     )
-    op.execute("GRANT SELECT, INSERT ON audit_events TO pulsegrid_app, pulsegrid_service")
-    op.execute("GRANT USAGE ON SEQUENCE audit_events_id_seq TO pulsegrid_app, pulsegrid_service")
-    op.execute("GRANT DELETE ON audit_events TO pulsegrid_service")  # retention cleanup
+    op.execute("GRANT SELECT, INSERT ON audit_events TO sentinel_app, sentinel_service")
+    op.execute("GRANT USAGE ON SEQUENCE audit_events_id_seq TO sentinel_app, sentinel_service")
+    op.execute("GRANT DELETE ON audit_events TO sentinel_service")  # retention cleanup
 
 
 def downgrade() -> None:

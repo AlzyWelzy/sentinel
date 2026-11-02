@@ -59,7 +59,7 @@ export default function IncidentPage() {
       for (const o of orgs.list) {
         if (o.tenant_id === orgs.selected?.tenant_id) continue;
         const r = await authed(`/v1/incidents/${id}`, {
-          headers: { "X-Pulsegrid-Account": o.tenant_id },
+          headers: { "X-Sentinel-Account": o.tenant_id },
         });
         if (r.ok) {
           setOrg(o.tenant_id);

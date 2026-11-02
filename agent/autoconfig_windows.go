@@ -16,7 +16,7 @@ import (
 const (
 	autoconfigRev    = "1"
 	autoconfigMarker = ".autoconfig" // in the config dir: the revision, or "off"
-	autoconfigNote   = "# Written by pulsegrid-agent autoconfig. Delete this line before editing, or updates may refresh the file."
+	autoconfigNote   = "# Written by sentinel-agent autoconfig. Delete this line before editing, or updates may refresh the file."
 )
 
 func cmdAutoconfig(args []string) error {

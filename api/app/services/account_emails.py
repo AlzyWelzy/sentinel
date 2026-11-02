@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 
-PRODUCT = "Pulsegrid"
+PRODUCT = "Sentinel"
 
 
 def _link(path: str, token: str) -> str:

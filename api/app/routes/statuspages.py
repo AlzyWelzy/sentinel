@@ -526,7 +526,7 @@ async def build_public(slug: str) -> PublicPage | None:
             )
             days = await _daily(
                 page.tenant_id,
-                f'count_over_time(pulsegrid_uptime_seconds{{host_id="{i.host_id}"}}[WINDOW])',
+                f'count_over_time(sentinel_uptime_seconds{{host_id="{i.host_id}"}}[WINDOW])',
                 1 / PUSH_SECONDS,
                 since=int(hosts_created[i.host_id].timestamp())
                 if i.host_id in hosts_created
@@ -543,7 +543,7 @@ async def build_public(slug: str) -> PublicPage | None:
             st = "unknown" if not res else ("down" if failing >= max(need, 1) else "up")
             days = await _daily(
                 page.tenant_id,
-                f'avg(avg_over_time(pulsegrid_check_up{{check_id="{c.id}"}}[WINDOW]))',
+                f'avg(avg_over_time(sentinel_check_up{{check_id="{c.id}"}}[WINDOW]))',
                 None,
             )
             lat = [r["latency_ms"] for r in res if r.get("latency_ms")]
@@ -743,5 +743,5 @@ footer{{margin-top:24px;color:var(--muted);font-size:12px;text-align:center}}</s
 <div class="banner">{text}</div>{active}{"".join(rows)}
 <div class="card"><b>Recent incidents</b><ul>{incidents}</ul></div>
 {f"<h3>Past updates</h3>{history}" if history else ""}
-<footer>Updated {page.updated_at:%d %b %Y %H:%M} UTC · Powered by Pulsegrid</footer></main></body></html>"""
+<footer>Updated {page.updated_at:%d %b %Y %H:%M} UTC · Powered by Sentinel</footer></main></body></html>"""
     return HTMLResponse(body, headers={"Cache-Control": f"public, max-age={CACHE_SECONDS}"})

@@ -1,9 +1,9 @@
 #!/bin/sh
-# Deploys new Pulsegrid releases. Cron runs this every 5 minutes; a release
+# Deploys new Sentinel releases. Cron runs this every 5 minutes; a release
 # is a v* tag in AlzyWelzy/pulsegrid-beyond, whose workflow publishes
-# ghcr.io/alzywelzy/pulsegrid-beyond-{api,ingest,alerter}:<version>.
+# ghcr.io/alzywelzy/sentinel-{api,ingest,alerter}:<version>.
 #
-# When a newer version than PULSEGRID_VERSION in prod.env has all three
+# When a newer version than SENTINEL_VERSION in prod.env has all three
 # images: pull, migrate, redeploy, and watch for 3 minutes. If the services
 # don't settle, prod.env goes back to the old version and the stack is
 # redeployed (migrations are additive; the old version runs on them).
@@ -18,7 +18,7 @@ flock -n 9 || exit 0
 [ -e autoupdate.pause ] && exit 0
 
 REPO=${REGISTRY_OWNER:-alzywelzy}
-IMG=pulsegrid-beyond
+IMG=sentinel
 log() { echo "[$(date -u '+%F %T')] $*" >>autoupdate.log; }
 
 # Registry token from the stored docker login.
@@ -34,7 +34,7 @@ tags() {
 		grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true
 }
 
-current=$(sed -n 's/^PULSEGRID_VERSION=//p' prod.env)
+current=$(sed -n 's/^SENTINEL_VERSION=//p' prod.env)
 newest=$(tags api | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
 [ -n "$newest" ] || exit 0
 [ "$newest" = "$current" ] && exit 0
@@ -56,11 +56,11 @@ deploy() {
 	set -a; . ./prod.env; set +a
 	export TEMPO_CONFIG=$(sha256sum tempo/tempo.yml | cut -c1-8)
 	export BACKUP_SCRIPT=$(sha256sum postgres/backup.sh | cut -c1-8)
-	docker stack deploy -q -c stack.yml --with-registry-auth pulsegrid >>autoupdate.log 2>&1
+	docker stack deploy -q -c stack.yml --with-registry-auth sentinel >>autoupdate.log 2>&1
 }
 settled() {
-	# every pulsegrid service at its desired replica count
-	docker stack services pulsegrid --format '{{.Replicas}}' | awk -F/ '$1!=$2{bad=1} END{exit bad}'
+	# every sentinel service at its desired replica count
+	docker stack services sentinel --format '{{.Replicas}}' | awk -F/ '$1!=$2{bad=1} END{exit bad}'
 }
 
 cp prod.env "prod.env.bak-$current"
@@ -76,19 +76,19 @@ fi
 docker rm "$c" >/dev/null
 rm -rf next
 log "backup point before migrating"
-docker exec "$(docker ps -qf name=pulsegrid_postgres)" sh -c \
-	'pg_dump -U pulsegrid -Fc pulsegrid' >"backups/pre-$newest-$(date -u +%Y%m%dT%H%M%SZ).dump"
+docker exec "$(docker ps -qf name=sentinel_postgres)" sh -c \
+	'pg_dump -U sentinel -Fc sentinel' >"backups/pre-$newest-$(date -u +%Y%m%dT%H%M%SZ).dump"
 
 set -a; . ./prod.env; set +a
-if ! docker run --rm --network pulsegrid_backend \
-	-e DATABASE_OWNER_URL="postgresql+asyncpg://pulsegrid:$POSTGRES_PASSWORD@postgres:5432/pulsegrid" \
+if ! docker run --rm --network sentinel_backend \
+	-e DATABASE_OWNER_URL="postgresql+asyncpg://sentinel:$POSTGRES_PASSWORD@postgres:5432/sentinel" \
 	"ghcr.io/$REPO/$IMG-api:$newest" alembic upgrade head >>autoupdate.log 2>&1; then
 	log "migration failed; staying on $current"
 	[ -f "deploy.bak-$current.tgz" ] && tar -xzf "deploy.bak-$current.tgz"
 	exit 1
 fi
 
-sed -i "s/^PULSEGRID_VERSION=.*/PULSEGRID_VERSION=$newest/; s/^AGENT_VERSION=.*/AGENT_VERSION=$agent/" prod.env
+sed -i "s/^SENTINEL_VERSION=.*/SENTINEL_VERSION=$newest/; s/^AGENT_VERSION=.*/AGENT_VERSION=$agent/" prod.env
 deploy
 i=0
 until settled; do

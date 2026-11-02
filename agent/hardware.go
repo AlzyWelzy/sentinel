@@ -18,7 +18,7 @@ import (
 	"github.com/AlzyWelzy/pulsegrid-beyond/agent/plugins"
 )
 
-// cmdEnableHardware: pulsegrid-agent enable-hardware [--remove]. Run as
+// cmdEnableHardware: sentinel-agent enable-hardware [--remove]. Run as
 // root. Finds smartctl and ipmitool, writes plugins.d/smart.conf and
 // ipmi.conf, and lets the agent's user run exactly those commands as root.
 func cmdEnableHardware(args []string) error {
@@ -31,7 +31,7 @@ func cmdEnableHardware(args []string) error {
 		return errors.New("hardware monitoring is for Linux and BSD servers")
 	}
 	if os.Geteuid() != 0 {
-		return errors.New("run as root: sudo pulsegrid-agent enable-hardware")
+		return errors.New("run as root: sudo sentinel-agent enable-hardware")
 	}
 	dir := filepath.Join(*configDir, "plugins.d")
 	if *remove {
@@ -75,7 +75,7 @@ func cmdEnableHardware(args []string) error {
 				commands = append(commands, plugins.SmartArgs(smartctl, d[0], d[1]))
 				list = append(list, d[0]+":"+d[1])
 			}
-			conf := fmt.Sprintf("# Disk health. Written by pulsegrid-agent enable-hardware.\ntype = smart\nsmartctl = %s\ndevices = %s\n", smartctl, strings.Join(list, ","))
+			conf := fmt.Sprintf("# Disk health. Written by sentinel-agent enable-hardware.\ntype = smart\nsmartctl = %s\ndevices = %s\n", smartctl, strings.Join(list, ","))
 			if err := os.WriteFile(filepath.Join(dir, "smart.conf"), []byte(conf), 0o644); err != nil {
 				return err
 			}
@@ -90,7 +90,7 @@ func cmdEnableHardware(args []string) error {
 		fmt.Println("The BMC returns no sensor readings; skipping board sensors.")
 	} else if ok && hasBMC() {
 		commands = append(commands, plugins.IPMIArgs(ipmitool))
-		conf := fmt.Sprintf("# Board sensors. Written by pulsegrid-agent enable-hardware.\ntype = ipmi\nipmitool = %s\n", ipmitool)
+		conf := fmt.Sprintf("# Board sensors. Written by sentinel-agent enable-hardware.\ntype = ipmi\nipmitool = %s\n", ipmitool)
 		if err := os.WriteFile(filepath.Join(dir, "ipmi.conf"), []byte(conf), 0o644); err != nil {
 			return err
 		}
@@ -119,7 +119,7 @@ func cmdEnableHardware(args []string) error {
 	if err := systemdSudoDropIn(true); err != nil {
 		return err
 	}
-	fmt.Printf("Enabled: %s.\nThe agent picks it up within a minute; check with: sudo -u %s pulsegrid-agent plugins\n", strings.Join(found, "; "), *user)
+	fmt.Printf("Enabled: %s.\nThe agent picks it up within a minute; check with: sudo -u %s sentinel-agent plugins\n", strings.Join(found, "; "), *user)
 	return nil
 }
 
@@ -167,7 +167,7 @@ func writeHardwareSudoers(commands [][]string, user string) error {
 		lines = append(lines, fmt.Sprintf("%s ALL=(root) NOPASSWD: %s", user, sudoersEscape(strings.Join(c, " "))))
 	}
 	sort.Strings(lines)
-	content := "# Managed by pulsegrid-agent enable-hardware: read-only hardware queries.\n" + strings.Join(lines, "\n") + "\n"
+	content := "# Managed by sentinel-agent enable-hardware: read-only hardware queries.\n" + strings.Join(lines, "\n") + "\n"
 	if _, err := os.Stat(filepath.Dir(hardwareSudoers())); err != nil {
 		return fmt.Errorf("%s doesn't exist; is sudo installed?", filepath.Dir(hardwareSudoers()))
 	}
@@ -203,7 +203,7 @@ func actionsUseSudo(configDir string) bool {
 }
 
 const (
-	hardwareUnit        = "pulsegrid-agent-hardware"
+	hardwareUnit        = "sentinel-agent-hardware"
 	hardwareUnitDir     = "/etc/systemd/system/"
 	hardwareTimerFile   = hardwareUnitDir + hardwareUnit + ".timer"
 	hardwareServiceFile = hardwareUnitDir + hardwareUnit + ".service"
@@ -247,7 +247,7 @@ func hardwareTimerCurrent(configDir string) bool {
 	return string(svc) == want && string(tmr) == hardwareTimerUnit
 }
 
-const hardwareTimerUnit = "[Unit]\nDescription=Pulsegrid agent: hardware readings every 2 minutes\n\n" +
+const hardwareTimerUnit = "[Unit]\nDescription=Sentinel agent: hardware readings every 2 minutes\n\n" +
 	"[Timer]\nOnBootSec=1min\nOnUnitActiveSec=2min\nAccuracySec=15s\n\n[Install]\nWantedBy=timers.target\n"
 
 func hardwareServiceUnit(configDir string) (string, error) {
@@ -258,7 +258,7 @@ func hardwareServiceUnit(configDir string) (string, error) {
 	if p, err := filepath.EvalSymlinks(self); err == nil {
 		self = p
 	}
-	return fmt.Sprintf("[Unit]\nDescription=Pulsegrid agent: read disk and board sensors as root\n\n"+
+	return fmt.Sprintf("[Unit]\nDescription=Sentinel agent: read disk and board sensors as root\n\n"+
 		"[Service]\nType=oneshot\nExecStart=%s hardware-cache --config-dir %s\nNice=5\nTimeoutStartSec=110\n", self, configDir), nil
 }
 
@@ -277,7 +277,7 @@ func removeHardwareTimer() {
 	os.RemoveAll(plugins.HardwareCacheDir)
 }
 
-// cmdHardwareCache: pulsegrid-agent hardware-cache. As root, runs exactly the
+// cmdHardwareCache: sentinel-agent hardware-cache. As root, runs exactly the
 // commands the SMART/IPMI plugin files ask for and caches their output for
 // the agent, which can't run them itself without sudo.
 func cmdHardwareCache(args []string) error {

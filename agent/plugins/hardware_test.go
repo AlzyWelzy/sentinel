@@ -34,12 +34,12 @@ func TestParseSmartATA(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, want := range map[string]float64{
-		"pulsegrid_custom_smart_healthy":               0,
-		"pulsegrid_custom_smart_temperature_celsius":   41,
-		"pulsegrid_custom_smart_power_on_hours":        31337,
-		"pulsegrid_custom_smart_reallocated_sectors":   12,
-		"pulsegrid_custom_smart_pending_sectors":       3,
-		"pulsegrid_custom_smart_offline_uncorrectable": 1,
+		"sentinel_custom_smart_healthy":               0,
+		"sentinel_custom_smart_temperature_celsius":   41,
+		"sentinel_custom_smart_power_on_hours":        31337,
+		"sentinel_custom_smart_reallocated_sectors":   12,
+		"sentinel_custom_smart_pending_sectors":       3,
+		"sentinel_custom_smart_offline_uncorrectable": 1,
 	} {
 		if v, ok := find(s, name, "device", "sda"); !ok || v != want {
 			t.Errorf("%s = %v (%v), want %v", name, v, ok, want)
@@ -54,10 +54,10 @@ func TestParseSmartNVMeAndMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := find(s, "pulsegrid_custom_smart_nvme_percentage_used", "device", "nvme0"); v != 7 {
+	if v, _ := find(s, "sentinel_custom_smart_nvme_percentage_used", "device", "nvme0"); v != 7 {
 		t.Fatalf("wear: %v", v)
 	}
-	if v, _ := find(s, "pulsegrid_custom_smart_healthy", "device", "nvme0", "model", "Samsung 980"); v != 1 {
+	if v, _ := find(s, "sentinel_custom_smart_healthy", "device", "nvme0", "model", "Samsung 980"); v != 1 {
 		t.Fatal("healthy")
 	}
 	_, err = parseSmart([]byte(`{"smartctl":{"messages":[{"string":"/dev/vda: Unable to detect device type"}]}}`), "/dev/vda")
@@ -90,19 +90,19 @@ FAN4,33h,ns,29.4,No Reading
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := find(s, "pulsegrid_custom_ipmi_sensor", "sensor", "CPU1 Temp", "unit", "celsius"); v != 45 {
+	if v, _ := find(s, "sentinel_custom_ipmi_sensor", "sensor", "CPU1 Temp", "unit", "celsius"); v != 45 {
 		t.Fatalf("temp %v", v)
 	}
-	if v, _ := find(s, "pulsegrid_custom_ipmi_sensor", "sensor", "FAN1", "unit", "rpm"); v != 5400 {
+	if v, _ := find(s, "sentinel_custom_ipmi_sensor", "sensor", "FAN1", "unit", "rpm"); v != 5400 {
 		t.Fatalf("fan %v", v)
 	}
-	if v, ok := find(s, "pulsegrid_custom_ipmi_sensor_ok", "sensor", "PSU1 Status"); !ok || v != 0 {
+	if v, ok := find(s, "sentinel_custom_ipmi_sensor_ok", "sensor", "PSU1 Status"); !ok || v != 0 {
 		t.Fatal("failed PSU must read not ok")
 	}
-	if v, _ := find(s, "pulsegrid_custom_ipmi_sensor_ok", "sensor", "12V"); v != 0 {
+	if v, _ := find(s, "sentinel_custom_ipmi_sensor_ok", "sensor", "12V"); v != 0 {
 		t.Fatal("non-critical is not ok")
 	}
-	if _, ok := find(s, "pulsegrid_custom_ipmi_sensor", "sensor", "FAN4"); ok {
+	if _, ok := find(s, "sentinel_custom_ipmi_sensor", "sensor", "FAN4"); ok {
 		t.Fatal("absent sensors are skipped")
 	}
 	if _, err := parseIPMI(nil); err == nil {
@@ -148,15 +148,15 @@ func TestSNMPLive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, ok := find(s, "pulsegrid_custom_snmp_uptime_seconds"); !ok || v <= 0 {
+	if v, ok := find(s, "sentinel_custom_snmp_uptime_seconds"); !ok || v <= 0 {
 		t.Fatalf("uptime: %v %v", v, ok)
 	}
-	if _, ok := find(s, "pulsegrid_custom_snmp_processes"); !ok {
+	if _, ok := find(s, "sentinel_custom_snmp_processes"); !ok {
 		t.Fatal("custom oid missing")
 	}
 	n := 0
 	for _, x := range s {
-		if x.Name == "pulsegrid_custom_snmp_if_in_bytes_total" {
+		if x.Name == "sentinel_custom_snmp_if_in_bytes_total" {
 			n++
 		}
 	}

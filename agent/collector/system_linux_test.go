@@ -65,10 +65,10 @@ func TestCollectReportsSystemDetail(t *testing.T) {
 		have[s.Name] = true
 	}
 	for _, name := range []string{
-		"pulsegrid_memory_bytes", "pulsegrid_disk_total_bytes", "pulsegrid_disk_used_bytes",
-		"pulsegrid_procs", "pulsegrid_context_switches_total", "pulsegrid_interrupts_total",
-		"pulsegrid_tcp_connections", "pulsegrid_threads_total", "pulsegrid_user_cpu_percent",
-		"pulsegrid_network_packets_total", "pulsegrid_memory_page_faults_total",
+		"sentinel_memory_bytes", "sentinel_disk_total_bytes", "sentinel_disk_used_bytes",
+		"sentinel_procs", "sentinel_context_switches_total", "sentinel_interrupts_total",
+		"sentinel_tcp_connections", "sentinel_threads_total", "sentinel_user_cpu_percent",
+		"sentinel_network_packets_total", "sentinel_memory_page_faults_total",
 	} {
 		if !have[name] {
 			t.Errorf("missing %s", name)

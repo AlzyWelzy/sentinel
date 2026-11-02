@@ -30,7 +30,7 @@ from joserfc.jwt import JWTClaimsRegistry
 from app.auth.principal import Principal
 from app.config import settings
 
-ISSUER = "pulsegrid-beyond"
+ISSUER = "sentinel"
 _ALG = "HS256"
 
 # A random secret per process when none is configured, outside production

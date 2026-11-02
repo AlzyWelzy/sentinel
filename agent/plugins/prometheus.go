@@ -20,7 +20,7 @@ var labelName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 // collectPrometheus scrapes an exporter or an app's /metrics:
 // url = http://127.0.0.1:9100/metrics, include = regexp of names (optional).
-// Series are stored as pulsegrid_custom_<name>.
+// Series are stored as sentinel_custom_<name>.
 func collectPrometheus(ctx context.Context, c Config) ([]proto.Sample, error) {
 	url := setting(c, "url", "")
 	if url == "" {
@@ -62,7 +62,7 @@ func ParseExposition(text string, include *regexp.Regexp, limit int) ([]proto.Sa
 		if include != nil && !include.MatchString(s.Name) {
 			continue
 		}
-		s.Name = "pulsegrid_custom_" + strings.TrimPrefix(s.Name, "pulsegrid_custom_")
+		s.Name = "sentinel_custom_" + strings.TrimPrefix(s.Name, "sentinel_custom_")
 		out = append(out, s)
 		if len(out) >= limit {
 			return out, fmt.Errorf("more than %d series; only the first %d were kept (use include = to narrow)", limit, limit)

@@ -15,8 +15,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("GRANT SELECT ON agent_rollout TO pulsegrid_app")
+    op.execute("GRANT SELECT ON agent_rollout TO sentinel_app")
 
 
 def downgrade() -> None:
-    op.execute("REVOKE SELECT ON agent_rollout FROM pulsegrid_app")
+    op.execute("REVOKE SELECT ON agent_rollout FROM sentinel_app")

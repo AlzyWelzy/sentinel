@@ -30,7 +30,7 @@ import (
 const advisoryLockBase = 0x50475244 // "PGRD"
 
 func main() {
-	// `pulsegrid-alerter vapid` prints a new Web Push key pair for the env.
+	// `sentinel-alerter vapid` prints a new Web Push key pair for the env.
 	if len(os.Args) > 1 && os.Args[1] == "vapid" {
 		priv, pub, err := webpush.GenerateVAPIDKeys()
 		if err != nil {
@@ -45,7 +45,7 @@ func main() {
 	defer stop()
 
 	pool, err := pgxpool.New(ctx, env("DATABASE_URL",
-		"postgres://pulsegrid_service:pulsegrid_service@localhost:5432/pulsegrid"))
+		"postgres://sentinel_service:sentinel_service@localhost:5432/sentinel"))
 	if err != nil {
 		log.Error("postgres", "err", err)
 		os.Exit(1)
@@ -129,7 +129,7 @@ func emailTransport() *emailSender {
 		port:     env("SMTP_PORT", "587"),
 		username: os.Getenv("SMTP_USERNAME"),
 		password: os.Getenv("SMTP_PASSWORD"),
-		from:     env("SMTP_FROM", "Pulsegrid <alerts@pulsegrid.local>"),
+		from:     env("SMTP_FROM", "Sentinel <alerts@sentinel.local>"),
 		tlsMode:  env("SMTP_TLS", "starttls"),
 	}
 }

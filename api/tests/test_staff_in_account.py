@@ -45,7 +45,7 @@ async def test_ending_an_impersonation_takes_effect_at_once(client, alice: User)
 async def test_customers_cannot_reach_other_organisations(client, alice: User, bob: User):
     tid = await alice.tenant_id()
     await bob.tenant_id()
-    r = await bob.request("GET", "/v1/hosts", headers={"X-Pulsegrid-Account": str(tid)})
+    r = await bob.request("GET", "/v1/hosts", headers={"X-Sentinel-Account": str(tid)})
     assert r.status_code == 403
     r = await bob.request(
         "POST", f"/admin/v1/tenants/{tid}/impersonate", json={"reason": "let me in please"}

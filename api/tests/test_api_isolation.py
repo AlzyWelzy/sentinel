@@ -15,7 +15,7 @@ async def test_requires_a_valid_token(client):
 
     forged = jwt.encode(
         {"alg": "HS256"},
-        {"iss": "pulsegrid-beyond", "sub": str(uuid.uuid4()), "exp": 9999999999},
+        {"iss": "sentinel", "sub": str(uuid.uuid4()), "exp": 9999999999},
         OctKey.import_key(b"x" * 32),
     )
     bad = {"Authorization": f"Bearer {forged}"}
@@ -117,7 +117,7 @@ async def test_impersonated_sessions_are_read_only(client, alice: User):
 async def test_a_superadmin_token_alone_reaches_no_organisation(client, alice: User):
     tid = await alice.tenant_id()
     headers = await superadmin_headers()
-    r = await client.get("/v1/hosts", headers={**headers, "X-Pulsegrid-Account": str(tid)})
+    r = await client.get("/v1/hosts", headers={**headers, "X-Sentinel-Account": str(tid)})
     assert r.status_code == 403
 
 

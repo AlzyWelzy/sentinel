@@ -427,7 +427,7 @@ async def collect(
             try:
                 rows = await metrics.query_instant(
                     tenant_id,
-                    f'resets(pulsegrid_uptime_seconds{{host_id="{host.id}"}}'
+                    f'resets(sentinel_uptime_seconds{{host_id="{host.id}"}}'
                     f"[{max(b - a, 300)}s]) @ {b}",
                 )
             except metrics.MetricsUnavailable:
@@ -989,7 +989,7 @@ def render(
         topMargin=16 * mm,
         bottomMargin=18 * mm,
         title=f"Server report: {title}",
-        author="Pulsegrid",
+        author="Sentinel",
     )
     story: list = [
         Paragraph("Server report", H1),

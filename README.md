@@ -1,20 +1,20 @@
-# Pulsegrid
+# Sentinel
 
 Multi-tenant server and uptime monitoring. A lightweight agent on each
 server pushes metrics every 30 seconds and runs checks (ports, URLs, files,
 log patterns) and plugins (MySQL, PostgreSQL, Redis, Nginx, Apache, Docker,
 Prometheus endpoints, scripts); agents marked as probes run customers'
-uptime checks from several regions. Pulsegrid stores everything, evaluates
+uptime checks from several regions. Sentinel stores everything, evaluates
 alert rules (thresholds, anomalies, forecasts), opens incidents with a
 timeline, notifies verified contacts by email and Web Push, can run an
 allowed fix on the server, and publishes status pages and monthly reports.
 
 The Example console is the dashboard and the identity provider: users
-sign up there, and Pulsegrid trusts the console's JWT (the same way
+sign up there, and Sentinel trusts the console's JWT (the same way
 billing-ms does). The console's **Monitoring → Servers** tab is the UI.
 
 ```text
-                 ┌──────────── Pulsegrid ─────────────────────────────────────┐
+                 ┌──────────── Sentinel ─────────────────────────────────────┐
 agent ──push──▶  │ ingest ──▶ VictoriaMetrics (metric samples, history)       │
  (Go, per        │   │              ▲                                         │
   server)        │   ▼              │                                         │
@@ -44,7 +44,7 @@ the console `uid`). Isolation is layered so one mistake can't leak data:
    the host token for ingest. Never a request body, never an IP.
 2. **Application scoping**: every query filters on `tenant_id`; metric queries
    are built server-side from a fixed catalog, never from client PromQL.
-3. **Postgres row-level security**: the API connects as `pulsegrid_app`,
+3. **Postgres row-level security**: the API connects as `sentinel_app`,
    which RLS always applies to. Each request sets `app.tenant_id` for its
    transaction only (`api/app/tenancy.py`), so a query with no `WHERE` still
    sees one tenant, and a pooled connection can't carry it to the next request.
@@ -54,8 +54,8 @@ the console `uid`). Isolation is layered so one mistake can't leak data:
 5. **Tests prove it**: `api/tests/test_rls.py`, `test_api_isolation.py`,
    `test_alerting.py`, `ingest/vm_test.go`.
 
-Database roles: `pulsegrid` (owner, migrations only), `pulsegrid_app` (API;
-RLS), `pulsegrid_service` (ingest, alerter, `/internal`; BYPASSRLS with
+Database roles: `sentinel` (owner, migrations only), `sentinel_app` (API;
+RLS), `sentinel_service` (ingest, alerter, `/internal`; BYPASSRLS with
 narrow grants).
 
 ## Agent
@@ -65,10 +65,10 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 
 | Platform | Install | Runs as | Supervised by | Self-update |
 |---|---|---|---|---|
-| Linux (amd64, arm64) | `curl … install.sh \| sudo sh` | `pulsegrid` | systemd (`Restart=always`) or OpenRC | root systemd timer / cron |
-| FreeBSD (amd64, arm64) | `fetch -qo - … \| sh` | `pulsegrid` | `daemon(8) -r` via rc.d | root cron |
-| OpenBSD (amd64) | `ftp -o - … \| doas sh` | `_pulsegrid` | rc.d + 5-minute cron watchdog | root cron |
-| NetBSD (amd64) | `ftp -o - … \| sh` | `pulsegrid` | rc.d (pidfile) + 5-minute cron watchdog | root cron |
+| Linux (amd64, arm64) | `curl … install.sh \| sudo sh` | `sentinel` | systemd (`Restart=always`) or OpenRC | root systemd timer / cron |
+| FreeBSD (amd64, arm64) | `fetch -qo - … \| sh` | `sentinel` | `daemon(8) -r` via rc.d | root cron |
+| OpenBSD (amd64) | `ftp -o - … \| doas sh` | `_sentinel` | rc.d + 5-minute cron watchdog | root cron |
+| NetBSD (amd64) | `ftp -o - … \| sh` | `sentinel` | rc.d (pidfile) + 5-minute cron watchdog | root cron |
 | Windows Server 2016+ / 10+ | `install.ps1` in elevated PowerShell | `LocalService` | Service Control Manager (restart on failure) | SYSTEM scheduled task |
 
 - One-line install from the dashboard; the agent never runs privileged. Its
@@ -80,7 +80,7 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 - Ingest records the public address each agent connects from
   (`hosts.public_ip`), so servers behind NAT or in a VPC still match uptime
   checks and maintenance by their public IP.
-- Fetches its config from Pulsegrid every 2 minutes, falling back to the URL
+- Fetches its config from Sentinel every 2 minutes, falling back to the URL
   it registered with, so domains can move without reinstalls. The config
   also lists the processes and services to watch, taken from the host's
   alert rules: creating a "nginx isn't running" rule configures the agents.
@@ -100,14 +100,14 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
   expression; rotation-aware). A failure is held until a push delivers it, so
   one bad line between pushes is never lost. Probe checks may only reach
   public addresses, enforced when connecting (DNS rebinding can't get round it).
-- Plugins from root-owned files in `/etc/pulsegrid/plugins.d/*.conf`
-  (`%ProgramData%\Pulsegrid\conf` on Windows): `mysql`, `postgres`, `redis`,
+- Plugins from root-owned files in `/etc/sentinel/plugins.d/*.conf`
+  (`%ProgramData%\Sentinel\conf` on Windows): `mysql`, `postgres`, `redis`,
   `nginx`, `apache`, `docker`, `prometheus` (any exporter or `/metrics`;
-  series become `pulsegrid_custom_*`) and `script` (prints `name value`
+  series become `sentinel_custom_*`) and `script` (prints `name value`
   lines). Never configured from the dashboard: they hold passwords and a
-  script runs code. `pulsegrid-agent plugins` tests them.
+  script runs code. `sentinel-agent plugins` tests them.
 - Actions: the dashboard (or a rule, when it fires) can ask for a fix by
-  name; only names in the root-owned `actions.conf` run. `sudo pulsegrid-agent
+  name; only names in the root-owned `actions.conf` run. `sudo sentinel-agent
   allow-action restart-nginx -- /usr/bin/systemctl restart nginx` writes it,
   a sudoers rule for exactly that command, and (systemd) a drop-in that
   relaxes the unit's sandbox only while sudo actions exist.
@@ -119,7 +119,7 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 - Self-updates hourly from a separate privileged job: downloads the version
   the rollout offers it, verifies its SHA-256, self-tests it and swaps it in
   atomically (on Windows the running `.exe` is moved aside first). In a
-  container, the `pulsegrid-agent` image (`deploy/agent-container/`) does the
+  container, the `sentinel-agent` image (`deploy/agent-container/`) does the
   same from its entrypoint and restarts the agent on the new binary.
 
 ### Agent rollouts
@@ -181,9 +181,9 @@ a rollback or a pin can still download its version.
   backoff. Email (SMTP, or through the console; HTML with acknowledge and
   view buttons), Web Push to browsers and phones (VAPID; a dropped
   subscription is removed), webhooks (signed
-  `X-Pulsegrid-Signature: sha256=…`, private addresses refused), Slack,
+  `X-Sentinel-Signature: sha256=…`, private addresses refused), Slack,
   Microsoft Teams, Discord, Telegram (the customer's bot), PagerDuty (Events
-  v2: Pulsegrid incidents trigger and resolve PagerDuty incidents), SMS and
+  v2: Sentinel incidents trigger and resolve PagerDuty incidents), SMS and
   voice calls (Twilio). Secret targets (webhook URLs, bot tokens, keys) are
   masked whenever the API returns them.
   `ENABLED_CHANNEL_TYPES` (default `email,push`) limits what customers can
@@ -222,14 +222,14 @@ The account owner invites other console users by email as **viewer** (reads
 everything), **operator** (also acknowledges and resolves incidents,
 schedules maintenance, runs allowed actions) or **admin** (changes anything
 but members and API tokens). A member opens the shared account by sending
-`X-Pulsegrid-Account: <tenant id>`; `tenancy.py` checks the membership
-(`pulsegrid_member_tenant()`, SECURITY DEFINER) and the role per route, then
+`X-Sentinel-Account: <tenant id>`; `tenancy.py` checks the membership
+(`sentinel_member_tenant()`, SECURITY DEFINER) and the role per route, then
 RLS applies as usual. Invitations are claimed by the first console login with
 that verified email and pinned to it.
 
 ## Logs
 
-Opt-in per server: a root-owned `/etc/pulsegrid/logs.conf` (`file = <glob>`,
+Opt-in per server: a root-owned `/etc/sentinel/logs.conf` (`file = <glob>`,
 `journal = true`). The agent ships new lines (rotation-aware, offsets kept
 across restarts, no backfill) to ingest `/v1/logs`, which writes them to
 VictoriaLogs in the tenant's own account (`AccountID` =
@@ -244,10 +244,10 @@ stats query in the same account. 14 days kept (`LOG_RETENTION`). Off unless
 
 ## APM
 
-Opt-in per server: `/etc/pulsegrid/apm.conf` (`listen = 127.0.0.1:4318`)
+Opt-in per server: `/etc/sentinel/apm.conf` (`listen = 127.0.0.1:4318`)
 makes the agent an OTLP/HTTP receiver; apps use
 `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` and need no key. Ingest
-decodes each batch, sets `pulsegrid.host_id` from the token (replacing any
+decodes each batch, sets `sentinel.host_id` from the token (replacing any
 the app sent), caps `SPANS_PER_MINUTE` per host and writes to Tempo as the
 tenant. The API reports services (requests, error rate, p50/p95/p99 from
 TraceQL metrics over entry spans), searches traces and returns one trace's
@@ -255,19 +255,19 @@ spans; 7 days kept. Off unless `TEMPO_URL` is set.
 
 ## Hardware and network devices
 
-- `sudo pulsegrid-agent enable-hardware` finds smartctl disks and an IPMI
+- `sudo sentinel-agent enable-hardware` finds smartctl disks and an IPMI
   BMC, writes `plugins.d/smart.conf` / `ipmi.conf`, and a sudoers file
   allowing exactly those read-only command lines (`--remove` undoes it).
-  Metrics: `pulsegrid_custom_smart_*` (healthy, temperature, reallocated and
-  pending sectors, NVMe wear) and `pulsegrid_custom_ipmi_sensor{sensor,unit}`.
+  Metrics: `sentinel_custom_smart_*` (healthy, temperature, reallocated and
+  pending sectors, NVMe wear) and `sentinel_custom_ipmi_sensor{sensor,unit}`.
 - `type = snmp` plugins poll a device from the server (v1/v2c/v3): uptime,
   per-interface traffic and status, and named custom OIDs
-  (`pulsegrid_custom_snmp_*`).
+  (`sentinel_custom_snmp_*`).
 - Alert with custom rules (e.g. `smart_healthy < 1`).
 
 ## Terraform
 
-`terraform-provider-pulsegrid/`: alert rules, checks, maintenance windows,
+`terraform-provider-sentinel/`: alert rules, checks, maintenance windows,
 status pages, install keys and a hosts data source, with an API token.
 
 ## Jobs
@@ -281,7 +281,7 @@ a new `AGENT_VERSION` as the canary, and the health gate).
 
 ## Backups
 
-The `backup` service dumps Pulsegrid's Postgres every night (`pg_dump -Fc`
+The `backup` service dumps Sentinel's Postgres every night (`pg_dump -Fc`
 into the `pg-backups` volume, kept `BACKUP_KEEP_DAYS`, default 7). That's the
 part that can't be rebuilt: accounts, rules, incidents, status pages. Metrics,
 logs and traces age out by retention. Restore with `pg_restore --clean
@@ -323,56 +323,56 @@ Override host ports and public URLs through `deploy/.env` (`API_PORT`,
 ## Release
 
 Push a tag (`v0.2.0`). The `Release` workflow publishes
-`ghcr.io/example-org/pulsegrid-{api,ingest,alerter}:0.2.0` and attaches
+`ghcr.io/example-org/sentinel-{api,ingest,alerter}:0.2.0` and attaches
 agent binaries with `.sha256` files to the GitHub release. Upload those files
 to the download host under `/agent/<agent version>/`, then bump
-`PULSEGRID_VERSION` (and `AGENT_VERSION`, when `agent/VERSION` changed) and
+`SENTINEL_VERSION` (and `AGENT_VERSION`, when `agent/VERSION` changed) and
 redeploy: a new agent version reaches the canary share first.
 Web Push needs `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` once per environment:
-`docker run --rm ghcr.io/example-org/pulsegrid-alerter:<v> vapid`.
+`docker run --rm ghcr.io/example-org/sentinel-alerter:<v> vapid`.
 
 ## Deploy behind the console (dev, prod)
 
-Pulsegrid runs as its own Swarm stack and is served on the console's domain
+Sentinel runs as its own Swarm stack and is served on the console's domain
 through the console's nginx (`frontend/nginx/*.conf`), like billing-ms:
 
 | Path on the console domain | Goes to |
 |---|---|
-| `/api/pulsegrid/...` | API (unstripped; `API_ROOT_PATH=/api/pulsegrid`), install scripts, agent binaries baked into the image |
-| `/pulsegrid/ingest/...` | ingest (prefix stripped) |
-| `/api/pulsegrid/internal/`, `/api/internal/` | blocked (404): service-to-service only |
+| `/api/sentinel/...` | API (unstripped; `API_ROOT_PATH=/api/sentinel`), install scripts, agent binaries baked into the image |
+| `/sentinel/ingest/...` | ingest (prefix stripped) |
+| `/api/sentinel/internal/`, `/api/internal/` | blocked (404): service-to-service only |
 
 ```sh
-docker network create --driver overlay --attachable pulsegrid-dev   # once
+docker network create --driver overlay --attachable sentinel-dev   # once
 cp deploy/console.env.example deploy/dev.env                        # fill in; never commit
 set -a; . deploy/dev.env; set +a
-docker stack deploy -c deploy/stack.console.yml --with-registry-auth pulsegrid
-docker run --rm --network pulsegrid_backend \
-  -e DATABASE_OWNER_URL="postgresql+asyncpg://pulsegrid:${POSTGRES_PASSWORD}@postgres:5432/pulsegrid" \
-  ghcr.io/example-org/pulsegrid-api:${PULSEGRID_VERSION} alembic upgrade head
+docker stack deploy -c deploy/stack.console.yml --with-registry-auth sentinel
+docker run --rm --network sentinel_backend \
+  -e DATABASE_OWNER_URL="postgresql+asyncpg://sentinel:${POSTGRES_PASSWORD}@postgres:5432/sentinel" \
+  ghcr.io/example-org/sentinel-api:${SENTINEL_VERSION} alembic upgrade head
 ```
 
 The console stack's frontend (nginx) and backend join the same network; the
 backend is aliased `console-backend` there. Email goes through the console
 (`EMAIL_TRANSPORT=console`): the alerter posts to the backend's
-`/api/internal/pulsegrid/email/`, which sends with the console's Mail Settings
-from the `pulsegrid_alert` sender. Console settings: `PULSEGRID_ENABLED`,
-`PULSEGRID_INTERNAL_URL`, `PULSEGRID_INTERNAL_API_KEY` (= Pulsegrid's
-`INTERNAL_API_KEY`), `PULSEGRID_CALLBACK_API_KEY` (= Pulsegrid's
+`/api/internal/sentinel/email/`, which sends with the console's Mail Settings
+from the `sentinel_alert` sender. Console settings: `SENTINEL_ENABLED`,
+`SENTINEL_INTERNAL_URL`, `SENTINEL_INTERNAL_API_KEY` (= Sentinel's
+`INTERNAL_API_KEY`), `SENTINEL_CALLBACK_API_KEY` (= Sentinel's
 `CONSOLE_INTERNAL_API_KEY`).
 
 ## Deploy standalone (Swarm, own domains)
 
 ```sh
 cp deploy/production.env.example deploy/production.env   # fill in; never commit
-docker node update --label-add pulsegrid.db=true <node>  # where data lives
+docker node update --label-add sentinel.db=true <node>  # where data lives
 set -a; . deploy/production.env; set +a
-docker stack deploy -c deploy/stack.yml --with-registry-auth pulsegrid
+docker stack deploy -c deploy/stack.yml --with-registry-auth sentinel
 
 # migrations, once per release, before relying on new code:
-docker run --rm --network pulsegrid_backend \
-  -e DATABASE_OWNER_URL="postgresql+asyncpg://pulsegrid:${POSTGRES_PASSWORD}@postgres:5432/pulsegrid" \
-  ghcr.io/example-org/pulsegrid-api:${PULSEGRID_VERSION} alembic upgrade head
+docker run --rm --network sentinel_backend \
+  -e DATABASE_OWNER_URL="postgresql+asyncpg://sentinel:${POSTGRES_PASSWORD}@postgres:5432/sentinel" \
+  ghcr.io/example-org/sentinel-api:${SENTINEL_VERSION} alembic upgrade head
 ```
 
 - Caddy terminates TLS for `API_HOST`, `INGEST_HOST` and `DOWNLOAD_HOST`
@@ -391,12 +391,12 @@ get `/admin/v1`: totals, every account with servers, any account's servers
 and charts, incidents (with timelines) across all accounts, and the agent
 fleet (versions, outdated agents, probes). The one change staff make is
 which of our agents are probes; staff act for a customer through the
-console's view-as-client, which Pulsegrid treats as read-only. `ADMIN_JWT_TOKEN_ISSUER` /
+console's view-as-client, which Sentinel treats as read-only. `ADMIN_JWT_TOKEN_ISSUER` /
 `ADMIN_JWT_TOKEN_AUDIENCE` default to the customer token values.
 
 ## Console integration
 
-- **Browser → Pulsegrid**: set `VITE_PULSEGRID_API_BASE_URL` in the console
+- **Browser → Sentinel**: set `VITE_SENTINEL_API_BASE_URL` in the console
   frontend build; add the console origin to `CORS_ORIGINS`. The console's
   access token is sent as-is.
 - **Identity**: `JWKS_URI`, `JWT_TOKEN_ISSUER`, `JWT_TOKEN_AUDIENCE` take the

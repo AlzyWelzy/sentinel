@@ -45,14 +45,14 @@ def install_command_windows(key: str, tags: list[str] | None = None) -> str:
 def docker_command(key: str, tags: list[str] | None = None) -> str:
     """The agent as a container watching its host (host /proc, /sys, /etc and
     the logind sessions read-only). The image updates itself; the volume keeps its identity."""
-    extra = f" -e PULSEGRID_TAGS={','.join(tags)}" if tags else ""
+    extra = f" -e SENTINEL_TAGS={','.join(tags)}" if tags else ""
     return (
-        "docker run -d --name pulsegrid-agent --restart unless-stopped --pid host --network host"
+        "docker run -d --name sentinel-agent --restart unless-stopped --pid host --network host"
         " -v /proc:/host/proc:ro -v /sys:/host/sys:ro -v /etc:/host/etc:ro"
         " -v /run/systemd:/host/run/systemd:ro"
         " -e HOST_PROC=/host/proc -e HOST_SYS=/host/sys -e HOST_ETC=/host/etc -e HOST_RUN=/host/run"
-        f" -e PULSEGRID_URL={settings.PUBLIC_INGEST_URL} -e PULSEGRID_KEY={key}{extra}"
-        f" -v pulsegrid-agent:/var/lib/pulsegrid {settings.AGENT_IMAGE}"
+        f" -e SENTINEL_URL={settings.PUBLIC_INGEST_URL} -e SENTINEL_KEY={key}{extra}"
+        f" -v sentinel-agent:/var/lib/sentinel {settings.AGENT_IMAGE}"
     )
 
 
@@ -62,14 +62,14 @@ def cloud_init(key: str, tags: list[str] | None = None) -> str:
     extra = f" --tags {','.join(tags)}" if tags else ""
     return (
         "#!/bin/sh\n"
-        "# Installs the Pulsegrid monitoring agent at first boot.\n"
+        "# Installs the Sentinel monitoring agent at first boot.\n"
         "for i in $(seq 1 30); do\n"
-        f"  curl -fsSL {settings.PUBLIC_DOWNLOAD_URL}/install.sh -o /tmp/pulsegrid-install.sh"
+        f"  curl -fsSL {settings.PUBLIC_DOWNLOAD_URL}/install.sh -o /tmp/sentinel-install.sh"
         " && break\n"
         "  sleep 10\n"
         "done\n"
-        f"sh /tmp/pulsegrid-install.sh --key {key}{extra}\n"
-        "rm -f /tmp/pulsegrid-install.sh\n"
+        f"sh /tmp/sentinel-install.sh --key {key}{extra}\n"
+        "rm -f /tmp/sentinel-install.sh\n"
     )
 
 
@@ -469,12 +469,10 @@ async def processes_of(tenant_id: uuid.UUID, host_id: uuid.UUID) -> ProcessesOut
     """Latest top processes from the agent. Names that dropped out of the
     agent's top list in the last minute still show, with their last values."""
     try:
-        cpu = await metrics.query_latest(tenant_id, host_id, "pulsegrid_process_cpu_percent", "90s")
-        mem = await metrics.query_latest(
-            tenant_id, host_id, "pulsegrid_process_memory_bytes", "90s"
-        )
-        cnt = await metrics.query_latest(tenant_id, host_id, "pulsegrid_process_count", "90s")
-        total = await metrics.query_latest(tenant_id, host_id, "pulsegrid_processes_total", "3m")
+        cpu = await metrics.query_latest(tenant_id, host_id, "sentinel_process_cpu_percent", "90s")
+        mem = await metrics.query_latest(tenant_id, host_id, "sentinel_process_memory_bytes", "90s")
+        cnt = await metrics.query_latest(tenant_id, host_id, "sentinel_process_count", "90s")
+        total = await metrics.query_latest(tenant_id, host_id, "sentinel_processes_total", "3m")
     except metrics.MetricsUnavailable:
         raise HTTPException(status_code=503, detail="Metrics store unavailable") from None
     rows: dict[str, ProcessOut] = {}
@@ -536,11 +534,11 @@ async def checks_of(db: AsyncSession, host: Host) -> ChecksOut:
         wanted.setdefault((kind, r.target or ""), []).append(r.id)
     try:
         procs = await metrics.query_latest(
-            host.tenant_id, host.id, "pulsegrid_watched_process_count"
+            host.tenant_id, host.id, "sentinel_watched_process_count"
         )
-        svcs = await metrics.query_latest(host.tenant_id, host.id, "pulsegrid_service_up")
+        svcs = await metrics.query_latest(host.tenant_id, host.id, "sentinel_service_up")
         failed = await metrics.query_latest(
-            host.tenant_id, host.id, "pulsegrid_systemd_failed_units"
+            host.tenant_id, host.id, "sentinel_systemd_failed_units"
         )
     except metrics.MetricsUnavailable:
         raise HTTPException(status_code=503, detail="Metrics store unavailable") from None

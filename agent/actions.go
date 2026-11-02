@@ -25,7 +25,7 @@ import (
 //
 //	restart-nginx = /usr/bin/sudo -n /usr/bin/systemctl restart nginx
 //
-// `pulsegrid-agent allow-action` writes that file and, on Unix, a sudoers
+// `sentinel-agent allow-action` writes that file and, on Unix, a sudoers
 // rule for exactly that command, since the agent itself is unprivileged.
 
 const (
@@ -38,8 +38,8 @@ const (
 // /etc/sudoers.d, or /usr/local/etc/sudoers.d where sudo comes from packages
 // (FreeBSD, NetBSD's pkgsrc uses /usr/pkg/etc).
 // They're looked up on each use: installing sudo can create the directory.
-func sudoersFile() string     { return filepath.Join(sudoersDir(), "pulsegrid") }
-func hardwareSudoers() string { return filepath.Join(sudoersDir(), "pulsegrid-hardware") }
+func sudoersFile() string     { return filepath.Join(sudoersDir(), "sentinel") }
+func hardwareSudoers() string { return filepath.Join(sudoersDir(), "sentinel-hardware") }
 
 func sudoersDir() string {
 	for _, d := range []string{"/etc/sudoers.d", "/usr/local/etc/sudoers.d", "/usr/pkg/etc/sudoers.d"} {
@@ -102,7 +102,7 @@ func runAction(ctx context.Context, dir string, req proto.ActionRequest) proto.A
 	args, ok := allowed[req.Name]
 	if !ok {
 		res.Status = "refused"
-		res.Output = fmt.Sprintf("%q isn't allowed on this server; an administrator can allow it with: pulsegrid-agent allow-action %s -- <command>", req.Name, req.Name)
+		res.Output = fmt.Sprintf("%q isn't allowed on this server; an administrator can allow it with: sentinel-agent allow-action %s -- <command>", req.Name, req.Name)
 		return res
 	}
 	ctx, cancel := context.WithTimeout(ctx, actionTimeout)
@@ -146,7 +146,7 @@ func (c *cappedWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// cmdAllowAction: pulsegrid-agent allow-action NAME [--sudo] -- COMMAND ARGS...
+// cmdAllowAction: sentinel-agent allow-action NAME [--sudo] -- COMMAND ARGS...
 // Run as root. --sudo (the default on Unix) also lets the agent's user run
 // exactly that command as root without a password.
 func cmdAllowAction(args []string) error {
@@ -158,7 +158,7 @@ func cmdAllowAction(args []string) error {
 	fs.Parse(args)
 	rest := fs.Args()
 	if len(rest) == 0 {
-		return errors.New("usage: pulsegrid-agent allow-action NAME -- /absolute/command args")
+		return errors.New("usage: sentinel-agent allow-action NAME -- /absolute/command args")
 	}
 	name := rest[0]
 	if !actionName.MatchString(name) {
@@ -222,8 +222,8 @@ func writeActions(path string, actions map[string]string) error {
 	}
 	sort.Strings(names)
 	var b strings.Builder
-	b.WriteString("# Actions the Pulsegrid dashboard may run on this server, by name.\n")
-	b.WriteString("# Managed by `pulsegrid-agent allow-action`; only root should edit this file.\n")
+	b.WriteString("# Actions the Sentinel dashboard may run on this server, by name.\n")
+	b.WriteString("# Managed by `sentinel-agent allow-action`; only root should edit this file.\n")
 	for _, n := range names {
 		fmt.Fprintf(&b, "%s = %s\n", n, actions[n])
 	}
@@ -252,7 +252,7 @@ func writeSudoers(actions map[string]string, user string) error {
 		return err
 	}
 	sort.Strings(lines)
-	content := "# Managed by pulsegrid-agent allow-action\n" + strings.Join(lines, "\n") + "\n"
+	content := "# Managed by sentinel-agent allow-action\n" + strings.Join(lines, "\n") + "\n"
 	if _, err := os.Stat(filepath.Dir(sudoersFile())); err != nil {
 		return fmt.Errorf("%s doesn't exist; is sudo installed?", filepath.Dir(sudoersFile()))
 	}
@@ -285,7 +285,7 @@ func usesSudo(actions map[string]string) bool {
 }
 
 const (
-	agentUnit  = "pulsegrid-agent"
+	agentUnit  = "sentinel-agent"
 	dropInDir  = "/etc/systemd/system/" + agentUnit + ".service.d"
 	dropInFile = dropInDir + "/actions.conf"
 )
@@ -306,7 +306,7 @@ func systemdSudoDropIn(enable bool) error {
 		if err := os.MkdirAll(dropInDir, 0o755); err != nil {
 			return err
 		}
-		content := "# Written by pulsegrid-agent (allow-action, enable-hardware): sudo needs these.\n" +
+		content := "# Written by sentinel-agent (allow-action, enable-hardware): sudo needs these.\n" +
 			"[Service]\nNoNewPrivileges=false\nProtectSystem=full\n"
 		if err := os.WriteFile(dropInFile, []byte(content), 0o644); err != nil {
 			return err

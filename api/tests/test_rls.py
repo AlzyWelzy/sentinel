@@ -121,14 +121,14 @@ async def test_default_tenant_is_idempotent_and_prefills_the_email():
 
 
 async def test_member_lookup_needs_a_joined_membership():
-    """pulsegrid_member_tenant() answers only for the user's own memberships."""
+    """sentinel_member_tenant() answers only for the user's own memberships."""
     a = await new_tenant()
     stranger = str(uuid.uuid4())
     await ensure_user(stranger, f"{stranger[:8]}@example.com")
     async with AppSession() as db, db.begin():
         rows = (
             await db.execute(
-                text("SELECT * FROM pulsegrid_member_tenant(:t, :u)"), {"t": a, "u": stranger}
+                text("SELECT * FROM sentinel_member_tenant(:t, :u)"), {"t": a, "u": stranger}
             )
         ).all()
     assert rows == []

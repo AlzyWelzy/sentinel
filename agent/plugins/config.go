@@ -167,7 +167,7 @@ func Collect(ctx context.Context, list []Config) []Result {
 				samples[j].Labels["plugin"] = c.Name
 			}
 			samples = append(samples, proto.Sample{
-				Name: "pulsegrid_plugin_up", Value: boolValue(err == nil),
+				Name: "sentinel_plugin_up", Value: boolValue(err == nil),
 				Labels: map[string]string{"plugin": c.Name, "type": c.Type},
 			})
 			out[i] = Result{Status: st, Samples: samples}

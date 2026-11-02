@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	metricNameRe = regexp.MustCompile(`^pulsegrid_[a-z0-9_]{1,100}$`)
+	metricNameRe = regexp.MustCompile(`^sentinel_[a-z0-9_]{1,100}$`)
 	labelNameRe  = regexp.MustCompile(`^[a-z_][a-z0-9_]{0,49}$`)
 )
 

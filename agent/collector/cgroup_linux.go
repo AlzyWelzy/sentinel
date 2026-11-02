@@ -37,7 +37,7 @@ func readTrim(path string) (string, bool) {
 }
 
 // ownCgroup is the agent's cgroup v2 path, e.g.
-// /system.slice/docker-abc.scope/system.slice/pulsegrid-agent.service.
+// /system.slice/docker-abc.scope/system.slice/sentinel-agent.service.
 func ownCgroup() (string, bool) {
 	f, err := os.Open(procSelfCgroup)
 	if err != nil {

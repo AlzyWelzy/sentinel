@@ -25,7 +25,7 @@ func serviceSamples(ctx context.Context, names []string) []proto.Sample {
 		ctx, cancel := context.WithTimeout(ctx, serviceCheckTimeout)
 		up := exec.CommandContext(ctx, statusCommand(n)[0], statusCommand(n)[1:]...).Run() == nil
 		cancel()
-		out = append(out, sample("pulsegrid_service_up", boolValue(up), "service", n))
+		out = append(out, sample("sentinel_service_up", boolValue(up), "service", n))
 	}
 	return out
 }

@@ -1,22 +1,22 @@
 #!/bin/sh
 # Runs the agent unprivileged and keeps it current (see the Dockerfile).
 #
-#   PULSEGRID_URL, PULSEGRID_KEY  register on first start (then unused)
-#   PULSEGRID_TAGS                tags to register with, e.g. web,production
-#   PULSEGRID_UPDATE_INTERVAL     seconds between update checks (3600)
+#   SENTINEL_URL, SENTINEL_KEY  register on first start (then unused)
+#   SENTINEL_TAGS                tags to register with, e.g. web,production
+#   SENTINEL_UPDATE_INTERVAL     seconds between update checks (3600)
 set -eu
 
-BIN=/usr/local/bin/pulsegrid-agent
-STATE=/var/lib/pulsegrid
-RUN_AS=pulsegrid
-EVERY=${PULSEGRID_UPDATE_INTERVAL:-3600}
+BIN=/usr/local/bin/sentinel-agent
+STATE=/var/lib/sentinel
+RUN_AS=sentinel
+EVERY=${SENTINEL_UPDATE_INTERVAL:-3600}
 
 chown -R "$RUN_AS" "$STATE"
 if [ ! -s "$STATE/state.json" ]; then
-    : "${PULSEGRID_URL:?set PULSEGRID_URL and PULSEGRID_KEY to register this agent}"
-    : "${PULSEGRID_KEY:?set PULSEGRID_URL and PULSEGRID_KEY to register this agent}"
-    su-exec "$RUN_AS" "$BIN" register --url "$PULSEGRID_URL" --key "$PULSEGRID_KEY" \
-        --tags "${PULSEGRID_TAGS:-}" --state-dir "$STATE"
+    : "${SENTINEL_URL:?set SENTINEL_URL and SENTINEL_KEY to register this agent}"
+    : "${SENTINEL_KEY:?set SENTINEL_URL and SENTINEL_KEY to register this agent}"
+    su-exec "$RUN_AS" "$BIN" register --url "$SENTINEL_URL" --key "$SENTINEL_KEY" \
+        --tags "${SENTINEL_TAGS:-}" --state-dir "$STATE"
 fi
 
 pid=""

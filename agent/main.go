@@ -1,8 +1,8 @@
-// Command pulsegrid-agent collects host metrics and pushes them to Pulsegrid.
+// Command sentinel-agent collects host metrics and pushes them to Sentinel.
 //
-//	pulsegrid-agent register --url <ingest url> --key <install key>
-//	pulsegrid-agent run
-//	pulsegrid-agent update   (root, from a systemd timer)
+//	sentinel-agent register --url <ingest url> --key <install key>
+//	sentinel-agent run
+//	sentinel-agent update   (root, from a systemd timer)
 package main
 
 import (
@@ -84,26 +84,26 @@ func main() {
 		usage()
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "pulsegrid-agent:", err)
+		fmt.Fprintln(os.Stderr, "sentinel-agent:", err)
 		os.Exit(1)
 	}
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: pulsegrid-agent register --url URL --key KEY [--tags a,b] [--state-dir DIR]")
-	fmt.Fprintln(os.Stderr, "       pulsegrid-agent run [--state-dir DIR] [--pidfile FILE]")
-	fmt.Fprintln(os.Stderr, "       pulsegrid-agent update [--state-dir DIR] [--restart SERVICE]")
-	fmt.Fprintln(os.Stderr, "       pulsegrid-agent allow-action NAME [--remove] -- /absolute/command args")
-	fmt.Fprintln(os.Stderr, "       pulsegrid-agent plugins [--config-dir DIR]   (test the plugin files)")
-	fmt.Fprintln(os.Stderr, "       pulsegrid-agent autoconfig [--no-logs] [--off]   (detect services and write their config; as root)")
-	fmt.Fprintln(os.Stderr, "       pulsegrid-agent enable-hardware [--remove]   (disk SMART and IPMI sensors; as root)")
-	fmt.Fprintln(os.Stderr, "       pulsegrid-agent version")
+	fmt.Fprintln(os.Stderr, "usage: sentinel-agent register --url URL --key KEY [--tags a,b] [--state-dir DIR]")
+	fmt.Fprintln(os.Stderr, "       sentinel-agent run [--state-dir DIR] [--pidfile FILE]")
+	fmt.Fprintln(os.Stderr, "       sentinel-agent update [--state-dir DIR] [--restart SERVICE]")
+	fmt.Fprintln(os.Stderr, "       sentinel-agent allow-action NAME [--remove] -- /absolute/command args")
+	fmt.Fprintln(os.Stderr, "       sentinel-agent plugins [--config-dir DIR]   (test the plugin files)")
+	fmt.Fprintln(os.Stderr, "       sentinel-agent autoconfig [--no-logs] [--off]   (detect services and write their config; as root)")
+	fmt.Fprintln(os.Stderr, "       sentinel-agent enable-hardware [--remove]   (disk SMART and IPMI sensors; as root)")
+	fmt.Fprintln(os.Stderr, "       sentinel-agent version")
 	os.Exit(2)
 }
 
 func cmdRegister(args []string) error {
 	fs := flag.NewFlagSet("register", flag.ExitOnError)
-	url := fs.String("url", "", "Pulsegrid ingest URL")
+	url := fs.String("url", "", "Sentinel ingest URL")
 	key := fs.String("key", "", "install key from the dashboard")
 	tags := fs.String("tags", "", "comma-separated tags to add to this server, e.g. web,production")
 	stateDir := fs.String("state-dir", defaultStateDir(), "where the agent keeps its state")
@@ -173,7 +173,7 @@ func cmdRun(args []string, log *slog.Logger) error {
 
 	st, err := loadState(*stateDir)
 	if err != nil {
-		return fmt.Errorf("not registered (run `pulsegrid-agent register` first): %w", err)
+		return fmt.Errorf("not registered (run `sentinel-agent register` first): %w", err)
 	}
 	col, err := collector.New()
 	if err != nil {
@@ -351,7 +351,7 @@ func (a *agent) logLoop(ctx context.Context) {
 				wait = time.Second // more waiting: catch up
 			}
 		case errors.As(err, &se) && se.Code == http.StatusNotFound:
-			a.log.Info("log search isn't enabled on this Pulsegrid; will check again later")
+			a.log.Info("log search isn't enabled on this Sentinel; will check again later")
 			wait = 10 * time.Minute
 		case errors.As(err, &se) && se.permanent():
 			a.log.Warn("ingest rejected log lines; skipping them", "err", err)
@@ -645,7 +645,7 @@ func sameState(a, b state) bool {
 }
 
 // cmdPlugins loads and runs the plugin files once, for an administrator
-// setting them up: pulsegrid-agent plugins
+// setting them up: sentinel-agent plugins
 func cmdPlugins(args []string) error {
 	fs := flag.NewFlagSet("plugins", flag.ExitOnError)
 	configDir := fs.String("config-dir", defaultConfigDir(), "agent config directory")

@@ -1,7 +1,7 @@
 package plugins
 
 // Hardware: disk health (smartctl) and board sensors (ipmitool). Both need
-// root. `pulsegrid-agent enable-hardware` writes these plugin files and a
+// root. `sentinel-agent enable-hardware` writes these plugin files and a
 // sudoers rule for exactly the command lines below, so the agent can run
 // them through `sudo -n` and nothing else.
 //
@@ -74,7 +74,7 @@ func runPrivileged(ctx context.Context, args []string) ([]byte, error) {
 	until := refused[key]
 	refusedMu.Unlock()
 	if time.Now().Before(until) {
-		return nil, errors.New("not allowed to run it; run: sudo pulsegrid-agent enable-hardware")
+		return nil, errors.New("not allowed to run it; run: sudo sentinel-agent enable-hardware")
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -85,14 +85,14 @@ func runPrivileged(ctx context.Context, args []string) ([]byte, error) {
 		refusedMu.Lock()
 		refused[key] = time.Now().Add(refuseBackoff)
 		refusedMu.Unlock()
-		return nil, errors.New("not allowed to run it; run: sudo pulsegrid-agent enable-hardware")
+		return nil, errors.New("not allowed to run it; run: sudo sentinel-agent enable-hardware")
 	}
 	return stdout.Bytes(), err
 }
 
-// HardwareCacheDir is where `pulsegrid-agent hardware-cache`, run as root by
+// HardwareCacheDir is where `sentinel-agent hardware-cache`, run as root by
 // a timer on servers without sudo, leaves each command's output.
-var HardwareCacheDir = "/var/lib/pulsegrid/hardware"
+var HardwareCacheDir = "/var/lib/sentinel/hardware"
 
 // HardwareCacheFile names the cached output of one command line.
 func HardwareCacheFile(args []string) string {
@@ -110,10 +110,10 @@ func readHardwareCache(args []string) ([]byte, error) {
 	}
 	fi, err := os.Stat(path)
 	if err != nil {
-		return nil, errors.New("sudo isn't installed and the hardware timer hasn't run yet; run pulsegrid-agent enable-hardware as root")
+		return nil, errors.New("sudo isn't installed and the hardware timer hasn't run yet; run sentinel-agent enable-hardware as root")
 	}
 	if age := time.Since(fi.ModTime()); age > hardwareCacheMaxAge {
-		return nil, fmt.Errorf("the hardware timer last ran %s ago; check: systemctl status pulsegrid-agent-hardware.timer", age.Round(time.Minute))
+		return nil, fmt.Errorf("the hardware timer last ran %s ago; check: systemctl status sentinel-agent-hardware.timer", age.Round(time.Minute))
 	}
 	return os.ReadFile(path)
 }
@@ -182,26 +182,26 @@ func parseSmart(out []byte, device string) ([]proto.Sample, error) {
 	}
 	dev := filepath.Base(device)
 	l := []string{"device", dev}
-	s := []proto.Sample{sample("pulsegrid_custom_smart_healthy", boolValue(r.SmartStatus.Passed), "device", dev, "model", r.ModelName)}
+	s := []proto.Sample{sample("sentinel_custom_smart_healthy", boolValue(r.SmartStatus.Passed), "device", dev, "model", r.ModelName)}
 	if r.Temperature != nil && r.Temperature.Current > 0 {
-		s = append(s, sample("pulsegrid_custom_smart_temperature_celsius", r.Temperature.Current, l...))
+		s = append(s, sample("sentinel_custom_smart_temperature_celsius", r.Temperature.Current, l...))
 	}
 	if r.PowerOnTime != nil {
-		s = append(s, sample("pulsegrid_custom_smart_power_on_hours", r.PowerOnTime.Hours, l...))
+		s = append(s, sample("sentinel_custom_smart_power_on_hours", r.PowerOnTime.Hours, l...))
 	}
 	if r.ATA != nil {
 		for _, a := range r.ATA.Table {
 			if name, ok := ataAttrs[a.ID]; ok {
-				s = append(s, sample("pulsegrid_custom_smart_"+name, a.Raw.Value, l...))
+				s = append(s, sample("sentinel_custom_smart_"+name, a.Raw.Value, l...))
 			}
 		}
 	}
 	if r.NVMe != nil {
 		s = append(s,
-			sample("pulsegrid_custom_smart_nvme_percentage_used", r.NVMe.PercentageUsed, l...),
-			sample("pulsegrid_custom_smart_nvme_available_spare", r.NVMe.AvailableSpare, l...),
-			sample("pulsegrid_custom_smart_nvme_media_errors", r.NVMe.MediaErrors, l...),
-			sample("pulsegrid_custom_smart_nvme_critical_warning", r.NVMe.CriticalWarning, l...),
+			sample("sentinel_custom_smart_nvme_percentage_used", r.NVMe.PercentageUsed, l...),
+			sample("sentinel_custom_smart_nvme_available_spare", r.NVMe.AvailableSpare, l...),
+			sample("sentinel_custom_smart_nvme_media_errors", r.NVMe.MediaErrors, l...),
+			sample("sentinel_custom_smart_nvme_critical_warning", r.NVMe.CriticalWarning, l...),
 		)
 	}
 	return s, nil
@@ -234,7 +234,7 @@ func collectSmart(ctx context.Context, c Config) ([]proto.Sample, error) {
 	smartctl := orDefault(c.Settings["smartctl"], "/usr/sbin/smartctl")
 	devices := SmartDevices(c.Settings["devices"])
 	if len(devices) == 0 {
-		return nil, errors.New("no devices; run: sudo pulsegrid-agent enable-hardware")
+		return nil, errors.New("no devices; run: sudo sentinel-agent enable-hardware")
 	}
 	var out []proto.Sample
 	var problems []string
@@ -291,7 +291,7 @@ func parseIPMI(out []byte) ([]proto.Sample, error) {
 		v, err := strconv.ParseFloat(reading[0], 64)
 		if err != nil {
 			// Discrete sensors ("0x01"): report only whether they're ok.
-			s = append(s, sample("pulsegrid_custom_ipmi_sensor_ok", boolValue(status == "ok"), "sensor", name))
+			s = append(s, sample("sentinel_custom_ipmi_sensor_ok", boolValue(status == "ok"), "sensor", name))
 			continue
 		}
 		unit := strings.ToLower(strings.Join(reading[1:], " "))
@@ -310,8 +310,8 @@ func parseIPMI(out []byte) ([]proto.Sample, error) {
 			unit = "percent"
 		}
 		s = append(s,
-			sample("pulsegrid_custom_ipmi_sensor", v, "sensor", name, "unit", unit),
-			sample("pulsegrid_custom_ipmi_sensor_ok", boolValue(status == "ok"), "sensor", name),
+			sample("sentinel_custom_ipmi_sensor", v, "sensor", name, "unit", unit),
+			sample("sentinel_custom_ipmi_sensor_ok", boolValue(status == "ok"), "sensor", name),
 		)
 	}
 	if len(s) == 0 {

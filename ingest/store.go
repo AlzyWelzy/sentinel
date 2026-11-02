@@ -15,7 +15,7 @@ import (
 	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
-// Ingest connects as pulsegrid_service, which bypasses RLS: an agent has no
+// Ingest connects as sentinel_service, which bypasses RLS: an agent has no
 // tenant until its key or token has been looked up. Tenant scoping here comes
 // from those lookups, and every row written takes tenant_id from them, never
 // from the agent's request.

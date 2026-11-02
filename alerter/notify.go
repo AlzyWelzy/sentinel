@@ -82,7 +82,7 @@ func (e *emailSender) sendMail(ctx context.Context, to, subject, text, html stri
 		e.from, to, mime.QEncoding.Encode("utf-8", subject), time.Now().Format(time.RFC1123Z))
 	body.WriteString("MIME-Version: 1.0\r\n")
 	if html != "" {
-		const boundary = "pulsegrid-alternative-boundary"
+		const boundary = "sentinel-alternative-boundary"
 		fmt.Fprintf(&body, "Content-Type: multipart/alternative; boundary=%q\r\n\r\n", boundary)
 		fmt.Fprintf(&body, "--%s\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n", boundary)
 		body.WriteString(strings.ReplaceAll(text, "\n", "\r\n"))
@@ -219,11 +219,11 @@ func (w *webhookSender) send(ctx context.Context, target string, m message) erro
 		return permanent("invalid webhook URL")
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Pulsegrid-Webhook/1")
+	req.Header.Set("User-Agent", "Sentinel-Webhook/1")
 	if w.signingSecret != "" {
 		mac := hmac.New(sha256.New, []byte(w.signingSecret))
 		mac.Write(body)
-		req.Header.Set("X-Pulsegrid-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		req.Header.Set("X-Sentinel-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
 	}
 	resp, err := w.client.Do(req)
 	if err != nil {

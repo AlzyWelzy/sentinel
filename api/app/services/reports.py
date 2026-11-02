@@ -139,35 +139,35 @@ async def build_summary(
     check_lat: dict[str, float] = {}
     try:
         metrics["pushes"] = await _by_host(
-            tenant_id, q("count_over_time(pulsegrid_uptime_seconds[WINDOW])")
+            tenant_id, q("count_over_time(sentinel_uptime_seconds[WINDOW])")
         )
         metrics["cpu_avg"] = await _by_host(
-            tenant_id, q("avg_over_time(pulsegrid_cpu_usage_percent[WINDOW])")
+            tenant_id, q("avg_over_time(sentinel_cpu_usage_percent[WINDOW])")
         )
         metrics["cpu_max"] = await _by_host(
-            tenant_id, q("max_over_time(pulsegrid_cpu_usage_percent[WINDOW])")
+            tenant_id, q("max_over_time(sentinel_cpu_usage_percent[WINDOW])")
         )
         metrics["memory_avg"] = await _by_host(
-            tenant_id, q("avg_over_time(pulsegrid_memory_used_percent[WINDOW])")
+            tenant_id, q("avg_over_time(sentinel_memory_used_percent[WINDOW])")
         )
         metrics["memory_max"] = await _by_host(
-            tenant_id, q("max_over_time(pulsegrid_memory_used_percent[WINDOW])")
+            tenant_id, q("max_over_time(sentinel_memory_used_percent[WINDOW])")
         )
         metrics["disk_max"] = await _by_host(
-            tenant_id, q("max by (host_id) (max_over_time(pulsegrid_disk_used_percent[WINDOW]))")
+            tenant_id, q("max by (host_id) (max_over_time(sentinel_disk_used_percent[WINDOW]))")
         )
         # Days until the fullest-growing filesystem fills, from the last week's trend.
         metrics["disk_full"] = await _by_host(
             tenant_id,
-            f"min by (host_id) (((100 - pulsegrid_disk_used_percent) / (deriv(pulsegrid_disk_used_percent[7d]) * 86400)) > 0) @ {at}",
+            f"min by (host_id) (((100 - sentinel_disk_used_percent) / (deriv(sentinel_disk_used_percent[7d]) * 86400)) > 0) @ {at}",
         )
         for labels, v in await query_instant(
-            tenant_id, q("avg by (check_id) (avg_over_time(pulsegrid_check_up[WINDOW])) * 100")
+            tenant_id, q("avg by (check_id) (avg_over_time(sentinel_check_up[WINDOW])) * 100")
         ):
             check_up[labels.get("check_id", "")] = v
         for labels, v in await query_instant(
             tenant_id,
-            q("avg by (check_id) (avg_over_time(pulsegrid_check_latency_seconds[WINDOW])) * 1000"),
+            q("avg by (check_id) (avg_over_time(sentinel_check_latency_seconds[WINDOW])) * 1000"),
         ):
             check_lat[labels.get("check_id", "")] = v
     except MetricsUnavailable:
@@ -242,7 +242,7 @@ def human_duration(seconds: float | None) -> str:
 
 def render_text(summary: Summary, account: str) -> str:
     lines = [
-        f"Pulsegrid monthly report for {account}",
+        f"Sentinel monthly report for {account}",
         f"{summary.start:%d %b %Y} – {summary.end:%d %b %Y}",
         "",
         f"Average availability: {summary.availability if summary.availability is not None else '—'}%",

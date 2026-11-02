@@ -23,7 +23,7 @@ func fakeCgroups(t *testing.T) string {
 	root := t.TempDir()
 	cgroupRoot, procSelfCgroup = filepath.Join(root, "cg"), filepath.Join(root, "self")
 	t.Cleanup(func() { cgroupRoot, procSelfCgroup = "/sys/fs/cgroup", "/proc/self/cgroup" })
-	writeFile(t, procSelfCgroup, "0::/system.slice/docker-1.scope/system.slice/pulsegrid-agent.service\n")
+	writeFile(t, procSelfCgroup, "0::/system.slice/docker-1.scope/system.slice/sentinel-agent.service\n")
 	ctr := filepath.Join(cgroupRoot, "system.slice/docker-1.scope")
 	writeFile(t, filepath.Join(ctr, "cpu.max"), "150000 100000\n")
 	writeFile(t, filepath.Join(ctr, "memory.max"), "1073741824\n")
@@ -31,7 +31,7 @@ func fakeCgroups(t *testing.T) string {
 	writeFile(t, filepath.Join(ctr, "memory.stat"), "anon 400000000\ninactive_file 100000000\n")
 	writeFile(t, filepath.Join(ctr, "cpu.stat"), "usage_usec 1000000\n")
 	// The agent's own unit is capped too: that must not count.
-	own := filepath.Join(ctr, "system.slice/pulsegrid-agent.service")
+	own := filepath.Join(ctr, "system.slice/sentinel-agent.service")
 	writeFile(t, filepath.Join(own, "memory.max"), "268435456\n")
 	writeFile(t, filepath.Join(cgroupRoot, "system.slice/cpu.max"), "max 100000\n")
 	return ctr

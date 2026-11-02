@@ -42,7 +42,7 @@ def upgrade() -> None:
         "DEFAULT nextval('tenants_logs_account_id_seq') UNIQUE"
     )
     op.execute("ALTER SEQUENCE tenants_logs_account_id_seq OWNED BY tenants.logs_account_id")
-    op.execute("GRANT USAGE ON SEQUENCE tenants_logs_account_id_seq TO pulsegrid_service")
+    op.execute("GRANT USAGE ON SEQUENCE tenants_logs_account_id_seq TO sentinel_service")
 
     # kind = 'logs': fires when more lines than the threshold match the filter
     # within window_seconds. log_filter is the validated filter as the
@@ -74,7 +74,7 @@ def upgrade() -> None:
         "CREATE POLICY tenant_isolation ON saved_views "
         f"USING (tenant_id = {CURRENT_TENANT}) WITH CHECK (tenant_id = {CURRENT_TENANT})"
     )
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON saved_views TO pulsegrid_app")
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON saved_views TO sentinel_app")
 
 
 def downgrade() -> None:

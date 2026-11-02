@@ -13,10 +13,10 @@ import (
 
 const exeSuffix = ""
 
-func defaultStateDir() string { return "/var/lib/pulsegrid" }
+func defaultStateDir() string { return "/var/lib/sentinel" }
 
 // runAsService reports false: on Unix the init system (systemd, OpenRC,
-// rc.d) runs `pulsegrid-agent run` as a normal foreground process.
+// rc.d) runs `sentinel-agent run` as a normal foreground process.
 func runAsService(func(context.Context)) (bool, error) { return false, nil }
 
 // replaceExecutable swaps in the new binary. rename(2) is atomic and works on
@@ -66,13 +66,13 @@ func underscore(name string) string {
 	return string(b)
 }
 
-func defaultConfigDir() string { return "/etc/pulsegrid" }
+func defaultConfigDir() string { return "/etc/sentinel" }
 
 func defaultServiceUser() string {
 	if runtime.GOOS == "openbsd" {
-		return "_pulsegrid"
+		return "_sentinel"
 	}
-	return "pulsegrid"
+	return "sentinel"
 }
 
 // privileged: root, as the update job runs.

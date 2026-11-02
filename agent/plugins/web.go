@@ -56,10 +56,10 @@ func parseNginx(body string) ([]proto.Sample, error) {
 	}
 	var out []proto.Sample
 	active, _ := strconv.ParseFloat(strings.TrimSpace(strings.TrimPrefix(lines[0], "Active connections:")), 64)
-	out = append(out, sample("pulsegrid_nginx_connections_active", active))
+	out = append(out, sample("sentinel_nginx_connections_active", active))
 	nums := strings.Fields(lines[2])
 	if len(nums) == 3 {
-		names := []string{"pulsegrid_nginx_connections_accepted_total", "pulsegrid_nginx_connections_handled_total", "pulsegrid_nginx_requests_total"}
+		names := []string{"sentinel_nginx_connections_accepted_total", "sentinel_nginx_connections_handled_total", "sentinel_nginx_requests_total"}
 		for i, n := range nums {
 			if v, err := strconv.ParseFloat(n, 64); err == nil {
 				out = append(out, sample(names[i], v))
@@ -70,7 +70,7 @@ func parseNginx(body string) ([]proto.Sample, error) {
 	for i := 0; i+1 < len(f); i += 2 {
 		state := strings.ToLower(strings.TrimSuffix(f[i], ":"))
 		if v, err := strconv.ParseFloat(f[i+1], 64); err == nil {
-			out = append(out, sample("pulsegrid_nginx_connections", v, "state", state))
+			out = append(out, sample("sentinel_nginx_connections", v, "state", state))
 		}
 	}
 	return out, nil
@@ -87,12 +87,12 @@ func collectApache(ctx context.Context, c Config) ([]proto.Sample, error) {
 
 func parseApache(body string) ([]proto.Sample, error) {
 	fields := map[string]string{
-		"Total Accesses": "pulsegrid_apache_requests_total",
-		"Total kBytes":   "pulsegrid_apache_sent_kilobytes_total",
-		"BusyWorkers":    "pulsegrid_apache_workers_busy",
-		"IdleWorkers":    "pulsegrid_apache_workers_idle",
-		"Uptime":         "pulsegrid_apache_uptime_seconds",
-		"ConnsTotal":     "pulsegrid_apache_connections",
+		"Total Accesses": "sentinel_apache_requests_total",
+		"Total kBytes":   "sentinel_apache_sent_kilobytes_total",
+		"BusyWorkers":    "sentinel_apache_workers_busy",
+		"IdleWorkers":    "sentinel_apache_workers_idle",
+		"Uptime":         "sentinel_apache_uptime_seconds",
+		"ConnsTotal":     "sentinel_apache_connections",
 	}
 	var out []proto.Sample
 	sc := bufio.NewScanner(strings.NewReader(body))
@@ -179,22 +179,22 @@ func redisCmd(w io.Writer, r *bufio.Reader, args ...string) (string, error) {
 }
 
 var redisFields = map[string]string{
-	"connected_clients":           "pulsegrid_redis_clients",
-	"blocked_clients":             "pulsegrid_redis_blocked_clients",
-	"used_memory":                 "pulsegrid_redis_memory_used_bytes",
-	"maxmemory":                   "pulsegrid_redis_memory_max_bytes",
-	"mem_fragmentation_ratio":     "pulsegrid_redis_memory_fragmentation_ratio",
-	"total_commands_processed":    "pulsegrid_redis_commands_total",
-	"total_connections_received":  "pulsegrid_redis_connections_total",
-	"keyspace_hits":               "pulsegrid_redis_keyspace_hits_total",
-	"keyspace_misses":             "pulsegrid_redis_keyspace_misses_total",
-	"evicted_keys":                "pulsegrid_redis_evicted_keys_total",
-	"expired_keys":                "pulsegrid_redis_expired_keys_total",
-	"rejected_connections":        "pulsegrid_redis_rejected_connections_total",
-	"connected_slaves":            "pulsegrid_redis_replicas",
-	"master_last_io_seconds_ago":  "pulsegrid_redis_master_last_io_seconds",
-	"rdb_changes_since_last_save": "pulsegrid_redis_changes_since_save",
-	"uptime_in_seconds":           "pulsegrid_redis_uptime_seconds",
+	"connected_clients":           "sentinel_redis_clients",
+	"blocked_clients":             "sentinel_redis_blocked_clients",
+	"used_memory":                 "sentinel_redis_memory_used_bytes",
+	"maxmemory":                   "sentinel_redis_memory_max_bytes",
+	"mem_fragmentation_ratio":     "sentinel_redis_memory_fragmentation_ratio",
+	"total_commands_processed":    "sentinel_redis_commands_total",
+	"total_connections_received":  "sentinel_redis_connections_total",
+	"keyspace_hits":               "sentinel_redis_keyspace_hits_total",
+	"keyspace_misses":             "sentinel_redis_keyspace_misses_total",
+	"evicted_keys":                "sentinel_redis_evicted_keys_total",
+	"expired_keys":                "sentinel_redis_expired_keys_total",
+	"rejected_connections":        "sentinel_redis_rejected_connections_total",
+	"connected_slaves":            "sentinel_redis_replicas",
+	"master_last_io_seconds_ago":  "sentinel_redis_master_last_io_seconds",
+	"rdb_changes_since_last_save": "sentinel_redis_changes_since_save",
+	"uptime_in_seconds":           "sentinel_redis_uptime_seconds",
 }
 
 func parseRedisInfo(info string) []proto.Sample {
@@ -222,9 +222,9 @@ func parseRedisInfo(info string) []proto.Sample {
 			}
 		}
 		if k == "role" {
-			out = append(out, sample("pulsegrid_redis_is_master", boolValue(v == "master")))
+			out = append(out, sample("sentinel_redis_is_master", boolValue(v == "master")))
 		}
 	}
-	out = append(out, sample("pulsegrid_redis_keys", keys))
+	out = append(out, sample("sentinel_redis_keys", keys))
 	return out
 }

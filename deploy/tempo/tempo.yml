@@ -1,5 +1,5 @@
-# Tempo 3 for Pulsegrid APM (single binary, local disk). multitenancy_enabled
-# makes every request name its tenant (X-Scope-OrgID = the Pulsegrid account
+# Tempo 3 for Sentinel APM (single binary, local disk). multitenancy_enabled
+# makes every request name its tenant (X-Scope-OrgID = the Sentinel account
 # id): ingest writes with it, the API reads with it. TraceQL metrics (request
 # rate, errors, latency percentiles) come from the live store for the last few
 # minutes and from the stored blocks for anything older, so they reach back

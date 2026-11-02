@@ -2,7 +2,7 @@
 and contact verification for notification channels.
 
 Same isolation model as 0001: every table has tenant_id and an RLS policy.
-The alerter connects as pulsegrid_service (it evaluates every tenant's rules),
+The alerter connects as sentinel_service (it evaluates every tenant's rules),
 so its grants are listed explicitly at the bottom.
 
 Revision ID: 0002
@@ -92,7 +92,7 @@ def upgrade() -> None:
         )
     """)
 
-    # Outbox: everything Pulsegrid sends (alerts, verification codes, tests)
+    # Outbox: everything Sentinel sends (alerts, verification codes, tests)
     # is a row here first, so a crash or a down mail server loses nothing and
     # the dispatcher can retry with backoff.
     op.execute("""
@@ -135,18 +135,18 @@ def upgrade() -> None:
 
     # API (customer requests, RLS applies).
     op.execute(
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON alert_rules, alert_rule_channels TO pulsegrid_app"
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON alert_rules, alert_rule_channels TO sentinel_app"
     )
     # DELETE: changing or disabling a rule clears its evaluation state.
-    op.execute("GRANT SELECT, DELETE ON alert_states TO pulsegrid_app")
-    op.execute("GRANT SELECT, UPDATE ON incidents TO pulsegrid_app")
-    op.execute("GRANT SELECT, INSERT ON outbound_messages TO pulsegrid_app")
+    op.execute("GRANT SELECT, DELETE ON alert_states TO sentinel_app")
+    op.execute("GRANT SELECT, UPDATE ON incidents TO sentinel_app")
+    op.execute("GRANT SELECT, INSERT ON outbound_messages TO sentinel_app")
 
-    # Alerter (pulsegrid_service, cross-tenant).
-    op.execute("GRANT SELECT ON alert_rules, alert_rule_channels TO pulsegrid_service")
+    # Alerter (sentinel_service, cross-tenant).
+    op.execute("GRANT SELECT ON alert_rules, alert_rule_channels TO sentinel_service")
     op.execute(
         "GRANT SELECT, INSERT, UPDATE, DELETE ON alert_states, incidents, outbound_messages "
-        "TO pulsegrid_service"
+        "TO sentinel_service"
     )
 
 

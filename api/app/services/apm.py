@@ -44,7 +44,7 @@ def _scope(service: str | None = None, host_id: uuid.UUID | None = None) -> list
     if service:
         parts.append(f"resource.service.name={q(service)}")
     if host_id:
-        parts.append(f'resource.pulsegrid.host_id="{uuid.UUID(str(host_id))}"')
+        parts.append(f'resource.sentinel.host_id="{uuid.UUID(str(host_id))}"')
     return parts
 
 
@@ -284,7 +284,7 @@ async def trace(tenant_id: uuid.UUID, trace_id: str) -> list[dict] | None:
                         "parent_id": _hex(sp.get("parentSpanId")),
                         "name": sp.get("name", ""),
                         "service": res.get("service.name"),
-                        "host_id": res.get("pulsegrid.host_id"),
+                        "host_id": res.get("sentinel.host_id"),
                         "kind": KIND_NAMES.get(sp.get("kind", ""), "internal"),
                         "start_ns": start,
                         "duration_ns": max(0, end - start),

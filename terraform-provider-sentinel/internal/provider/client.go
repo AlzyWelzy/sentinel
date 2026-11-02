@@ -15,7 +15,7 @@ import (
 // errNotFound means the object is gone (deleted outside Terraform).
 var errNotFound = errors.New("not found")
 
-// Client calls the Pulsegrid API with an API token.
+// Client calls the Sentinel API with an API token.
 type Client struct {
 	baseURL string
 	token   string
@@ -28,7 +28,7 @@ func newClient(baseURL, token, version string) *Client {
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
 		http:    &http.Client{Timeout: 30 * time.Second},
-		ua:      "terraform-provider-pulsegrid/" + version,
+		ua:      "terraform-provider-sentinel/" + version,
 	}
 }
 

@@ -166,7 +166,7 @@ func collectSNMP(ctx context.Context, c Config) ([]proto.Sample, error) {
 	}
 	if len(res.Variables) == 1 {
 		if v, ok := snmpNumber(res.Variables[0]); ok {
-			out = append(out, sample("pulsegrid_custom_snmp_uptime_seconds", v/100))
+			out = append(out, sample("sentinel_custom_snmp_uptime_seconds", v/100))
 		}
 	}
 
@@ -182,7 +182,7 @@ func collectSNMP(ctx context.Context, c Config) ([]proto.Sample, error) {
 				for i, o := range oids {
 					if v.Name == o {
 						if f, ok := snmpNumber(v); ok {
-							out = append(out, sample("pulsegrid_custom_snmp_"+names[i], f))
+							out = append(out, sample("sentinel_custom_snmp_"+names[i], f))
 						}
 					}
 				}
@@ -215,8 +215,8 @@ func collectSNMP(ctx context.Context, c Config) ([]proto.Sample, error) {
 			return "if" + idx
 		}
 		for _, m := range []struct{ oid, metric string }{
-			{oidIfHCIn, "pulsegrid_custom_snmp_if_in_bytes_total"},
-			{oidIfHCOut, "pulsegrid_custom_snmp_if_out_bytes_total"},
+			{oidIfHCIn, "sentinel_custom_snmp_if_in_bytes_total"},
+			{oidIfHCOut, "sentinel_custom_snmp_if_out_bytes_total"},
 		} {
 			walk(m.oid, func(idx string, pdu gosnmp.SnmpPDU) {
 				if v, ok := snmpNumber(pdu); ok {
@@ -226,7 +226,7 @@ func collectSNMP(ctx context.Context, c Config) ([]proto.Sample, error) {
 		}
 		walk(oidIfOper, func(idx string, pdu gosnmp.SnmpPDU) {
 			if v, ok := snmpNumber(pdu); ok {
-				out = append(out, sample("pulsegrid_custom_snmp_if_up", boolValue(v == 1), "interface", label(idx)))
+				out = append(out, sample("sentinel_custom_snmp_if_up", boolValue(v == 1), "interface", label(idx)))
 			}
 		})
 	}

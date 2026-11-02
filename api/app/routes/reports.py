@@ -133,7 +133,7 @@ async def summary_csv(
         w.writerow(
             ["check", c.name, c.uptime, c.incidents, "", "", "", "", "", "", c.avg_latency_ms]
         )
-    name = f"pulsegrid-report-{s.start:%Y%m%d}-{s.end:%Y%m%d}.csv"
+    name = f"sentinel-report-{s.start:%Y%m%d}-{s.end:%Y%m%d}.csv"
     return PlainTextResponse(
         buf.getvalue(),
         media_type="text/csv",

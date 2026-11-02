@@ -35,7 +35,7 @@ RESET_TTL = timedelta(hours=1)
 LOCK_AFTER_FAILURES = 5
 MAX_LOCK = timedelta(hours=1)
 ROTATION_GRACE = timedelta(seconds=10)
-TOTP_ISSUER = "Pulsegrid"
+TOTP_ISSUER = "Sentinel"
 
 
 @dataclass(frozen=True)

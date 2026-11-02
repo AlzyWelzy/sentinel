@@ -27,7 +27,7 @@ def window(host: str) -> dict:
 
 
 def acting_for(user: User, tenant_id) -> dict:
-    return {**user.headers, "X-Pulsegrid-Account": str(tenant_id)}
+    return {**user.headers, "X-Sentinel-Account": str(tenant_id)}
 
 
 async def invite(owner: User, email: str, role: str) -> dict:

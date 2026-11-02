@@ -74,6 +74,6 @@ async def test_install_commands_include_docker(alice: User):
         await alice.request("POST", "/v1/agent-keys", json={"name": "k", "tags": ["web"]})
     ).json()
     assert (
-        "PULSEGRID_TAGS=web" in key["docker_command"] and "pulsegrid-agent" in key["docker_command"]
+        "SENTINEL_TAGS=web" in key["docker_command"] and "sentinel-agent" in key["docker_command"]
     )
     assert "--tags web" in key["install_command"]

@@ -63,7 +63,7 @@ async def test_rule_test_alert(alice: User):
     assert r.status_code == 202, r.text
     assert r.json()["sent_to"][0]["why"] == "default contact"
     log = (await alice.request("GET", "/v1/deliveries")).json()
-    assert log[0]["kind"] == "test" and log[0]["subject"] == "[Pulsegrid] TEST: Server down"
+    assert log[0]["kind"] == "test" and log[0]["subject"] == "[Sentinel] TEST: Server down"
     missing = await alice.request("POST", f"/v1/alert-rules/{uuid.uuid4()}/test")
     assert missing.status_code == 404
 
@@ -118,7 +118,7 @@ async def test_digest(alice: User, monkeypatch):
         t = await db.get(Tenant, tid)
     assert t is not None
     assert len(rows) == 1 and rows[0].payload["subject"].startswith(
-        "[Pulsegrid] Your monitoring day"
+        "[Sentinel] Your monitoring day"
     )
     assert not jobs.digest_due(t, now)  # once per slot
 

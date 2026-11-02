@@ -43,7 +43,7 @@ func TestCollectProducesValidSamples(t *testing.T) {
 	names := map[string]bool{}
 	for _, s := range samples {
 		names[s.Name] = true
-		if !strings.HasPrefix(s.Name, "pulsegrid_") {
+		if !strings.HasPrefix(s.Name, "sentinel_") {
 			t.Errorf("metric outside namespace: %s", s.Name)
 		}
 		for k := range s.Labels {
@@ -52,7 +52,7 @@ func TestCollectProducesValidSamples(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"pulsegrid_cpu_usage_percent", "pulsegrid_memory_used_percent", "pulsegrid_load"} {
+	for _, want := range []string{"sentinel_cpu_usage_percent", "sentinel_memory_used_percent", "sentinel_load"} {
 		if !names[want] {
 			t.Errorf("missing %s", want)
 		}

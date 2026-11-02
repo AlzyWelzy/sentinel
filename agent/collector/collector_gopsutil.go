@@ -125,15 +125,15 @@ func (c *gopsutilCollector) cpuSamples(ctx context.Context) []proto.Sample {
 	if !ok {
 		return nil
 	}
-	out := []proto.Sample{sample("pulsegrid_cpu_usage_percent", pct)}
+	out := []proto.Sample{sample("sentinel_cpu_usage_percent", pct)}
 	for mode, v := range modePercents(prev.total, snap.total, runtime.GOOS) {
-		out = append(out, sample("pulsegrid_cpu_mode_percent", v, "mode", mode))
+		out = append(out, sample("sentinel_cpu_mode_percent", v, "mode", mode))
 	}
 	// Cores only when both reads have the same set (CPU hotplug changes it).
 	if len(prev.cores) == len(snap.cores) {
 		for i := range snap.cores {
 			if p, ok := busyPercent(prev.cores[i], snap.cores[i], runtime.GOOS); ok {
-				out = append(out, sample("pulsegrid_cpu_core_usage_percent", p, "core", strconv.Itoa(i)))
+				out = append(out, sample("sentinel_cpu_core_usage_percent", p, "core", strconv.Itoa(i)))
 			}
 		}
 	}
@@ -228,7 +228,7 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 	c.procs.cores = lim.cores
 	if pct, ok := c.cgCPU.percent(lim, time.Now()); ok {
 		for i := range out {
-			if out[i].Name == "pulsegrid_cpu_usage_percent" {
+			if out[i].Name == "sentinel_cpu_usage_percent" {
 				out[i].Value = pct
 			}
 		}
@@ -238,20 +238,20 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 			used = lim.memLimit
 		}
 		out = append(out,
-			sample("pulsegrid_memory_used_percent", float64(used)/float64(lim.memLimit)*100),
-			sample("pulsegrid_memory_total_bytes", float64(lim.memLimit)),
-			sample("pulsegrid_memory_available_bytes", float64(lim.memLimit-used)),
+			sample("sentinel_memory_used_percent", float64(used)/float64(lim.memLimit)*100),
+			sample("sentinel_memory_total_bytes", float64(lim.memLimit)),
+			sample("sentinel_memory_available_bytes", float64(lim.memLimit-used)),
 		)
 	} else if vmErr == nil {
 		out = append(out,
-			sample("pulsegrid_memory_used_percent", vm.UsedPercent),
-			sample("pulsegrid_memory_total_bytes", float64(vm.Total)),
-			sample("pulsegrid_memory_available_bytes", float64(vm.Available)),
+			sample("sentinel_memory_used_percent", vm.UsedPercent),
+			sample("sentinel_memory_total_bytes", float64(vm.Total)),
+			sample("sentinel_memory_available_bytes", float64(vm.Available)),
 		)
 	}
 	sw, swErr := mem.SwapMemoryWithContext(ctx)
 	if swErr == nil && sw.Total > 0 {
-		out = append(out, sample("pulsegrid_swap_used_percent", sw.UsedPercent))
+		out = append(out, sample("sentinel_swap_used_percent", sw.UsedPercent))
 	}
 	if vmErr == nil && lim.memLimit == 0 {
 		if swErr != nil {
@@ -263,9 +263,9 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 
 	if avg, ok := loadAverage(ctx); ok {
 		out = append(out,
-			sample("pulsegrid_load", avg.Load1, "period", "1m"),
-			sample("pulsegrid_load", avg.Load5, "period", "5m"),
-			sample("pulsegrid_load", avg.Load15, "period", "15m"),
+			sample("sentinel_load", avg.Load1, "period", "1m"),
+			sample("sentinel_load", avg.Load5, "period", "5m"),
+			sample("sentinel_load", avg.Load15, "period", "15m"),
 		)
 	}
 
@@ -299,26 +299,26 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 				continue
 			}
 			out = append(out,
-				sample("pulsegrid_network_bytes_total", float64(n.BytesRecv), "interface", n.Name, "direction", "rx"),
-				sample("pulsegrid_network_bytes_total", float64(n.BytesSent), "interface", n.Name, "direction", "tx"),
-				sample("pulsegrid_network_packets_total", float64(n.PacketsRecv), "interface", n.Name, "direction", "rx"),
-				sample("pulsegrid_network_packets_total", float64(n.PacketsSent), "interface", n.Name, "direction", "tx"),
-				sample("pulsegrid_network_errors_total", float64(n.Errin), "interface", n.Name, "direction", "rx"),
-				sample("pulsegrid_network_errors_total", float64(n.Errout), "interface", n.Name, "direction", "tx"),
-				sample("pulsegrid_network_drops_total", float64(n.Dropin), "interface", n.Name, "direction", "rx"),
-				sample("pulsegrid_network_drops_total", float64(n.Dropout), "interface", n.Name, "direction", "tx"),
+				sample("sentinel_network_bytes_total", float64(n.BytesRecv), "interface", n.Name, "direction", "rx"),
+				sample("sentinel_network_bytes_total", float64(n.BytesSent), "interface", n.Name, "direction", "tx"),
+				sample("sentinel_network_packets_total", float64(n.PacketsRecv), "interface", n.Name, "direction", "rx"),
+				sample("sentinel_network_packets_total", float64(n.PacketsSent), "interface", n.Name, "direction", "tx"),
+				sample("sentinel_network_errors_total", float64(n.Errin), "interface", n.Name, "direction", "rx"),
+				sample("sentinel_network_errors_total", float64(n.Errout), "interface", n.Name, "direction", "tx"),
+				sample("sentinel_network_drops_total", float64(n.Dropin), "interface", n.Name, "direction", "rx"),
+				sample("sentinel_network_drops_total", float64(n.Dropout), "interface", n.Name, "direction", "tx"),
 			)
 			if up, speed, ok := linkInfo(n.Name); runtime.GOOS == "linux" {
-				out = append(out, sample("pulsegrid_network_up", up, "interface", n.Name))
+				out = append(out, sample("sentinel_network_up", up, "interface", n.Name))
 				if ok {
-					out = append(out, sample("pulsegrid_network_speed_mbps", speed, "interface", n.Name))
+					out = append(out, sample("sentinel_network_speed_mbps", speed, "interface", n.Name))
 				}
 			}
 		}
 	}
 
 	if up, err := host.UptimeWithContext(ctx); err == nil {
-		out = append(out, sample("pulsegrid_uptime_seconds", float64(up)))
+		out = append(out, sample("sentinel_uptime_seconds", float64(up)))
 	}
 
 	out = append(out, c.processSamples(ctx)...)
@@ -329,14 +329,14 @@ func (c *gopsutilCollector) Collect(ctx context.Context) ([]proto.Sample, error)
 // fstype comes from the mount table: statfs names ext4 "ext2/ext3".
 func diskSamples(mountpoint, device, fstype string, u *disk.UsageStat) []proto.Sample {
 	out := []proto.Sample{
-		sample("pulsegrid_disk_used_percent", u.UsedPercent, "mountpoint", mountpoint, "device", device),
-		sample("pulsegrid_disk_free_bytes", float64(u.Free), "mountpoint", mountpoint, "device", device),
-		sample("pulsegrid_disk_total_bytes", float64(u.Total), "mountpoint", mountpoint, "device", device, "fstype", fstype),
-		sample("pulsegrid_disk_used_bytes", float64(u.Used), "mountpoint", mountpoint, "device", device),
+		sample("sentinel_disk_used_percent", u.UsedPercent, "mountpoint", mountpoint, "device", device),
+		sample("sentinel_disk_free_bytes", float64(u.Free), "mountpoint", mountpoint, "device", device),
+		sample("sentinel_disk_total_bytes", float64(u.Total), "mountpoint", mountpoint, "device", device, "fstype", fstype),
+		sample("sentinel_disk_used_bytes", float64(u.Used), "mountpoint", mountpoint, "device", device),
 	}
 	// Filesystems without a fixed inode table (NTFS, ZFS, btrfs) report 0.
 	if u.InodesTotal > 0 {
-		out = append(out, sample("pulsegrid_disk_inodes_used_percent", u.InodesUsedPercent,
+		out = append(out, sample("sentinel_disk_inodes_used_percent", u.InodesUsedPercent,
 			"mountpoint", mountpoint, "device", device))
 	}
 	return out
@@ -365,24 +365,24 @@ func diskIOSamples(ctx context.Context) []proto.Sample {
 			continue
 		}
 		out = append(out,
-			sample("pulsegrid_disk_read_bytes_total", float64(c.ReadBytes), "device", name),
-			sample("pulsegrid_disk_written_bytes_total", float64(c.WriteBytes), "device", name),
-			sample("pulsegrid_disk_reads_total", float64(c.ReadCount), "device", name),
-			sample("pulsegrid_disk_writes_total", float64(c.WriteCount), "device", name),
+			sample("sentinel_disk_read_bytes_total", float64(c.ReadBytes), "device", name),
+			sample("sentinel_disk_written_bytes_total", float64(c.WriteBytes), "device", name),
+			sample("sentinel_disk_reads_total", float64(c.ReadCount), "device", name),
+			sample("sentinel_disk_writes_total", float64(c.WriteCount), "device", name),
 		)
 		if busyTime {
-			out = append(out, sample("pulsegrid_disk_io_time_seconds_total", float64(c.IoTime)/1000, "device", name))
+			out = append(out, sample("sentinel_disk_io_time_seconds_total", float64(c.IoTime)/1000, "device", name))
 		}
 		// Time spent on reads and writes (latency = time / operations) and the
 		// weighted I/O time (its rate is the average queue length).
 		if c.ReadTime > 0 || c.WriteTime > 0 {
 			out = append(out,
-				sample("pulsegrid_disk_read_time_seconds_total", float64(c.ReadTime)/1000, "device", name),
-				sample("pulsegrid_disk_write_time_seconds_total", float64(c.WriteTime)/1000, "device", name),
+				sample("sentinel_disk_read_time_seconds_total", float64(c.ReadTime)/1000, "device", name),
+				sample("sentinel_disk_write_time_seconds_total", float64(c.WriteTime)/1000, "device", name),
 			)
 		}
 		if c.WeightedIO > 0 {
-			out = append(out, sample("pulsegrid_disk_weighted_io_seconds_total", float64(c.WeightedIO)/1000, "device", name))
+			out = append(out, sample("sentinel_disk_weighted_io_seconds_total", float64(c.WeightedIO)/1000, "device", name))
 		}
 	}
 	return out

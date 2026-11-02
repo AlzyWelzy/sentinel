@@ -88,7 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <nav className="flex h-full flex-col gap-6 p-4">
       <Link href="/" className="flex items-center gap-2 px-1 font-semibold">
         <span className="inline-block size-5 rounded-md bg-brand" aria-hidden />
-        Pulsegrid
+        Sentinel
       </Link>
       <OrgSwitcher />
       <div className="space-y-0.5">
@@ -155,7 +155,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             Menu
           </button>
-          <span className="font-semibold">Pulsegrid</span>
+          <span className="font-semibold">Sentinel</span>
         </div>
         {me.data?.impersonating && (
           <div className="flex flex-wrap items-center justify-between gap-2 bg-warn/15 px-4 py-2 text-sm text-warn">
