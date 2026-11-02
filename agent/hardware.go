@@ -15,8 +15,6 @@ import (
 	"github.com/example-org/pulsegrid/agent/plugins"
 )
 
-const hardwareSudoers = "/etc/sudoers.d/pulsegrid-hardware"
-
 // cmdEnableHardware: pulsegrid-agent enable-hardware [--remove]. Run as
 // root. Finds smartctl and ipmitool, writes plugins.d/smart.conf and
 // ipmi.conf, and lets the agent's user run exactly those commands as root.
@@ -37,7 +35,7 @@ func cmdEnableHardware(args []string) error {
 		for _, f := range []string{"smart.conf", "ipmi.conf"} {
 			os.Remove(filepath.Join(dir, f))
 		}
-		os.Remove(hardwareSudoers)
+		os.Remove(hardwareSudoers())
 		if err := systemdSudoDropIn(actionsUseSudo(*configDir)); err != nil {
 			return err
 		}
@@ -48,8 +46,8 @@ func cmdEnableHardware(args []string) error {
 	if _, ok := findTool("sudo"); !ok {
 		return errors.New("sudo isn't installed; install it first")
 	}
-	if _, err := os.Stat(filepath.Dir(hardwareSudoers)); err != nil {
-		return fmt.Errorf("%s doesn't exist; install sudo first", filepath.Dir(hardwareSudoers))
+	if _, err := os.Stat(filepath.Dir(hardwareSudoers())); err != nil {
+		return fmt.Errorf("%s doesn't exist; install sudo first", filepath.Dir(hardwareSudoers()))
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -64,6 +62,7 @@ func cmdEnableHardware(args []string) error {
 			fmt.Printf("smartctl: %v\n", err)
 		case len(devices) == 0:
 			fmt.Println("smartctl found no disks with SMART (virtual disks usually have none).")
+			os.Remove(filepath.Join(dir, "smart.conf")) // a stale list would fail forever
 		default:
 			var list []string
 			for _, d := range devices {
@@ -88,6 +87,7 @@ func cmdEnableHardware(args []string) error {
 		}
 		found = append(found, "IPMI sensors")
 	} else if ok {
+		os.Remove(filepath.Join(dir, "ipmi.conf"))
 		fmt.Println("ipmitool is installed but there's no BMC (/dev/ipmi0); load the ipmi_devintf module on physical servers.")
 	} else {
 		fmt.Println("ipmitool isn't installed; skipping board sensors (physical servers only).")
@@ -151,10 +151,10 @@ func writeHardwareSudoers(commands [][]string, user string) error {
 	}
 	sort.Strings(lines)
 	content := "# Managed by pulsegrid-agent enable-hardware: read-only hardware queries.\n" + strings.Join(lines, "\n") + "\n"
-	if _, err := os.Stat(filepath.Dir(hardwareSudoers)); err != nil {
-		return fmt.Errorf("%s doesn't exist; is sudo installed?", filepath.Dir(hardwareSudoers))
+	if _, err := os.Stat(filepath.Dir(hardwareSudoers())); err != nil {
+		return fmt.Errorf("%s doesn't exist; is sudo installed?", filepath.Dir(hardwareSudoers()))
 	}
-	tmp := hardwareSudoers + ".tmp"
+	tmp := hardwareSudoers() + ".tmp"
 	if err := os.WriteFile(tmp, []byte(content), 0o440); err != nil {
 		return err
 	}
@@ -164,11 +164,11 @@ func writeHardwareSudoers(commands [][]string, user string) error {
 			return fmt.Errorf("sudoers rule rejected by visudo: %s", strings.TrimSpace(string(out)))
 		}
 	}
-	return os.Rename(tmp, hardwareSudoers)
+	return os.Rename(tmp, hardwareSudoers())
 }
 
 func hardwareUsesSudo() bool {
-	_, err := os.Stat(hardwareSudoers)
+	_, err := os.Stat(hardwareSudoers())
 	return err == nil
 }
 

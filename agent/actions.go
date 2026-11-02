@@ -32,8 +32,23 @@ const (
 	actionTimeout   = 2 * time.Minute
 	actionOutputMax = 4 << 10
 	actionsFile     = "actions.conf"
-	sudoersFile     = "/etc/sudoers.d/pulsegrid"
 )
+
+// sudoersFile and hardwareSudoers live where the system's sudo reads drop-ins:
+// /etc/sudoers.d, or /usr/local/etc/sudoers.d where sudo comes from packages
+// (FreeBSD, NetBSD's pkgsrc uses /usr/pkg/etc).
+// They're looked up on each use: installing sudo can create the directory.
+func sudoersFile() string     { return filepath.Join(sudoersDir(), "pulsegrid") }
+func hardwareSudoers() string { return filepath.Join(sudoersDir(), "pulsegrid-hardware") }
+
+func sudoersDir() string {
+	for _, d := range []string{"/etc/sudoers.d", "/usr/local/etc/sudoers.d", "/usr/pkg/etc/sudoers.d"} {
+		if _, err := os.Stat(d); err == nil {
+			return d
+		}
+	}
+	return "/etc/sudoers.d"
+}
 
 var actionName = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,62}$`)
 
@@ -230,7 +245,7 @@ func writeSudoers(actions map[string]string, user string) error {
 		}
 	}
 	if len(lines) == 0 {
-		err := os.Remove(sudoersFile)
+		err := os.Remove(sudoersFile())
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
@@ -238,10 +253,10 @@ func writeSudoers(actions map[string]string, user string) error {
 	}
 	sort.Strings(lines)
 	content := "# Managed by pulsegrid-agent allow-action\n" + strings.Join(lines, "\n") + "\n"
-	if _, err := os.Stat(filepath.Dir(sudoersFile)); err != nil {
-		return fmt.Errorf("%s doesn't exist; is sudo installed?", filepath.Dir(sudoersFile))
+	if _, err := os.Stat(filepath.Dir(sudoersFile())); err != nil {
+		return fmt.Errorf("%s doesn't exist; is sudo installed?", filepath.Dir(sudoersFile()))
 	}
-	tmp := sudoersFile + ".tmp"
+	tmp := sudoersFile() + ".tmp"
 	if err := os.WriteFile(tmp, []byte(content), 0o440); err != nil {
 		return err
 	}
@@ -251,7 +266,7 @@ func writeSudoers(actions map[string]string, user string) error {
 			return fmt.Errorf("sudoers rule rejected by visudo: %s", strings.TrimSpace(string(out)))
 		}
 	}
-	return os.Rename(tmp, sudoersFile)
+	return os.Rename(tmp, sudoersFile())
 }
 
 // sudoersEscape escapes the characters sudoers treats specially in commands.

@@ -68,12 +68,85 @@ func maybeAutoconfigure() bool {
 	dir := defaultConfigDir()
 	marker := filepath.Join(dir, autoconfigMarker)
 	b, _ := os.ReadFile(marker)
-	if m := strings.TrimSpace(string(b)); m == "off" || m == autoconfigRev {
+	m := strings.TrimSpace(string(b))
+	if m == "off" {
 		return false
+	}
+	if m == autoconfigRev {
+		// Already ran; still keep hardware monitoring runnable every hour.
+		return repairHardware(dir, defaultServiceUser())
 	}
 	changed := autoconfigure(dir, defaultServiceUser(), false)
 	os.WriteFile(marker, []byte(autoconfigRev+"\n"), 0o644)
 	return changed
+}
+
+// repairHardware re-runs enable-hardware when the SMART/IPMI plugins it wrote
+// can't run: sudo missing (an earlier install failed, or it was removed), or
+// the sudoers rule no longer matches the plugin files (disks replaced or
+// added, rule edited). Without this, sudo refuses every collection and mails
+// root about it. Cheap when all is well: it only reads files.
+func repairHardware(dir, svcUser string) bool {
+	pdir := filepath.Join(dir, "plugins.d")
+	want := hardwareCommands(pdir)
+	if want == nil {
+		return false
+	}
+	rules, _ := os.ReadFile(hardwareSudoers())
+	ok := has("sudo")
+	for _, c := range want {
+		if !strings.Contains(string(rules), sudoersEscape(strings.Join(c, " "))) {
+			ok = false
+		}
+	}
+	if ok {
+		return false
+	}
+	if !has("sudo") {
+		installPackages([]string{"sudo"})
+		if !has("sudo") {
+			return false // try again next hour
+		}
+	}
+	if err := cmdEnableHardware([]string{"--config-dir", dir, "--user", svcUser}); err != nil {
+		fmt.Println("autoconfig: hardware monitoring:", err)
+		return false
+	}
+	return true
+}
+
+// hardwareCommands lists the privileged commands that enable-hardware's
+// plugin files will run; nil when there are none.
+func hardwareCommands(pdir string) [][]string {
+	var out [][]string
+	for _, name := range []string{"smart.conf", "ipmi.conf"} {
+		f, err := os.Open(filepath.Join(pdir, name))
+		if err != nil {
+			continue
+		}
+		kv, err := plugins.ParseKV(f)
+		f.Close()
+		if err != nil {
+			continue
+		}
+		switch kv["type"] {
+		case "smart":
+			tool := kv["smartctl"]
+			if tool == "" {
+				tool = "/usr/sbin/smartctl"
+			}
+			for _, d := range plugins.SmartDevices(kv["devices"]) {
+				out = append(out, plugins.SmartArgs(tool, d[0], d[1]))
+			}
+		case "ipmi":
+			tool := kv["ipmitool"]
+			if tool == "" {
+				tool = "/usr/bin/ipmitool"
+			}
+			out = append(out, plugins.IPMIArgs(tool))
+		}
+	}
+	return out
 }
 
 func autoconfigure(dir, svcUser string, noLogs bool) bool {
@@ -523,7 +596,18 @@ func installPackages(pkgs []string) {
 	default:
 		return
 	}
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := cmd.CombinedOutput()
+	if err != nil && cmd.Args[0] == "apt-get" {
+		// Stale package lists, or the dpkg lock held by a daily apt run:
+		// refresh (ignoring repos that refuse, like Proxmox's enterprise
+		// one without a subscription), wait a little, and try once more.
+		time.Sleep(20 * time.Second)
+		exec.CommandContext(ctx, "apt-get", "update", "-q").Run()
+		retry := exec.CommandContext(ctx, "apt-get", cmd.Args[1:]...)
+		retry.Env = cmd.Env
+		out, err = retry.CombinedOutput()
+	}
+	if err != nil {
 		fmt.Printf("autoconfig: couldn't install %s: %s\n", strings.Join(pkgs, ", "), lastLine(out))
 		return
 	}

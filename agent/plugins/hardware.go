@@ -25,6 +25,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/example-org/pulsegrid/proto"
 )
@@ -64,14 +66,34 @@ func runPrivileged(ctx context.Context, args []string) ([]byte, error) {
 		}
 		cmd = exec.CommandContext(ctx, sudo, append([]string{"-n"}, args...)...)
 	}
+	key := strings.Join(args, " ")
+	refusedMu.Lock()
+	until := refused[key]
+	refusedMu.Unlock()
+	if time.Now().Before(until) {
+		return nil, errors.New("not allowed to run it; run: sudo pulsegrid-agent enable-hardware")
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
 	if strings.Contains(stderr.String(), "a password is required") || strings.Contains(stderr.String(), "not allowed") {
+		// sudo logs (and may mail root about) every refusal; ask again in an
+		// hour, by when the update job has usually repaired the rule.
+		refusedMu.Lock()
+		refused[key] = time.Now().Add(refuseBackoff)
+		refusedMu.Unlock()
 		return nil, errors.New("not allowed to run it; run: sudo pulsegrid-agent enable-hardware")
 	}
 	return stdout.Bytes(), err
 }
+
+// refused holds, per command line, when sudo may be asked again after
+// refusing it.
+var (
+	refusedMu     sync.Mutex
+	refused       = map[string]time.Time{}
+	refuseBackoff = time.Hour
+)
 
 type smartReport struct {
 	ModelName   string `json:"model_name"`
