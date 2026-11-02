@@ -1,0 +1,123 @@
+# Runs the real installers on the platforms customers use: install, check the
+# agent runs and reports, uninstall, check nothing is left. The API and ingest
+# are stood in for by deploy/testing/installer-stub, so no secrets are needed.
+name: installers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - api/app/install.sh
+      - api/app/install.ps1
+      - agent/**
+      - proto/**
+      - deploy/testing/**
+      - .github/workflows/installers.yml
+  pull_request:
+    paths:
+      - api/app/install.sh
+      - api/app/install.ps1
+      - agent/**
+      - proto/**
+      - deploy/testing/**
+      - .github/workflows/installers.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build agent and stub
+        run: |
+          v=$(cat agent/VERSION)
+          mkdir -p dist
+          CGO_ENABLED=0 go build -ldflags "-X main.version=$v" -o dist/sentinel-agent-linux-amd64 ./agent
+          (cd dist && sha256sum sentinel-agent-linux-amd64 > sentinel-agent-linux-amd64.sha256)
+          go build -o stub ./deploy/testing/installer-stub
+      - name: Install, check, uninstall
+        run: |
+          ./stub -dist dist -scripts api/app -version "$(cat agent/VERSION)" > stub.log 2>&1 &
+          sleep 1
+          sudo sh deploy/testing/installer-check.sh http://127.0.0.1:8099
+      - if: always()
+        run: cat stub.log
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build agent and stub
+        shell: pwsh
+        run: |
+          $v = (Get-Content agent/VERSION).Trim()
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $env:CGO_ENABLED = '0'
+          go build -ldflags "-X main.version=$v" -o dist/sentinel-agent-windows-amd64.exe ./agent
+          $h = (Get-FileHash dist/sentinel-agent-windows-amd64.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  sentinel-agent-windows-amd64.exe" | Set-Content -NoNewline dist/sentinel-agent-windows-amd64.exe.sha256
+          go build -o stub.exe ./deploy/testing/installer-stub
+      - name: Install, check, uninstall
+        shell: pwsh
+        run: |
+          $v = (Get-Content agent/VERSION).Trim()
+          Start-Process -FilePath .\stub.exe -ArgumentList '-dist', 'dist', '-scripts', 'api/app', '-version', $v `
+            -RedirectStandardError stub.log -NoNewWindow
+          Start-Sleep -Seconds 2
+          ./deploy/testing/windows/installer-check.ps1 -Stub http://127.0.0.1:8099
+      - if: always()
+        shell: pwsh
+        run: Get-Content stub.log -ErrorAction SilentlyContinue
+
+  bsd:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [freebsd, openbsd, netbsd]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build agent and stub for ${{ matrix.os }}
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          v=$(cat agent/VERSION)
+          mkdir -p dist
+          go build -ldflags "-X main.version=$v" -o "dist/sentinel-agent-$GOOS-amd64" ./agent
+          (cd dist && sha256sum "sentinel-agent-$GOOS-amd64" > "sentinel-agent-$GOOS-amd64.sha256")
+          go build -o stub ./deploy/testing/installer-stub
+      - name: Install, check, uninstall (FreeBSD)
+        if: matrix.os == 'freebsd'
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          run: &check |
+            ./stub -dist dist -scripts api/app -version "$(cat agent/VERSION)" > stub.log 2>&1 &
+            sleep 2
+            sh deploy/testing/installer-check.sh http://127.0.0.1:8099 || { cat stub.log; exit 1; }
+      - name: Install, check, uninstall (OpenBSD)
+        if: matrix.os == 'openbsd'
+        uses: vmactions/openbsd-vm@v1
+        with:
+          usesh: true
+          run: *check
+      - name: Install, check, uninstall (NetBSD)
+        if: matrix.os == 'netbsd'
+        uses: vmactions/netbsd-vm@v1
+        with:
+          usesh: true
+          run: *check
