@@ -182,6 +182,7 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - **Missing sudo:** some customers' servers don't have sudo installed. Root-run fallbacks are needed for anything privileged.
 - **No hardware on VMs:** VMs report no IPMI or SMART. Treat "no readings" as "not applicable", not as a failure.
 - **Windows:** CI path comparisons must use forward slashes. Autoconfig must run right after an update.
+- **Text from customers' servers is hostile by accident:** hostnames, log lines, mount and process names end up in PDFs (ReportLab parses markup: escape with `esc`), Slack (`<!channel>`), Discord (`@everyone`), CSVs (formulas) and Postgres (no NUL). Escape for each sink, and cut to service limits with `cut` (alerter), never by bytes: a 400 from a chat service is treated as permanent and the alert is lost.
 - **Alert detail:** an alert is only useful if it says *what* failed. Plugin, check and disk alerts all carry a detail line, so keep that true for new rule kinds.
 
 ## Open ideas

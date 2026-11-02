@@ -3,6 +3,41 @@
 Sentinel's releases. Agent versions are separate (`agent/VERSION`) and noted
 where they change.
 
+## Unreleased: 0.9.1 (agent 0.9.1)
+
+Edge cases found by probing the running stack before going live.
+
+### Fixed
+
+- **Agent:** a server removed in Sentinel (or whose organisation is
+  suspended) backed its agent off to nothing: it re-sent up to 24 h of spool
+  every 30 seconds for ever. It now waits 1, 2, 4 … up to 30 minutes between
+  tries, keeps the data, and resumes at once when accepted again.
+- **PDF reports** failed for a server whose name looked like markup
+  (ReportLab parsed it, and its `<img>` could load files). Every name in a
+  report is escaped. Download filenames are ASCII, so a non-Latin hostname
+  no longer fails the download.
+- **Summary CSV:** names starting with `=`, `+`, `-` or `@` are written so
+  spreadsheets show them as text instead of running them as formulas.
+- **Email:** bodies are quoted-printable and subjects folded, so a long log
+  line or a long non-ASCII subject can't exceed SMTP's line limit.
+- **Slack and Discord:** alert text is escaped and Discord mentions are off,
+  so a log line with `<!channel>` or `@everyone` can't ping everyone.
+- **Discord, Telegram, Teams:** long or multi-byte text is cut to each
+  service's limit on a character boundary. Before, such alerts were refused
+  (Telegram has a 4096 limit; Discord refused a cut mid-character) and the
+  refusal counted as permanent, so the alert was lost.
+- **Ingest** refuses hostnames with control characters or over 253
+  characters at registration (a NUL failed with 500) and cleans the other
+  fields agents report.
+- **API:** names and titles of only spaces are refused everywhere; text with
+  a NUL character gets 422 instead of 500; passwords that are all spaces or
+  one or two repeated characters are refused.
+- **Web:** long hostnames wrap or truncate instead of widening pages on
+  phones; the logo showed blank on phones; a missing item or mistyped link
+  shows a clear page with a way back instead of a raw validation error; a
+  branded 404 page.
+
 ## 0.9.0 (agent 0.9.0), 2026-11-02
 
 The first release of Sentinel as a product of its own, at
