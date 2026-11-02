@@ -217,7 +217,11 @@ function Organisation() {
                   />
                 </Field>
               </div>
-              <Select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as Role)}>
+              <Select
+                aria-label="Role"
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value as Role)}
+              >
                 <option value="admin">Admin</option>
                 <option value="operator">Member</option>
                 <option value="viewer">Read-only</option>
@@ -252,6 +256,7 @@ function Organisation() {
                     <td>
                       {manager && m.role !== "owner" && m.joined ? (
                         <Select
+                          aria-label="Member role"
                           value={m.role}
                           onChange={(e) => changeRole.mutate([m.id, e.target.value as Role])}
                         >

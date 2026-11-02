@@ -35,6 +35,7 @@ function emit(user: User | null) {
 }
 
 export function setSession(s: Session | null) {
+  if (s) leaving = false;
   accessToken = s?.access_token ?? null;
   emit(s?.user ?? null);
 }
@@ -71,9 +72,41 @@ export function subscribeOrg(fn: () => void): () => void {
   };
 }
 
-/** A superadmin working in an organisation: this token replaces theirs. */
+const IMPERSONATION_KEY = "pg.impersonation";
+
+/** A superadmin working in an organisation: this token replaces theirs.
+ * Kept for this tab only (sessionStorage), so a reload stays in the
+ * organisation until Leave or the token's hour runs out. */
 export function setImpersonation(token: string | null) {
   impersonationToken = token;
+  try {
+    if (token) sessionStorage.setItem(IMPERSONATION_KEY, token);
+    else sessionStorage.removeItem(IMPERSONATION_KEY);
+  } catch {
+    // Storage blocked: it lasts for this page only.
+  }
+}
+
+if (typeof window !== "undefined") {
+  try {
+    impersonationToken = sessionStorage.getItem(IMPERSONATION_KEY);
+  } catch {
+    impersonationToken = null;
+  }
+}
+
+/** Leave the organisation: the impersonation ends on the server too (so
+ * the record shows when), and the superadmin's own session carries on. */
+export async function endImpersonation() {
+  const token = impersonationToken;
+  setImpersonation(null);
+  if (!token) return;
+  try {
+    const claims = JSON.parse(atob(token.split(".")[1]!.replace(/-/g, "+").replace(/_/g, "/")));
+    if (claims.imp) await authed(`/admin/v1/impersonations/${claims.imp}/end`, { method: "POST" });
+  } catch {
+    // It still expires on its own within the hour.
+  }
 }
 
 export function isImpersonating(): boolean {
@@ -122,7 +155,12 @@ function withAuth(req: Request): Request {
 async function authFetch(input: Request): Promise<Response> {
   const retry = input.clone();
   const res = await fetch(withAuth(input));
-  if (res.status !== 401 || impersonationToken || input.url.includes("/auth/refresh")) {
+  if (res.status === 401 && impersonationToken) {
+    // The impersonation ended or expired: back to the superadmin's own view.
+    setImpersonation(null);
+    return fetch(withAuth(retry));
+  }
+  if (res.status !== 401 || input.url.includes("/auth/refresh")) {
     return res;
   }
   const session = await refreshSession();
@@ -141,13 +179,28 @@ export function authed(path: string, init?: RequestInit): Promise<Response> {
   return authFetch(new Request(`${API_BASE}${path}`, init));
 }
 
+let leaving = false;
+
+/** True after signOut(): the sign-in page shouldn't send them back here. */
+export function signedOutOnPurpose(): boolean {
+  return leaving;
+}
+
+/** End the session on purpose (the server already did: password change,
+ * account deleted), without the "come back here" redirect. */
+export function endSession() {
+  leaving = true;
+  setSession(null);
+}
+
 export async function signOut() {
+  leaving = true;
+  setImpersonation(null);
   await fetch(`${API_BASE}/auth/logout`, {
     method: "POST",
     credentials: "same-origin",
     headers: { "X-Requested-With": "sentinel" },
   });
-  setImpersonation(null);
   setSession(null);
   try {
     new BroadcastChannel("pg-auth").postMessage("signed-out");

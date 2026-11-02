@@ -139,6 +139,9 @@ class HostData:
     restarts: int | None = None
     downtimes: list[tuple[int, int]] = field(default_factory=list)
     daily: list[tuple[int, float]] = field(default_factory=list)
+    # Whether the charts' samples caught the server at all: a server that
+    # reported for minutes of a long period can fall between them.
+    sampled: bool = True
     disks: list[DiskForecast] = field(default_factory=list)
     checks: list[dict] = field(default_factory=list)
     processes: list[dict] = field(default_factory=list)
@@ -324,14 +327,24 @@ def findings(d: HostData) -> list[tuple[str, str]]:
         down = sum(b - a for a, b in d.downtimes)
         longest = max((b - a for a, b in d.downtimes), default=0)
         level = "bad" if d.availability < 99 else "warn"
-        out.append(
-            (
-                level,
-                f"Availability {d.availability:.2f}%: {len(d.downtimes)} gap"
-                f"{'s' if len(d.downtimes) != 1 else ''} without data, {fmt_duration(down)} in all"
-                + (f", the longest {fmt_duration(longest)}." if longest else "."),
+        if not d.sampled:
+            out.append(
+                (
+                    level,
+                    f"Availability {d.availability:.2f}%: it reported only briefly in this "
+                    "period, too briefly for the charts below.",
+                )
             )
-        )
+        else:
+            out.append(
+                (
+                    level,
+                    f"Availability {d.availability:.2f}%: {len(d.downtimes)} gap"
+                    f"{'s' if len(d.downtimes) != 1 else ''} without data, "
+                    f"{fmt_duration(down)} in all"
+                    + (f", the longest {fmt_duration(longest)}." if longest else "."),
+                )
+            )
     if d.restarts:
         out.append(("warn", f"Rebooted {d.restarts} time{'s' if d.restarts != 1 else ''}."))
     for disk in d.disks:
@@ -453,6 +466,7 @@ async def collect(
         d.restarts = await restarts(host)
         beat = max(d.series.get("cpu") or [{"points": []}], key=lambda s: len(s["points"]))
         pts = beat["points"]
+        d.sampled = bool(pts)
         d.downtimes = downtimes(pts, b)
         d.daily = daily_availability(a, b, int(pts[0][0]) if pts else None, d.downtimes, tz)
         d.disks = disk_forecasts(d.series.get("disk", []))
@@ -833,6 +847,14 @@ def _host_section(d: HostData, width: float, tz: ZoneInfo, start: datetime, end:
         story.append(_table(rows, [width * 0.38, width * 0.38, width * 0.24], left=2))
         if len(d.downtimes) > 25:
             story.append(Paragraph(f"Latest 25 of {len(d.downtimes)} gaps.", SMALL))
+    elif not d.sampled:
+        story.append(
+            Paragraph(
+                "Too little data at this range's resolution to show gaps: the server reported "
+                "only briefly in this period. Its availability above counts every report.",
+                SMALL,
+            )
+        )
     else:
         story.append(Paragraph("Reported throughout the period: no gaps in its data.", SMALL))
 

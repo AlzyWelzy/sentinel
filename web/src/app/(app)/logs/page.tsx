@@ -63,7 +63,7 @@ export default function LogsPage() {
           placeholder="Search words, e.g. timeout OR refused"
           className="max-w-md"
         />
-        <Select value={host} onChange={(e) => setHost(e.target.value)}>
+        <Select aria-label="Server" value={host} onChange={(e) => setHost(e.target.value)}>
           <option value="">Every server</option>
           {hosts.data?.map((h) => (
             <option key={h.id} value={h.id}>
@@ -71,7 +71,7 @@ export default function LogsPage() {
             </option>
           ))}
         </Select>
-        <Select value={level} onChange={(e) => setLevel(e.target.value)}>
+        <Select aria-label="Level" value={level} onChange={(e) => setLevel(e.target.value)}>
           <option value="">Any level</option>
           {LEVELS.map((l) => (
             <option key={l}>{l}</option>

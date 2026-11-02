@@ -85,7 +85,7 @@ function Servers() {
           onChange={(e) => set("q", e.target.value)}
           className="max-w-xs"
         />
-        <Select value={status} onChange={(e) => set("status", e.target.value)}>
+        <Select aria-label="Status" value={status} onChange={(e) => set("status", e.target.value)}>
           <option value="">Any status</option>
           {Object.entries(STATUS_LABEL).map(([k, v]) => (
             <option key={k} value={k}>
@@ -94,7 +94,7 @@ function Servers() {
           ))}
         </Select>
         {tags.length > 0 && (
-          <Select value={tag} onChange={(e) => set("tag", e.target.value)}>
+          <Select aria-label="Tag" value={tag} onChange={(e) => set("tag", e.target.value)}>
             <option value="">Any tag</option>
             {tags.map((t) => (
               <option key={t}>{t}</option>

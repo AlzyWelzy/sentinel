@@ -118,7 +118,7 @@ export default function StatusPagesPage() {
                   required
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}
-                  pattern="[a-z0-9][a-z0-9-]{2,62}"
+                  pattern="[a-z0-9][a-z0-9\-]{2,62}"
                 />
               </Field>
             </div>

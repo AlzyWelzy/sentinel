@@ -53,6 +53,8 @@ organisation only through an impersonation, which:
 - is checked against its row on every request;
 - is listed in the admin panel, and every change made with it is audited as
   "… (superadmin)".
+- lives in the browser tab that started it (sessionStorage), not in a
+  cookie, and leaving ends it on the server.
 
 ## Agents and ingest
 

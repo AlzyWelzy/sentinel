@@ -153,15 +153,16 @@ export default function IncidentPage() {
                 <Select
                   aria-label="Snooze escalation"
                   value=""
-                  onChange={(e) =>
-                    e.target.value &&
-                    act.mutate(() =>
-                      api.POST("/v1/incidents/{incident_id}/snooze", {
-                        ...path,
-                        body: { minutes: Number(e.target.value) },
-                      }),
-                    )
-                  }
+                  onChange={(e) => {
+                    const minutes = Number(e.target.value);
+                    if (minutes)
+                      act.mutate(() =>
+                        api.POST("/v1/incidents/{incident_id}/snooze", {
+                          ...path,
+                          body: { minutes },
+                        }),
+                      );
+                  }}
                 >
                   <option value="">Snooze…</option>
                   <option value="30">30 minutes</option>
@@ -253,15 +254,19 @@ export default function IncidentPage() {
                 <dt className="text-ink-3">Assigned to</dt>
                 <dd className="mt-1">
                   <Select
+                    aria-label="Assigned to"
                     value={i.assigned_to ?? ""}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      // Read it now: the controlled select snaps back before
+                      // the mutation runs.
+                      const userId = e.target.value || null;
                       act.mutate(() =>
                         api.POST("/v1/incidents/{incident_id}/assign", {
                           ...path,
-                          body: { user_id: e.target.value || null },
+                          body: { user_id: userId },
                         }),
-                      )
-                    }
+                      );
+                    }}
                     className="w-full"
                   >
                     <option value="">Nobody</option>

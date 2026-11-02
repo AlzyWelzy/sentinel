@@ -159,6 +159,7 @@ function Orgs() {
               <tr key={t.id}>
                 <td>
                   <span className="font-medium">{t.display_name ?? t.email}</span>
+                  {t.display_name && t.email && <p className="text-xs text-ink-2">{t.email}</p>}
                   <p className="font-mono text-xs text-ink-3">{t.id}</p>
                 </td>
                 <td className="tabular">

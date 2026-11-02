@@ -36,6 +36,16 @@ removed.
 - **Backups that are proven:** every nightly Postgres dump is restored into
   a scratch database and checked; `vm-backup.sh` backs up and restores
   VictoriaMetrics with `vmbackup`/`vmrestore`.
+- On-call rotations with overrides, escalation steps, rule editing with a
+  7-day preview and test alerts, quiet hours and minimum severity per
+  contact, incident snooze and a list of every notification sent, server
+  tags, dependencies, notes and allowed actions, insights.
+- A public site: landing page, terms, privacy and a setup guide. The
+  dashboard moved to `/overview`.
+- Data export per organisation (JSON, secrets masked), ownership transfer,
+  and deleting your own account.
+- After confirming their email, invited people see their invitations
+  before an organisation of their own is created.
 - `ARCHITECTURE.md`, `SECURITY.md`, `DEPLOYMENT.md`.
 
 ### Changed
@@ -66,6 +76,25 @@ removed.
   `APP_HOST`; agent binaries are served by the API image.
 - The dev stack runs as its own compose project (`beyond-dev`) on host
   ports offset by 10.
+
+### Fixed (found by testing end to end)
+
+- Agent binaries were unreachable behind `API_ROOT_PATH` (installs failed).
+- Sign-in didn't survive a page reload in development (refresh cookie path).
+- Status pages defaulted a server's public label to its hostname.
+- Sign-in followed `next=` links to other sites.
+- Form labels named every option of a select for screen readers.
+- Some failed changes showed no error; now every failure is shown.
+- Assigning an incident or snoozing it from a dropdown sent an empty value.
+- The PDF report sent no servers, and the button worked before the report
+  had loaded.
+- The organisation export failed on numeric columns.
+- A superadmin's impersonation ended on any page reload; leaving now ends it
+  on the server too.
+- Signing out returned the next sign-in to the page you left.
+- The status page address field's pattern was invalid in current browsers.
+- A server that reported only briefly was described as "no gaps" in its
+  PDF report.
 
 ### Removed
 

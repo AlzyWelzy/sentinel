@@ -252,6 +252,27 @@ async def test_ownership_moves_and_accounts_can_be_deleted(client, alice: User, 
 
 async def test_an_export_has_everything_but_secrets(alice: User):
     await insert_host(await alice.tenant_id(), "exported-1")
+    # Numeric, time and array columns all have to come out as JSON.
+    check = {
+        "name": "Site",
+        "type": "http",
+        "target": "https://example.com",
+        "on_probes": True,
+        "slo_target": 99.95,
+    }
+    r = await alice.request("POST", "/v1/checks", json=check)
+    assert r.status_code == 201, r.text
+    window = {
+        "name": "Weekly",
+        "schedule": "weekly",
+        "weekdays": [1],
+        "start_time": "02:00",
+        "duration_minutes": 60,
+        "timezone": "UTC",
+        "enabled": True,
+    }
+    r = await alice.request("POST", "/v1/maintenance", json=window)
+    assert r.status_code == 201, r.text
     await alice.request(
         "POST",
         "/v1/channels",
@@ -265,6 +286,8 @@ async def test_an_export_has_everything_but_secrets(alice: User):
     assert "token_hash" not in data["servers"][0] and "machine_id" not in data["servers"][0]
     assert "secretsecret" not in r.text
     assert data["members"][0]["role"] == "owner"
+    assert data["checks"][0]["slo_target"] == 99.95
+    assert data["maintenance_windows"][0]["start_time"].startswith("02:00")
 
 
 async def test_deleting_a_solo_account_deletes_its_organisation(alice: User):

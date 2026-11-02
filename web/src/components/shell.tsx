@@ -7,7 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { ThemeToggle } from "@/components/theme";
 import { Loading, cx } from "@/components/ui";
-import { isImpersonating, setImpersonation, signOut } from "@/lib/api/client";
+import { endImpersonation, isImpersonating, signOut, signedOutOnPurpose } from "@/lib/api/client";
 import { orgName, useMe, useOrgs, useSession } from "@/lib/session";
 
 const NAV = [
@@ -85,7 +85,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (status === "signed-out") router.replace(`/login?next=${encodeURIComponent(path)}`);
+    // An expired session comes back to this page after signing in; signing
+    // out on purpose doesn't.
+    if (status === "signed-out")
+      router.replace(signedOutOnPurpose() ? "/login" : `/login?next=${encodeURIComponent(path)}`);
   }, [status, path, router]);
 
   if (status !== "signed-in") return <Loading />;
@@ -125,7 +128,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             onClick={async () => {
               await signOut();
               qc.clear();
-              router.replace("/login");
             }}
           >
             Sign out
@@ -172,8 +174,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button
               type="button"
               className="font-medium underline"
-              onClick={() => {
-                setImpersonation(null);
+              onClick={async () => {
+                await endImpersonation();
                 qc.clear();
                 router.push("/admin");
               }}

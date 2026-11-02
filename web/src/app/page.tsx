@@ -64,7 +64,7 @@ export default function Landing() {
               Read the guide
             </Link>
           </div>
-          <pre className="mt-10 max-w-2xl overflow-x-auto rounded-xl border border-line bg-panel p-4 font-mono text-sm text-ink">
+          <pre className="mt-10 max-w-3xl rounded-xl border border-line bg-panel p-4 font-mono text-sm break-all whitespace-pre-wrap text-ink">
             <span className="text-ink-3"># on your server</span>
             {"\n"}curl -fsSL https://get.sentinel.rajpoot.app/install.sh | sudo sh -s -- --key pg_…
           </pre>

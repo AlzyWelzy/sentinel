@@ -54,11 +54,17 @@ export default function ReportsPage() {
     setDownloading(true);
     const end = new Date();
     const start = new Date(end.getTime() - days * 86400_000);
+    const servers = (summary.data?.hosts ?? []).slice(0, 100);
+    if (!servers.length) {
+      setDownloading(false);
+      return setMsg("There are no servers in this period to report on.");
+    }
     const qs = new URLSearchParams({
       start: start.toISOString(),
       end: end.toISOString(),
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
+    for (const h of servers) qs.append("host_id", h.host_id);
     const r = await authed(`/v1/reports/servers.pdf?${qs}`);
     setDownloading(false);
     if (!r.ok) return setMsg("The PDF couldn't be made. Try a shorter range.");
@@ -94,7 +100,7 @@ export default function ReportsPage() {
                 </button>
               ))}
             </div>
-            <Button onClick={pdf} loading={downloading}>
+            <Button onClick={pdf} loading={downloading} disabled={!summary.data}>
               Download PDF
             </Button>
           </>

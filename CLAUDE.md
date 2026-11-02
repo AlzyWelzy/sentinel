@@ -144,8 +144,9 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - [x] Contacts with verification; uptime checks; status pages, public ones rendered on the server.
 - [x] Logs, APM, dashboards, reports (with PDF), audit log, API tokens and install keys, organisation and members, account security.
 - [x] Superadmin panel: organisations, impersonation, users, agent rollout.
-- [ ] Not built yet in the UI (the API has them): on-call schedules and escalation steps, quiet hours, rule preview and test, incident merge and snooze, fleet wall and insights, saved views, host actions, help pages.
-- [ ] A marketing and landing site, docs and pricing (separate static site).
+- [x] On-call rotations and overrides, escalation steps, rule edit, 7-day preview and test alerts, quiet hours and minimum severity per contact, incident snooze and the delivery list, server tags, dependencies, notes and allowed actions, insights (noisy rules, sizing, SLOs).
+- [x] Public site in `web/`: landing page at `/` (the dashboard is `/overview`), terms, privacy, and a setup and troubleshooting guide (`/help`), all rendered on the server.
+- [ ] Not in the UI yet (the API has them): incident merge, saved views, the fleet wall. Pricing, if it's ever paid.
 - [x] Served on one origin: Caddy sends `/api/*` to the API and everything else to `web`.
 
 ### Phase 6: Polish and operations
@@ -155,16 +156,21 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - [x] Terraform provider renamed (`terraform-provider-sentinel`).
 - [x] Binaries, services and paths renamed (`sentinel-agent`, `/etc/sentinel`). No agents were installed under the old names, so no migration path is needed.
 - [x] Agent uninstall: `install.sh --uninstall`, `install.ps1 -Uninstall`.
-- [ ] Legal and product basics: terms, privacy, per-organisation data export. (Deletion exists: owners delete their organisation.)
+- [x] Terms and privacy pages; per-organisation export (JSON, secrets masked); owners hand an organisation to another member; users delete their own account (and organisations only they are in). The legal text is a sound starting point, not legal advice: have it reviewed before taking paying customers.
 
-### Not yet verified
+### Verified end to end (dev stack, real containers)
 
-- The restore check and `vm-backup.sh` haven't been run against a live stack.
-- The uninstall paths haven't been run on each OS.
-- The web app has been built and type-checked but not yet clicked through against the running API.
-- The API suite after the rename and migrations 0024 and 0025.
+- `deploy/stack.yml` resolves with every variable of `production.env.example` set; Caddy validates the production Caddyfile; actionlint and shellcheck are clean.
+- Migrations run up, down to base and up again; the API suite passes (197 tests); the typed web client matches the API.
+- A browser journey (Playwright, scratch script, not in the repo) through the production web image behind Caddy's production routing: landing and legal pages, sign-up and the emailed link, onboarding, a real agent arriving, every screen, rule edit, preview and test, contacts and quiet hours, on-call, status pages (public, rendered on the server, no hostnames), dashboards, PDF report, API tokens, data export, invitations, roles, an outage with the alert and recovery emails, acknowledge, assign, notes, snooze, deliveries, two-factor, password reset signing other browsers out, superadmin impersonation, account deletion, mobile width and dark mode.
+- `install.sh` and `--uninstall` on Ubuntu 24.04 with systemd as PID 1: user, units, timers, autoconfig, registration, spool drained once ingest was reachable, then nothing left behind.
+- Backups: a real dump restores (`restore-check.sh`), a truncated one is caught, and the nightly loop runs both; `vm-backup.sh` brings back a series deleted after the backup.
+- The journey script lives outside the repo (Playwright in a scratch folder). Before rerunning it on the dev stack, clear `pg:rl:*` in Redis (it signs up several accounts from one address and trips the hourly sign-up limit) and delete the `superadmin@example.com` user it creates.
 
-Run all of these first when the dev stack is back.
+### Not verified here
+
+- `install.sh` on FreeBSD, OpenBSD and NetBSD, and `install.ps1` (install and `-Uninstall`) on Windows: no such machines here. The scripts' paths for them are unchanged from the inherited, fleet-tested installer except the uninstall branch.
+- Anything needing the real domain and accounts: TLS issuance, SMTP delivery to outside mailboxes, Turnstile, Web Push.
 
 ## Lessons from the production fleet
 

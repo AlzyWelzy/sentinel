@@ -31,9 +31,9 @@ import {
   errorText,
   getOrg,
   onSessionChange,
+  endSession,
   refreshSession,
   setOrg as storeOrg,
-  setSession,
   subscribeOrg,
   type User,
 } from "./api/client";
@@ -84,7 +84,7 @@ function SessionProvider({ children }: { children: ReactNode }) {
     try {
       channel = new BroadcastChannel("pg-auth");
       channel.onmessage = () => {
-        setSession(null);
+        endSession();
         qc.clear();
       };
     } catch {

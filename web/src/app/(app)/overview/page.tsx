@@ -65,7 +65,7 @@ export default function OverviewPage() {
     <>
       <PageHeader
         title={me.data ? orgName(me.data) : "Overview"}
-        subtitle={`${servers.length} servers · updated every 30 seconds`}
+        subtitle={`${servers.length} ${servers.length === 1 ? "server" : "servers"} · updated every 30 seconds`}
         actions={<LinkButton href="/welcome">Add server</LinkButton>}
       />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

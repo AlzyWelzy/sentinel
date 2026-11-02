@@ -8,7 +8,8 @@ the organisation even without the WHERE clauses below.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select, text
@@ -35,16 +36,29 @@ from app.routes.channels import mask_target
 SKIP = {"tenant_id", "token_hash", "key_hash", "machine_id", "invite_hash"}
 
 
+def _json(v: Any) -> Any:
+    """Column values as JSON: numerics, times and ids as plain values."""
+    if isinstance(v, Decimal):
+        return float(v)
+    if isinstance(v, (datetime, date, time)):
+        return v.isoformat()
+    if isinstance(v, timedelta):
+        return v.total_seconds()
+    if isinstance(v, uuid.UUID):
+        return str(v)
+    if isinstance(v, list):
+        return [_json(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _json(x) for k, x in v.items()}
+    return v
+
+
 def _row(obj: Any) -> dict:
-    out = {}
-    for col in obj.__table__.columns:
-        if col.key in SKIP:
-            continue
-        v = getattr(obj, col.key)
-        out[col.key] = (
-            v.isoformat() if isinstance(v, datetime) else str(v) if isinstance(v, uuid.UUID) else v
-        )
-    return out
+    return {
+        col.key: _json(getattr(obj, col.key))
+        for col in obj.__table__.columns
+        if col.key not in SKIP
+    }
 
 
 async def _all(db: AsyncSession, model: Any, tenant_id: uuid.UUID) -> list:

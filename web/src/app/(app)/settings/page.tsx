@@ -16,7 +16,7 @@ import {
   PageHeader,
   Table,
 } from "@/components/ui";
-import { api, errorText, setSession } from "@/lib/api/client";
+import { api, endSession, errorText } from "@/lib/api/client";
 import { ago, dateTime } from "@/lib/format";
 import { unwrap } from "@/lib/queries";
 
@@ -59,7 +59,7 @@ export default function AccountPage() {
         }),
       ),
     onSuccess: () => {
-      setSession(null);
+      endSession();
       router.replace("/login?reset=1");
     },
     onError: fail,
@@ -93,7 +93,7 @@ export default function AccountPage() {
     mutationFn: async () =>
       unwrap(await api.POST("/auth/me/delete", { body: { password: deletePw } })),
     onSuccess: () => {
-      setSession(null);
+      endSession();
       router.replace("/login");
     },
     onError: fail,

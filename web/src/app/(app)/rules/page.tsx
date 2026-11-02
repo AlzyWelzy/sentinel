@@ -352,6 +352,7 @@ function RuleForm({ onDone, initial }: { onDone: () => void; initial?: Rule }) {
           <Field label="Condition">
             <div className="flex gap-2">
               <Select
+                aria-label="Aggregation"
                 value={rule.aggregation}
                 onChange={(e) => set({ aggregation: e.target.value as RuleIn["aggregation"] })}
               >
@@ -361,6 +362,7 @@ function RuleForm({ onDone, initial }: { onDone: () => void; initial?: Rule }) {
                 <option value="min">lowest</option>
               </Select>
               <Select
+                aria-label="Above or below"
                 value={rule.operator ?? ">"}
                 onChange={(e) => set({ operator: e.target.value as ">" | "<" })}
               >
@@ -371,6 +373,7 @@ function RuleForm({ onDone, initial }: { onDone: () => void; initial?: Rule }) {
                 type="number"
                 step="any"
                 required
+                aria-label="Threshold"
                 value={rule.threshold ?? ""}
                 onChange={(e) => set({ threshold: Number(e.target.value) })}
               />
@@ -423,13 +426,18 @@ function RuleForm({ onDone, initial }: { onDone: () => void; initial?: Rule }) {
         </Field>
         <Field label="Applies to">
           <div className="flex gap-2">
-            <Select value={scope} onChange={(e) => setScope(e.target.value as typeof scope)}>
+            <Select
+              aria-label="Applies to"
+              value={scope}
+              onChange={(e) => setScope(e.target.value as typeof scope)}
+            >
               <option value="all">Every server</option>
               <option value="host">One server</option>
               <option value="tag">Servers with a tag</option>
             </Select>
             {scope === "host" && (
               <Select
+                aria-label="Server"
                 required
                 value={rule.host_id ?? ""}
                 onChange={(e) => set({ host_id: e.target.value })}
@@ -446,6 +454,7 @@ function RuleForm({ onDone, initial }: { onDone: () => void; initial?: Rule }) {
             {scope === "tag" && (
               <Input
                 required
+                aria-label="Tag"
                 placeholder="production"
                 value={rule.tag ?? ""}
                 onChange={(e) => set({ tag: e.target.value })}

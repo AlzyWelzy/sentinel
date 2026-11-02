@@ -14,6 +14,9 @@ os.environ.update(
     # by patching settings.
     ENABLED_CHANNEL_TYPES="email,sms,voice,webhook,slack,teams,discord,telegram,pagerduty,push",
     VAPID_PUBLIC_KEY="BPtest-public-key",
+    # Not whatever `make agent` left in api/dist: tests that need binaries
+    # make their own.
+    AGENT_DIST_DIR="/nonexistent/sentinel-test-dist",
 )
 
 import httpx  # noqa: E402
