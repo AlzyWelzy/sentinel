@@ -1,50 +1,62 @@
-"""Console staff working inside a customer's account (X-Pulsegrid-Account)."""
+"""A superadmin working inside a customer's organisation: only through an
+impersonation, which is audited, time-limited and read-only by default."""
 
 import uuid
 
-from .conftest import User, console_token, insert_host
+from .conftest import User, impersonate, insert_host, superadmin_headers
 
 
-def _headers(tenant_id, role="admin", **extra) -> dict:
-    token = console_token(str(uuid.uuid4()), "support@example.com", role=role, **extra)
-    return {"Authorization": f"Bearer {token}", "X-Pulsegrid-Account": str(tenant_id)}
-
-
-async def test_staff_can_read_and_change_any_account(client, alice: User):
+async def test_impersonation_reads_and_with_writes_changes(client, alice: User):
     tid = await alice.tenant_id()
     await insert_host(tid, "alice-web")
-    h = _headers(tid)
+    h = await impersonate(client, tid, writes=True)
     me = (await client.get("/v1/me", headers=h)).json()
-    assert me["tenant_id"] == str(tid) and me["role"] == "staff"
+    assert me["tenant_id"] == str(tid) and me["role"] == "staff" and me["impersonating"]
     assert [x["hostname"] for x in (await client.get("/v1/hosts", headers=h)).json()] == [
         "alice-web"
     ]
-    # Owner-only areas too: team and API tokens.
     assert (await client.get("/v1/members", headers=h)).status_code == 200
     r = await client.post("/v1/agent-keys", json={"name": "for alice"}, headers=h)
     assert r.status_code == 201
-    # It's in Alice's account, and her audit log says staff did it.
     keys = (await alice.request("GET", "/v1/agent-keys")).json()
     assert [k["name"] for k in keys] == ["for alice"]
     entry = (await alice.request("GET", "/v1/audit-log")).json()[0]
-    assert entry["actor"] == "support@example.com" and entry["actor_kind"] == "staff"
+    assert entry["actor_kind"] == "staff"
 
 
-async def test_customers_and_view_as_sessions_cannot(client, alice: User, bob: User):
+async def test_ending_an_impersonation_takes_effect_at_once(client, alice: User):
+    tid = await alice.tenant_id()
+    admin = await superadmin_headers()
+    r = await client.post(
+        f"/admin/v1/tenants/{tid}/impersonate", headers=admin, json={"reason": "debugging alerts"}
+    )
+    imp = r.json()
+    h = {"Authorization": f"Bearer {imp['access_token']}"}
+    assert (await client.get("/v1/hosts", headers=h)).status_code == 200
+    listed = (await client.get("/admin/v1/impersonations", headers=admin)).json()
+    assert any(i["id"] == imp["id"] and i["reason"] == "debugging alerts" for i in listed)
+    # The impersonation token itself can't reach the admin panel.
+    end = f"/admin/v1/impersonations/{imp['id']}/end"
+    assert (await client.post(end, headers=h)).status_code == 403
+    assert (await client.post(end, headers=admin)).status_code == 204
+    assert (await client.get("/v1/hosts", headers=h)).status_code == 401
+
+
+async def test_customers_cannot_reach_other_organisations(client, alice: User, bob: User):
     tid = await alice.tenant_id()
     await bob.tenant_id()
-    # A customer naming someone else's account is refused.
-    bob_headers = {**bob.headers, "X-Pulsegrid-Account": str(tid)}
-    assert (await client.get("/v1/hosts", headers=bob_headers)).status_code == 403
-    # Unknown staff-like roles are not staff.
-    assert (await client.get("/v1/hosts", headers=_headers(tid, role="sales"))).status_code == 403
-    # A read-only view-as-customer session can't use it to write.
-    r = await client.post(
-        "/v1/agent-keys", json={"name": "x"}, headers=_headers(tid, imp="staff-uid")
+    r = await bob.request("GET", "/v1/hosts", headers={"X-Pulsegrid-Account": str(tid)})
+    assert r.status_code == 403
+    r = await bob.request(
+        "POST", f"/admin/v1/tenants/{tid}/impersonate", json={"reason": "let me in please"}
     )
     assert r.status_code == 403
 
 
-async def test_unknown_account_is_404(client):
-    r = await client.get("/v1/hosts", headers=_headers(uuid.uuid4()))
+async def test_impersonating_an_unknown_organisation_is_404(client):
+    r = await client.post(
+        f"/admin/v1/tenants/{uuid.uuid4()}/impersonate",
+        headers=await superadmin_headers(),
+        json={"reason": "no such organisation"},
+    )
     assert r.status_code == 404

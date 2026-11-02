@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 
 from app.models import ApiToken
 from app.services.secrets import hash_secret
-from app.tenancy import API_TOKEN_PREFIX, ConsoleTenant
+from app.tenancy import API_TOKEN_PREFIX, UserTenant
 
 router = APIRouter(prefix="/v1/api-tokens")
 
@@ -54,7 +54,7 @@ def _out(t: ApiToken) -> TokenOut:
 
 
 @router.get("")
-async def list_tokens(t: ConsoleTenant) -> list[TokenOut]:
+async def list_tokens(t: UserTenant) -> list[TokenOut]:
     rows = await t.db.scalars(
         select(ApiToken).where(ApiToken.tenant_id == t.tenant_id).order_by(ApiToken.created_at)
     )
@@ -62,7 +62,7 @@ async def list_tokens(t: ConsoleTenant) -> list[TokenOut]:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def create_token(body: TokenIn, t: ConsoleTenant) -> TokenCreated:
+async def create_token(body: TokenIn, t: UserTenant) -> TokenCreated:
     active = await t.db.scalar(
         select(func.count())
         .select_from(ApiToken)
@@ -88,7 +88,7 @@ async def create_token(body: TokenIn, t: ConsoleTenant) -> TokenCreated:
 
 
 @router.delete("/{token_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def revoke_token(token_id: uuid.UUID, t: ConsoleTenant) -> None:
+async def revoke_token(token_id: uuid.UUID, t: UserTenant) -> None:
     row = await t.db.scalar(
         select(ApiToken).where(ApiToken.id == token_id, ApiToken.tenant_id == t.tenant_id)
     )

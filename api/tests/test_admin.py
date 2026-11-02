@@ -4,12 +4,12 @@ import uuid
 
 import pytest
 
-from .conftest import User, console_token, insert_host
+from .conftest import User, access_token, insert_host
 
 
 @pytest.fixture
 def staff_headers() -> dict:
-    token = console_token(str(uuid.uuid4()), "support@example.com", role="admin")
+    token = access_token(str(uuid.uuid4()), "support@example.com", superadmin=True)
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -21,7 +21,7 @@ async def test_customers_cannot_use_staff_routes(client, alice: User):
 
 
 async def test_unknown_roles_are_not_staff(client):
-    token = console_token(str(uuid.uuid4()), "x@example.com", role="sales")
+    token = access_token(str(uuid.uuid4()), "x@example.com")
     r = await client.get("/admin/v1/overview", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 403
 

@@ -11,7 +11,7 @@ from app.config import settings
 from app.db import ServiceSession
 from app.services import heartbeats, rollout
 
-from .conftest import User, console_token, insert_host
+from .conftest import User, access_token, insert_host
 
 
 def test_bucket_matches_ingest():
@@ -73,7 +73,7 @@ async def test_adopt_release(clean_rollout, monkeypatch):
 
 
 def staff_headers() -> dict:
-    token = console_token(str(uuid.uuid4()), "ops@example.com", role="super_admin")
+    token = access_token(str(uuid.uuid4()), "ops@example.com", superadmin=True)
     return {"Authorization": f"Bearer {token}"}
 
 

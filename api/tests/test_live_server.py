@@ -13,7 +13,7 @@ import uvicorn
 
 from app.main import app
 
-from .conftest import console_token
+from .conftest import access_token, ensure_user
 
 
 @pytest.fixture
@@ -32,7 +32,8 @@ async def live_url():
 
 async def test_bodyless_changes_commit(live_url):
     uid = str(uuid.uuid4())
-    h = {"Authorization": f"Bearer {console_token(uid, f'live-{uid[:8]}@example.com')}"}
+    await ensure_user(uid, f"live-{uid[:8]}@example.com")
+    h = {"Authorization": f"Bearer {access_token(uid, f'live-{uid[:8]}@example.com')}"}
     async with httpx.AsyncClient(base_url=live_url, headers=h) as c:
         rule = {"name": "Live", "kind": "host_down", "duration_seconds": 120}
         created = (await c.post("/v1/alert-rules", json=rule)).json()

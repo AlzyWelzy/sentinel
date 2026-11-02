@@ -64,18 +64,24 @@ type emailSender struct {
 }
 
 func (e *emailSender) send(ctx context.Context, to string, m message) error {
+	subject, text := m.render()
+	return e.sendMail(ctx, to, subject, text, renderHTML(m))
+}
+
+// sendMail sends one message, with an HTML part when html isn't empty.
+// Alerts and account emails (verify, reset, invitations) both go out here.
+func (e *emailSender) sendMail(ctx context.Context, to, subject, text, html string) error {
 	if e.host == "" {
 		return permanent("email is not configured (SMTP_HOST)")
 	}
 	if strings.ContainsAny(to, "\r\n") || !strings.Contains(to, "@") {
 		return permanent("invalid email address")
 	}
-	subject, text := m.render()
 	var body bytes.Buffer
 	fmt.Fprintf(&body, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\n",
 		e.from, to, mime.QEncoding.Encode("utf-8", subject), time.Now().Format(time.RFC1123Z))
 	body.WriteString("MIME-Version: 1.0\r\n")
-	if html := renderHTML(m); html != "" {
+	if html != "" {
 		const boundary = "pulsegrid-alternative-boundary"
 		fmt.Fprintf(&body, "Content-Type: multipart/alternative; boundary=%q\r\n\r\n", boundary)
 		fmt.Fprintf(&body, "--%s\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n", boundary)
@@ -142,55 +148,6 @@ func addressOnly(from string) string {
 		return strings.TrimSuffix(from[i+1:], ">")
 	}
 	return from
-}
-
-// ── Email through the console ────────────────────────────────────────────────
-
-// consoleMailer hands email to the console backend, which sends it with the
-// mail settings configured there (Office 365 / SES, from-address per purpose),
-// so mail credentials live in one place and Pulsegrid never holds them.
-type consoleMailer struct {
-	url    string // e.g. http://console-backend:8000/api/internal/pulsegrid/email/
-	apiKey string
-	client *http.Client
-}
-
-func (c *consoleMailer) send(ctx context.Context, to string, m message) error {
-	if c.url == "" {
-		return permanent("console email is not configured (CONSOLE_EMAIL_URL)")
-	}
-	if strings.ContainsAny(to, "\r\n") || !strings.Contains(to, "@") {
-		return permanent("invalid email address")
-	}
-	subject, text := m.render()
-	body, err := json.Marshal(map[string]string{
-		"to": to, "subject": subject, "text": text, "html": renderHTML(m), "purpose": "monitoring",
-	})
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(body))
-	if err != nil {
-		return permanent("invalid CONSOLE_EMAIL_URL")
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Internal-Api-Key", c.apiKey)
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return err // console unreachable: retried with backoff
-	}
-	defer resp.Body.Close()
-	msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-	switch {
-	case resp.StatusCode < 300:
-		return nil
-	case resp.StatusCode == 400 || resp.StatusCode == 422:
-		return permanent("console rejected the email: %s", msg)
-	default:
-		// 401/403 (key mismatch) and 5xx can be fixed on the console side
-		// without losing the alert, so they're retried.
-		return fmt.Errorf("console email endpoint returned %s: %s", resp.Status, msg)
-	}
 }
 
 // ── Webhook ──────────────────────────────────────────────────────────────────

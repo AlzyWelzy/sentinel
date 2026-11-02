@@ -3,17 +3,15 @@ status pages, actions, inventory, reports and staff probe management."""
 
 import json
 import uuid
-from typing import cast
 
 import pytest
-from joserfc.jwk import KeySet
 from sqlalchemy import text
 
 from app.config import settings
 from app.db import ServiceSession
 from app.services.heartbeats import redis
 
-from .conftest import User, _new_user, console_token, insert_host
+from .conftest import User, _new_user, access_token, insert_host
 
 # ── Checks ───────────────────────────────────────────────────────────────────
 
@@ -488,14 +486,15 @@ async def test_monthly_report_job_queues_once(alice: User):
 # ── Staff: probes and fleet ──────────────────────────────────────────────────
 
 
-async def test_only_probe_accounts_can_be_probes(client):
+async def test_only_probe_accounts_can_be_probes(client, monkeypatch):
     staff = {
-        "Authorization": f"Bearer {console_token(str(uuid.uuid4()), 'staff@x.com', role='admin')}"
+        "Authorization": f"Bearer {access_token(str(uuid.uuid4()), 'staff@x.com', superadmin=True)}"
     }
     owner = _new_user(client, "probe")
-    owner.uid = "probe-owner"
-    owner.headers = {"Authorization": f"Bearer {console_token('probe-owner', 'probes@x.com')}"}
     customer = _new_user(client, "cust")
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PROBE_ACCOUNT_IDS", [str(await owner.tenant_id())])
     probe_host = await insert_host(await owner.tenant_id(), f"probe-{uuid.uuid4().hex[:6]}")
     cust_host = await insert_host(await customer.tenant_id(), "cust-1")
 
@@ -516,18 +515,3 @@ async def test_only_probe_accounts_can_be_probes(client):
         await customer.request("PUT", f"/admin/v1/hosts/{probe_host}/probe", json={"region": None})
     ).status_code in (401, 403)
     await client.put(f"/admin/v1/hosts/{probe_host}/probe", headers=staff, json={"region": None})
-
-
-async def test_jwks_outage_keeps_the_cached_keys():
-    from fastapi import HTTPException
-
-    from app.auth.console import JWKSVerifier
-
-    v = JWKSVerifier("http://console.invalid/jwks", "iss", "aud", ["RS512"])
-    with pytest.raises(HTTPException) as exc:  # nothing cached yet: 503, not 500
-        await v._key_set()
-    assert exc.value.status_code == 503
-    cached = cast(KeySet, object())
-    v._keys, v._expiry = cached, 0.0  # cached keys, now stale
-    assert await v._key_set() is cached
-    assert v._expiry > 0  # retried again later, not on every request

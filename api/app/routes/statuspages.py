@@ -25,7 +25,6 @@ from app.db import ServiceSession
 from app.models import (
     AlertRule,
     Check,
-    ExternalMonitor,
     Host,
     Incident,
     MaintenanceWindow,
@@ -52,8 +51,6 @@ class ItemIn(BaseModel):
     label: str = Field(min_length=1, max_length=100)
     host_id: uuid.UUID | None = None
     check_id: uuid.UUID | None = None
-    # An uptime monitor from the console (GET /v1/external-monitors).
-    external_key: str | None = Field(default=None, max_length=80)
 
 
 class PageIn(BaseModel):
@@ -100,7 +97,6 @@ async def _page_out(t: TenantContext, p: StatusPage) -> PageOut:
                 label=i.label,
                 host_id=i.host_id,
                 check_id=i.check_id,
-                external_key=i.external_key,
             )
             for i in items
         ],
@@ -112,22 +108,9 @@ async def _page_out(t: TenantContext, p: StatusPage) -> PageOut:
 async def _set_items(t: TenantContext, page: StatusPage, items: list[ItemIn]) -> None:
     host_ids = {i.host_id for i in items if i.host_id}
     check_ids = {i.check_id for i in items if i.check_id}
-    externals = {i.external_key for i in items if i.external_key}
     for i in items:
-        if sum(x is not None for x in (i.host_id, i.check_id, i.external_key)) != 1:
-            raise HTTPException(
-                status_code=422, detail="each item shows one server, check or uptime monitor"
-            )
-    if externals:
-        found = set(
-            await t.db.scalars(
-                select(ExternalMonitor.key).where(
-                    ExternalMonitor.key.in_(externals), ExternalMonitor.tenant_id == t.tenant_id
-                )
-            )
-        )
-        if found != externals:
-            raise HTTPException(status_code=422, detail="unknown uptime monitor in items")
+        if sum(x is not None for x in (i.host_id, i.check_id)) != 1:
+            raise HTTPException(status_code=422, detail="each item shows one server or check")
     if host_ids:
         found = set(
             await t.db.scalars(
@@ -157,7 +140,6 @@ async def _set_items(t: TenantContext, page: StatusPage, items: list[ItemIn]) ->
                 label=i.label,
                 host_id=i.host_id,
                 check_id=i.check_id,
-                external_key=i.external_key,
                 position=pos,
             )
         )
@@ -468,16 +450,6 @@ async def build_public(slug: str) -> PublicPage | None:
         )
         host_ids = [i.host_id for i in items if i.host_id]
         check_ids = [i.check_id for i in items if i.check_id]
-        external_keys = [i.external_key for i in items if i.external_key]
-        externals = {
-            m.key: m
-            for m in await db.scalars(
-                select(ExternalMonitor).where(
-                    ExternalMonitor.tenant_id == page.tenant_id,
-                    ExternalMonitor.key.in_(external_keys),
-                )
-            )
-        }
         hosts_created = {
             h.id: h.created_at
             for h in await db.scalars(
@@ -546,26 +518,7 @@ async def build_public(slug: str) -> PublicPage | None:
     labels = {i.host_id or i.check_id: i.label for i in items}
     out_items = []
     for i in items:
-        if i.external_key:
-            m = externals.get(i.external_key)
-            if m is None:
-                continue
-            st: ItemStatus = cast(
-                ItemStatus,
-                {"up": "up", "down": "down", "maintenance": "up"}.get(m.status, "unknown"),
-            )
-            by_date = {d.get("date"): d.get("uptime") for d in (m.daily or [])}
-            days = [
-                PublicDay(date=d, uptime=by_date.get(d))
-                for d in (
-                    (datetime.now(UTC).date() - timedelta(days=DAYS - 1 - k)).isoformat()
-                    for k in range(DAYS)
-                )
-            ]
-            response = (
-                round(m.response_ms, 1) if m.response_ms is not None and page.show_values else None
-            )
-        elif i.host_id:
+        if i.host_id:
             st = (
                 "up"
                 if is_online(seen.get(i.host_id))
@@ -792,36 +745,3 @@ footer{{margin-top:24px;color:var(--muted);font-size:12px;text-align:center}}</s
 {f"<h3>Past updates</h3>{history}" if history else ""}
 <footer>Updated {page.updated_at:%d %b %Y %H:%M} UTC · Powered by Pulsegrid</footer></main></body></html>"""
     return HTMLResponse(body, headers={"Cache-Control": f"public, max-age={CACHE_SECONDS}"})
-
-
-external = APIRouter(prefix="/v1/external-monitors", tags=["status pages"])
-
-
-class ExternalMonitorOut(BaseModel):
-    key: str
-    name: str
-    kind: str | None
-    status: str
-    uptime_24h: float | None
-    updated_at: datetime
-
-
-@external.get("")
-async def list_external_monitors(t: Tenant) -> list[ExternalMonitorOut]:
-    """The account's uptime monitors from the console, for status pages."""
-    rows = await t.db.scalars(
-        select(ExternalMonitor)
-        .where(ExternalMonitor.tenant_id == t.tenant_id)
-        .order_by(ExternalMonitor.name)
-    )
-    return [
-        ExternalMonitorOut(
-            key=m.key,
-            name=m.name,
-            kind=m.kind,
-            status=m.status,
-            uptime_24h=m.uptime_24h,
-            updated_at=m.updated_at,
-        )
-        for m in rows
-    ]

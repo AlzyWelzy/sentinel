@@ -1,13 +1,13 @@
-"""Staff view across every account.
+"""The superadmin panel: every organisation, the fleet, agent rollouts.
 
-Console staff (a verified token whose `role` is in STAFF_ROLES) can see every
-tenant's servers, charts, incidents and the agent fleet to support customers.
-The only change staff make here is choosing which of our own agents act as
-public probes; anything in a customer's account is done through the
-console's view-as-customer, which Pulsegrid treats as read-only.
+Superadmins are Beyond users with is_superadmin (from SUPERADMIN_EMAILS).
+They see every organisation's servers, charts and incidents here, manage
+organisations (suspend, resume, delete), the agent rollout and probes. To
+work inside an organisation they start an impersonation: audited, with a
+reason, time-limited and read-only unless they ask for writes.
 
-These routes use the cross-tenant service role, so the staff check below is
-the only gate. Keep every handler behind `staff`.
+These routes use the cross-tenant service role, so the superadmin check
+below is the only gate. Keep every handler behind `staff`.
 """
 
 import time
@@ -18,12 +18,12 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import Response
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import Text, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.console import InvalidToken, Principal, admin_verifier
+from app.auth.native import issue_access_token
+from app.auth.principal import Principal
 from app.config import settings
 from app.db import AppSession, service_session
 from app.models import AgentKey, Check, Host, Incident, IncidentEvent, Tenant
@@ -65,26 +65,14 @@ from app.routes.v1 import (
     install_command_windows,
     processes_of,
 )
-from app.services import audit, checkresults, heartbeats, hostpdf, metrics, oncall, rollout
+from app.services import audit, checkresults, heartbeats, hostpdf, metrics, oncall, rollout, tenants
 from app.services.secrets import new_agent_key
-from app.tenancy import TenantContext
-
-bearer = HTTPBearer(auto_error=False)
+from app.tenancy import TenantContext, current_principal
 
 
-async def staff(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
-) -> Principal:
-    if credentials is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-    try:
-        principal = await admin_verifier.verify(credentials.credentials)
-    except InvalidToken:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        ) from None
-    if principal.role not in settings.STAFF_ROLES:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Staff access required")
+async def staff(principal: Annotated[Principal, Depends(current_principal)]) -> Principal:
+    if not principal.superadmin or principal.impersonated or principal.api_token_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmins only")
     return principal
 
 
@@ -104,7 +92,7 @@ async def staff_audit(
             db,
             request,
             tenant_id=uuid.UUID(str(tenant)) if tenant else None,
-            actor=principal.email or principal.name or "staff",
+            actor=f"{principal.email} (superadmin)",
             actor_kind="staff",
         )
 
@@ -123,7 +111,6 @@ class Overview(BaseModel):
 
 class TenantSummary(BaseModel):
     id: uuid.UUID
-    external_account_id: str
     email: str | None
     display_name: str | None
     status: str
@@ -167,7 +154,9 @@ async def overview(db: ServiceDB) -> Overview:
 @router.get("/tenants")
 async def list_tenants(
     db: ServiceDB,
-    q: Annotated[str | None, Query(max_length=200, description="email, name or account id")] = None,
+    q: Annotated[
+        str | None, Query(max_length=200, description="email, name or organisation id")
+    ] = None,
     with_hosts: bool = Query(default=True, description="only accounts that have servers"),
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -185,7 +174,7 @@ async def list_tenants(
             or_(
                 Tenant.email.ilike(like),
                 Tenant.display_name.ilike(like),
-                Tenant.external_account_id.ilike(like),
+                cast(Tenant.id, Text).ilike(like),
             )
         )
     if with_hosts:
@@ -201,7 +190,6 @@ async def list_tenants(
     return [
         TenantSummary(
             id=r.Tenant.id,
-            external_account_id=r.Tenant.external_account_id,
             email=r.Tenant.email,
             display_name=r.Tenant.display_name,
             status=r.Tenant.status,
@@ -794,7 +782,7 @@ async def servers_pdf(
     start: datetime | None = None,
     end: datetime | None = None,
     lifetime: bool = False,
-    tz: str = "Asia/Kolkata",
+    tz: str = "UTC",
 ) -> Response:
     """The servers PDF for staff; servers may come from several accounts."""
     if oncall.zone(tz).key != tz:
@@ -852,8 +840,8 @@ class ProbeIn(BaseModel):
 @router.put("/hosts/{host_id}/probe")
 async def set_probe(host_id: uuid.UUID, body: ProbeIn, db: ServiceDB) -> FleetHost:
     """Make one of our own agents a public probe for a region (or stop).
-    Probes receive every account's uptime check targets, so only agents in
-    the accounts listed in PROBE_ACCOUNT_IDS qualify."""
+    Probes receive every organisation's uptime check targets, so only agents
+    in the organisations listed in PROBE_ACCOUNT_IDS qualify."""
     row = (
         await db.execute(
             select(Host, Tenant).join(Tenant, Tenant.id == Host.tenant_id).where(Host.id == host_id)
@@ -862,10 +850,10 @@ async def set_probe(host_id: uuid.UUID, body: ProbeIn, db: ServiceDB) -> FleetHo
     if row is None:
         raise HTTPException(status_code=404, detail="Host not found")
     host, tenant = row
-    if tenant.external_account_id not in settings.PROBE_ACCOUNT_IDS:
+    if str(tenant.id) not in settings.PROBE_ACCOUNT_IDS:
         raise HTTPException(
             status_code=403,
-            detail="Only agents in the accounts listed in PROBE_ACCOUNT_IDS can be probes",
+            detail="Only agents in the organisations listed in PROBE_ACCOUNT_IDS can be probes",
         )
     host.probe_region = body.region
     seen = await heartbeats.last_seen([host.id])
@@ -897,3 +885,218 @@ async def staff_audit_log(
     return await audit_routes.query(
         db, tenant_id=tenant_id, staff_only=staff_only, q=q, before=before, limit=limit
     )
+
+
+# ── Organisations ────────────────────────────────────────────────────────────
+
+
+@router.post("/tenants/{tenant_id}/suspend", status_code=204)
+async def suspend_tenant(tenant_id: uuid.UUID, db: ServiceDB) -> None:
+    """Ingest refuses the organisation's agents and its members get 403."""
+    await tenants.set_status(db, tenant_id, "suspended")
+
+
+@router.post("/tenants/{tenant_id}/resume", status_code=204)
+async def resume_tenant(tenant_id: uuid.UUID, db: ServiceDB) -> None:
+    await tenants.set_status(db, tenant_id, "active")
+
+
+@router.delete("/tenants/{tenant_id}", status_code=204)
+async def delete_tenant(tenant_id: uuid.UUID, db: ServiceDB) -> None:
+    await tenants.delete(db, tenant_id)
+
+
+class UserSummary(BaseModel):
+    id: uuid.UUID
+    email: str
+    name: str | None
+    email_verified: bool
+    totp_enabled: bool
+    superadmin: bool
+    disabled: bool
+    created_at: datetime
+    organisations: int
+
+
+@router.get("/users")
+async def list_users(
+    db: ServiceDB,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[UserSummary]:
+    rows = await db.execute(
+        text(
+            "SELECT u.*, (SELECT count(*) FROM tenant_members m WHERE m.user_id = u.id "
+            "AND m.joined_at IS NOT NULL) AS orgs FROM users u "
+            "WHERE (CAST(:q AS text) IS NULL OR u.email ILIKE :like OR u.name ILIKE :like) "
+            "ORDER BY u.created_at DESC LIMIT :l OFFSET :o"
+        ),
+        {"q": q, "like": f"%{(q or '').strip()}%", "l": limit, "o": offset},
+    )
+    return [
+        UserSummary(
+            id=r.id,
+            email=r.email,
+            name=r.name,
+            email_verified=r.email_verified_at is not None,
+            totp_enabled=r.totp_enabled_at is not None,
+            superadmin=r.is_superadmin,
+            disabled=r.disabled_at is not None,
+            created_at=r.created_at,
+            organisations=r.orgs,
+        )
+        for r in rows
+    ]
+
+
+class DisableIn(BaseModel):
+    disabled: bool
+
+
+@router.put("/users/{user_id}/disabled", status_code=204)
+async def disable_user(
+    user_id: uuid.UUID,
+    body: DisableIn,
+    db: ServiceDB,
+    principal: Annotated[Principal, Depends(staff)],
+) -> None:
+    """A disabled user can't sign in, and their sessions end now."""
+    if str(user_id) == principal.user_id:
+        raise HTTPException(status_code=400, detail="You can't disable yourself")
+    found = await db.scalar(
+        text(
+            "UPDATE users SET disabled_at = CASE WHEN :d THEN now() END WHERE id = :u RETURNING id"
+        ),
+        {"d": body.disabled, "u": user_id},
+    )
+    if found is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if body.disabled:
+        await db.execute(
+            text(
+                "UPDATE user_sessions SET revoked_at = now() "
+                "WHERE user_id = :u AND revoked_at IS NULL"
+            ),
+            {"u": user_id},
+        )
+
+
+# ── Impersonation ────────────────────────────────────────────────────────────
+
+IMPERSONATION_MINUTES = 60
+
+
+class ImpersonationIn(BaseModel):
+    reason: str = Field(min_length=5, max_length=500)
+    allow_writes: bool = False
+
+
+class ImpersonationOut(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    access_token: str
+    allow_writes: bool
+    expires_at: datetime
+
+
+@router.post("/tenants/{tenant_id}/impersonate", status_code=201)
+async def impersonate(
+    tenant_id: uuid.UUID,
+    body: ImpersonationIn,
+    request: Request,
+    db: ServiceDB,
+    principal: Annotated[Principal, Depends(staff)],
+) -> ImpersonationOut:
+    """A token for working inside one organisation, for an hour. Read-only
+    unless allow_writes; every change made with it is audited as the
+    superadmin, and starting it is audited too."""
+    if await db.get(Tenant, tenant_id) is None:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+    row = (
+        await db.execute(
+            text(
+                "INSERT INTO impersonations (user_id, tenant_id, reason, allow_writes, expires_at) "
+                "VALUES (:u, :t, :r, :w, now() + make_interval(mins => :m)) "
+                "RETURNING id, expires_at"
+            ),
+            {
+                "u": principal.user_id,
+                "t": tenant_id,
+                "r": body.reason,
+                "w": body.allow_writes,
+                "m": IMPERSONATION_MINUTES,
+            },
+        )
+    ).one()
+    token = issue_access_token(
+        str(principal.user_id),
+        principal.session_id,
+        principal.email or "",
+        principal.name,
+        superadmin=True,
+        impersonation=(str(row.id), str(tenant_id), body.allow_writes),
+        ttl=IMPERSONATION_MINUTES * 60,
+    )
+    return ImpersonationOut(
+        id=row.id,
+        tenant_id=tenant_id,
+        access_token=token,
+        allow_writes=body.allow_writes,
+        expires_at=row.expires_at,
+    )
+
+
+@router.post("/impersonations/{impersonation_id}/end", status_code=204)
+async def end_impersonation(
+    impersonation_id: uuid.UUID,
+    db: ServiceDB,
+    principal: Annotated[Principal, Depends(staff)],
+) -> None:
+    await db.execute(
+        text(
+            "UPDATE impersonations SET ended_at = now() "
+            "WHERE id = :i AND user_id = :u AND ended_at IS NULL"
+        ),
+        {"i": impersonation_id, "u": principal.user_id},
+    )
+
+
+class ImpersonationRow(BaseModel):
+    id: uuid.UUID
+    superadmin: str
+    tenant_id: uuid.UUID
+    organisation: str | None
+    reason: str
+    allow_writes: bool
+    started_at: datetime
+    expires_at: datetime
+    ended_at: datetime | None
+
+
+@router.get("/impersonations")
+async def list_impersonations(
+    db: ServiceDB, limit: Annotated[int, Query(ge=1, le=200)] = 50
+) -> list[ImpersonationRow]:
+    rows = await db.execute(
+        text(
+            "SELECT i.*, u.email, t.display_name, t.email AS org_email FROM impersonations i "
+            "JOIN users u ON u.id = i.user_id JOIN tenants t ON t.id = i.tenant_id "
+            "ORDER BY i.started_at DESC LIMIT :l"
+        ),
+        {"l": limit},
+    )
+    return [
+        ImpersonationRow(
+            id=r.id,
+            superadmin=r.email,
+            tenant_id=r.tenant_id,
+            organisation=r.display_name or r.org_email,
+            reason=r.reason,
+            allow_writes=r.allow_writes,
+            started_at=r.started_at,
+            expires_at=r.expires_at,
+            ended_at=r.ended_at,
+        )
+        for r in rows
+    ]

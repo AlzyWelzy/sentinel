@@ -7,11 +7,10 @@ from app.config import Settings
 
 PROD = {
     "ENVIRONMENT": "production",
-    "INTERNAL_API_KEY": "k" * 40,
-    "JWKS_URI": "https://console.example.com/api/.well-known/jwks.json/",
-    "JWT_TOKEN_ISSUER": "console.example.com",
-    "JWT_TOKEN_AUDIENCE": "console.example.com",
-    "ALLOW_AUTH_BYPASS": "false",
+    "AUTH_SECRET": "s" * 48,
+    "COOKIE_SECURE": "true",
+    "TURNSTILE_SECRET_KEY": "turnstile-secret",
+    "PUBLIC_APP_URL": "https://pulsegrid.example.com",
 }
 
 
@@ -26,14 +25,20 @@ def test_valid_production_config(prod_env):
     Settings()
 
 
+def test_a_private_install_may_turn_the_captcha_off(prod_env):
+    prod_env.delenv("TURNSTILE_SECRET_KEY")
+    prod_env.setenv("CAPTCHA_DISABLED", "true")
+    Settings()
+
+
 @pytest.mark.parametrize(
     ("key", "value"),
     [
-        ("ALLOW_AUTH_BYPASS", "true"),
-        ("INTERNAL_API_KEY", "change-me-pulsegrid-internal-key"),
-        ("INTERNAL_API_KEY", "short"),
-        ("JWKS_URI", "http://localhost/.well-known/jwks.json"),
-        ("JWT_TOKEN_ISSUER", "issuer.client.com"),
+        ("AUTH_SECRET", ""),
+        ("AUTH_SECRET", "short"),
+        ("COOKIE_SECURE", "false"),
+        ("TURNSTILE_SECRET_KEY", ""),
+        ("PUBLIC_APP_URL", "http://pulsegrid.example.com"),
     ],
 )
 def test_production_refuses_unsafe_config(prod_env, key, value):
@@ -42,6 +47,6 @@ def test_production_refuses_unsafe_config(prod_env, key, value):
         Settings()
 
 
-def test_algorithms_from_comma_separated_env(monkeypatch):
-    monkeypatch.setenv("JWT_ALGORITHMS", "RS256, RS512")
-    assert Settings().JWT_ALGORITHMS == ["RS256", "RS512"]
+def test_lists_from_comma_separated_env(monkeypatch):
+    monkeypatch.setenv("SUPERADMIN_EMAILS", "Ops@Example.com, me@example.com")
+    assert Settings().superadmin_emails == {"ops@example.com", "me@example.com"}

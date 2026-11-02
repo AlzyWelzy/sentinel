@@ -3,7 +3,7 @@ redacted; failed ones aren't; each account sees only its own."""
 
 import uuid
 
-from .conftest import User, console_token
+from .conftest import User, access_token
 
 
 async def events(user: User, **params) -> list[dict]:
@@ -50,7 +50,7 @@ async def test_changes_are_recorded(alice: User, bob: User):
 
 
 async def test_staff_changes_are_recorded(client, alice: User):
-    token = console_token(str(uuid.uuid4()), "ops@example.com", role="admin")
+    token = access_token(str(uuid.uuid4()), "ops@example.com", superadmin=True)
     staff = {"Authorization": f"Bearer {token}"}
     tid = await alice.tenant_id()
     r = await client.put(
@@ -62,4 +62,4 @@ async def test_staff_changes_are_recorded(client, alice: User):
     every = (
         await client.get("/admin/v1/audit-log", headers=staff, params={"staff_only": True})
     ).json()
-    assert every[0]["actor"] == "ops@example.com"
+    assert every[0]["actor"] == "ops@example.com (superadmin)"

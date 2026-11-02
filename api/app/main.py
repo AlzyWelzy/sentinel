@@ -12,6 +12,7 @@ from app.routes import (
     apm,
     apps,
     audit,
+    auth,
     channels,
     checks,
     dashboards,
@@ -21,7 +22,6 @@ from app.routes import (
     hostops,
     insights,
     install,
-    internal,
     logs,
     maintenance,
     members,
@@ -34,15 +34,17 @@ from app.routes import (
     v1,
 )
 
-app = FastAPI(title="Pulsegrid API", version="0.3.0", root_path=settings.API_ROOT_PATH)
+app = FastAPI(title="Pulsegrid API", version="0.9.0", root_path=settings.API_ROOT_PATH)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_methods=["*"],
-    allow_headers=["Authorization", "Content-Type", "X-Pulsegrid-Account"],
+    allow_headers=["Authorization", "Content-Type", "X-Pulsegrid-Account", "X-Requested-With"],
+    allow_credentials=True,
 )
 
+app.include_router(auth.router)
 app.include_router(tools.router)
 app.include_router(fleetview.router)
 app.include_router(fleet.router)
@@ -63,13 +65,11 @@ app.include_router(dashboards.router)
 app.include_router(apm.router)
 app.include_router(statuspages.router)
 app.include_router(statuspages.public)
-app.include_router(statuspages.external)
 app.include_router(reports.router)
 app.include_router(insights.router)
 app.include_router(maintenance.router)
 app.include_router(ack.router)
 app.include_router(install.router)
-app.include_router(internal.router)
 app.include_router(admin.router)
 
 # In production the binaries come from the CDN at PUBLIC_DOWNLOAD_URL; locally

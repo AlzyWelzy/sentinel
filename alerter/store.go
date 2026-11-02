@@ -801,3 +801,56 @@ func (s *store) openPluginNames(ctx context.Context, ruleID, hostID string) stri
 	}
 	return names
 }
+
+type accountEmail struct {
+	ID, To, Kind, Subject, Text, HTML string
+	Attempts                          int
+}
+
+// claimAccountEmails leases pending account emails the way claim() leases
+// alerts. Links in them carry single-use tokens, so after a send the
+// payload is cleared.
+func (s *store) claimAccountEmails(ctx context.Context, limit int) ([]accountEmail, error) {
+	rows, err := s.pool.Query(ctx, `
+		UPDATE account_emails m SET next_attempt_at = now() + make_interval(secs => $2)
+		 WHERE m.id IN (
+		       SELECT id FROM account_emails
+		        WHERE status = 'pending' AND next_attempt_at <= now()
+		        ORDER BY next_attempt_at
+		        LIMIT $1
+		          FOR UPDATE SKIP LOCKED)
+		RETURNING m.id, m.to_address, m.kind, m.payload->>'subject', m.payload->>'text',
+		          COALESCE(m.payload->>'html', ''), m.attempts`,
+		limit, leaseDuration.Seconds())
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (accountEmail, error) {
+		var m accountEmail
+		err := r.Scan(&m.ID, &m.To, &m.Kind, &m.Subject, &m.Text, &m.HTML, &m.Attempts)
+		return m, err
+	})
+}
+
+func (s *store) markAccountEmailSent(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE account_emails
+		   SET status = 'sent', sent_at = now(), attempts = attempts + 1, last_error = NULL,
+		       payload = '{}'::jsonb
+		 WHERE id = $1`, id)
+	return err
+}
+
+func (s *store) markAccountEmailFailed(ctx context.Context, id string, sendErr error, retryIn time.Duration) error {
+	status := "pending"
+	var permanent *permanentError
+	if retryIn <= 0 || errors.As(sendErr, &permanent) {
+		status, retryIn = "failed", 0
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE account_emails
+		   SET status = $2, attempts = attempts + 1, last_error = left($3, 500),
+		       next_attempt_at = now() + make_interval(secs => $4)
+		 WHERE id = $1`, id, status, sendErr.Error(), retryIn.Seconds())
+	return err
+}

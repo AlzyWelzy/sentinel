@@ -1,13 +1,24 @@
-"""API-level isolation: two real console users, every endpoint that takes an id."""
+"""API-level isolation: two real users, every endpoint that takes an id."""
 
 import uuid
 
-from .conftest import User, console_token, insert_host, latest_code
+from .conftest import User, access_token, impersonate, insert_host, latest_code, superadmin_headers
 
 
-async def test_requires_a_valid_console_token(client):
+async def test_requires_a_valid_token(client):
     assert (await client.get("/v1/hosts")).status_code == 401
     bad = {"Authorization": "Bearer not-a-jwt"}
+    assert (await client.get("/v1/hosts", headers=bad)).status_code == 401
+    # Signed with another secret: refused.
+    from joserfc import jwt
+    from joserfc.jwk import OctKey
+
+    forged = jwt.encode(
+        {"alg": "HS256"},
+        {"iss": "pulsegrid-beyond", "sub": str(uuid.uuid4()), "exp": 9999999999},
+        OctKey.import_key(b"x" * 32),
+    )
+    bad = {"Authorization": f"Bearer {forged}"}
     assert (await client.get("/v1/hosts", headers=bad)).status_code == 401
 
 
@@ -52,7 +63,7 @@ async def test_hosts_are_private(alice: User, bob: User):
 async def test_channels_are_private(alice: User, bob: User):
     channels = (await alice.request("GET", "/v1/channels")).json()
     assert [(c["target"], c["source"], c["is_default"]) for c in channels] == [
-        (alice.email, "console", True)
+        (alice.email, "account", True)
     ]
 
     added = await alice.request(
@@ -88,34 +99,45 @@ async def test_last_verified_channel_cannot_be_deleted_and_default_moves(alice: 
     assert [(c["id"], c["is_default"]) for c in remaining] == [(extra["id"], True)]
 
 
-async def test_impersonated_sessions_are_read_only(client):
-    headers = {
-        "Authorization": f"Bearer {console_token(str(uuid.uuid4()), 'c@example.com', imp=1)}"
-    }
+async def test_impersonated_sessions_are_read_only(client, alice: User):
+    tid = await alice.tenant_id()
+    headers = await impersonate(client, tid)
     assert (await client.get("/v1/hosts", headers=headers)).status_code == 200
+    assert (await client.get("/v1/me", headers=headers)).json()["tenant_id"] == str(tid)
     created = await client.post("/v1/agent-keys", json={"name": "x"}, headers=headers)
     assert created.status_code == 403
+    # With writes allowed, changes go through and are audited as the superadmin.
+    writes = await impersonate(client, tid, writes=True)
+    created = await client.post("/v1/agent-keys", json={"name": "x"}, headers=writes)
+    assert created.status_code == 201
+    log = (await alice.request("GET", "/v1/audit-log")).json()
+    assert log[0]["actor_kind"] == "staff" and log[0]["actor"].endswith("(superadmin)")
 
 
-async def test_internal_routes_need_the_internal_key(client, alice: User):
-    await alice.tenant_id()
-    assert (await client.get("/internal/v1/usage")).status_code == 401
-    wrong = {"X-Internal-Api-Key": "nope"}
-    assert (await client.get("/internal/v1/usage", headers=wrong)).status_code == 401
-    # A customer's console token is not an internal credential.
-    assert (await alice.request("GET", "/internal/v1/usage")).status_code == 401
+async def test_a_superadmin_token_alone_reaches_no_organisation(client, alice: User):
+    tid = await alice.tenant_id()
+    headers = await superadmin_headers()
+    r = await client.get("/v1/hosts", headers={**headers, "X-Pulsegrid-Account": str(tid)})
+    assert r.status_code == 403
+
+
+async def test_forged_impersonation_claims_are_refused(client, alice: User):
+    """An impersonation must exist and belong to a superadmin."""
+    tid = await alice.tenant_id()
+    token = access_token(alice.uid, alice.email, impersonation=(str(uuid.uuid4()), str(tid), True))
+    r = await client.get("/v1/hosts", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 401
 
 
 async def test_suspended_tenant_is_locked_out(client, alice: User):
-    await alice.tenant_id()
-    key = {"X-Internal-Api-Key": "change-me-pulsegrid-internal-key"}
-    assert (
-        await client.post(f"/internal/v1/tenants/{alice.uid}/suspend", headers=key)
-    ).status_code == 204
+    tid = await alice.tenant_id()
+    admin = await superadmin_headers()
+    assert (await client.post(f"/admin/v1/tenants/{tid}/suspend", headers=admin)).status_code == 204
     assert (await alice.request("GET", "/v1/hosts")).status_code == 403
-    assert (
-        await client.post(f"/internal/v1/tenants/{alice.uid}/resume", headers=key)
-    ).status_code == 204
+    assert (await alice.request("GET", "/v1/hosts", headers={})).status_code == 403
+    # Customers can't suspend or resume anything themselves.
+    assert (await alice.request("POST", f"/admin/v1/tenants/{tid}/resume")).status_code == 403
+    assert (await client.post(f"/admin/v1/tenants/{tid}/resume", headers=admin)).status_code == 204
     assert (await alice.request("GET", "/v1/hosts")).status_code == 200
 
 
@@ -124,47 +146,3 @@ async def test_revoking_a_key_keeps_it_listed_as_revoked(alice: User):
     assert (await alice.request("DELETE", f"/v1/agent-keys/{key['id']}")).status_code == 204
     listed = (await alice.request("GET", "/v1/agent-keys")).json()
     assert listed[0]["revoked_at"] is not None
-
-
-async def test_bad_token_is_rejected_even_with_dev_bypass(client, monkeypatch):
-    from app.config import settings
-
-    monkeypatch.setattr(settings, "ALLOW_AUTH_BYPASS", True)
-    bad = {"Authorization": "Bearer not.a.token"}
-    assert (await client.get("/v1/hosts", headers=bad)).status_code == 401
-    # With no token at all, the bypass applies.
-    assert (await client.get("/v1/hosts")).status_code == 200
-
-
-async def test_internal_incidents_for_ticket_rules(client, alice: User, bob: User):
-    from sqlalchemy import text
-
-    from app.db import ServiceSession
-
-    from .conftest import insert_host
-
-    key = {"X-Internal-Api-Key": "change-me-pulsegrid-internal-key"}
-    a = await alice.tenant_id()
-    await bob.tenant_id()
-    host = await insert_host(a, "alice-web")
-    async with ServiceSession() as db, db.begin():
-        open_id, closed_id = [
-            (
-                await db.execute(
-                    text(
-                        "INSERT INTO incidents "
-                        "(tenant_id, host_id, summary, rule_name, hostname, status) "
-                        "VALUES (:t, :h, 'Disk full', 'Disk', 'alice-web', :s) RETURNING id"
-                    ),
-                    {"t": a, "h": host, "s": s},
-                )
-            ).scalar_one()
-            for s in ("open", "resolved")
-        ]
-    assert (await client.get("/internal/v1/incidents")).status_code == 401
-    listed = (await client.get("/internal/v1/incidents", headers=key)).json()
-    mine = [i["id"] for i in listed if i["external_account_id"] == alice.uid]
-    assert mine == [str(open_id)]
-    both = {"ids": [str(open_id), str(closed_id)]}
-    by_id = (await client.get("/internal/v1/incidents", params=both, headers=key)).json()
-    assert sorted(i["status"] for i in by_id) == ["open", "resolved"]

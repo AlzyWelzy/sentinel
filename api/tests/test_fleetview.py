@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.db import ServiceSession
 from app.services.heartbeats import redis
 
-from .conftest import User, console_token, insert_host
+from .conftest import User, access_token, insert_host
 from .test_monitoring_depth import _push, needs_vm
 
 
@@ -67,7 +67,7 @@ async def test_overview_and_disks(alice: User, bob: User, client):
     assert data["total_bytes"] is None  # no free/total reported for it
     assert (await bob.request("GET", f"/v1/hosts/{busy}/disks")).status_code == 404
     # Staff see the same disks from the all-accounts view.
-    token = console_token(str(uuid.uuid4()), "demo-support@example.com", role="admin")
+    token = access_token(str(uuid.uuid4()), "demo-support@example.com", superadmin=True)
     staff = await client.get(
         f"/admin/v1/hosts/{busy}/disks", headers={"Authorization": f"Bearer {token}"}
     )
@@ -126,7 +126,7 @@ async def test_server_summary(alice: User, bob: User, client):
     assert s["root_causes"] == ["CPU high"] and s["downtimes"] == 0
     assert s["uptime_seconds"] == 7200 and s["processes"] == 140 and s["open_files"] == 2944
     assert (await bob.request("GET", f"/v1/hosts/{host}/summary")).status_code == 404
-    token = console_token(str(uuid.uuid4()), "demo-support@example.com", role="admin")
+    token = access_token(str(uuid.uuid4()), "demo-support@example.com", superadmin=True)
     staff = await client.get(
         f"/admin/v1/hosts/{host}/summary", headers={"Authorization": f"Bearer {token}"}
     )
@@ -157,7 +157,7 @@ async def test_notes_deliveries_and_forecast(alice: User, bob: User, client):
     f = r.json()
     assert f["series"] == []  # under a day of history: nothing is projected
     assert (await bob.request("GET", f"/v1/hosts/{host}/forecast")).status_code == 404
-    token = console_token(str(uuid.uuid4()), "demo-support@example.com", role="admin")
+    token = access_token(str(uuid.uuid4()), "demo-support@example.com", superadmin=True)
     staff = await client.get(
         f"/admin/v1/hosts/{host}/forecast", headers={"Authorization": f"Bearer {token}"}
     )

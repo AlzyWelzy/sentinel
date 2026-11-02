@@ -67,11 +67,12 @@ func main() {
 		http:      &http.Client{Timeout: 15 * time.Second},
 		rdb:       rdb,
 		log:       log,
-		baseURL:   os.Getenv("PUBLIC_DASHBOARD_URL"),
+		baseURL:   os.Getenv("PUBLIC_APP_URL"),
 		apiURL:    os.Getenv("PUBLIC_API_URL"),
 		ackSecret: os.Getenv("ACK_SIGNING_SECRET"),
 	}
-	disp := &dispatcher{store: st, log: log, senders: senders()}
+	mail := emailTransport()
+	disp := &dispatcher{store: st, log: log, senders: senders(mail), mail: mail}
 
 	interval := time.Duration(envInt("EVALUATION_INTERVAL_SECONDS", 30)) * time.Second
 	partitions := envInt("ALERTER_PARTITIONS", 1)
@@ -85,12 +86,12 @@ func main() {
 	log.Info("alerter stopping")
 }
 
-func senders() map[string]sender {
+func senders(mail *emailSender) map[string]sender {
 	webhook := newWebhookSender(os.Getenv("WEBHOOK_SIGNING_SECRET"), os.Getenv("ALLOW_PRIVATE_WEBHOOKS") == "true")
 	public := &http.Client{Timeout: 15 * time.Second}
 	twilio := env("TWILIO_API_URL", "https://api.twilio.com")
 	return map[string]sender{
-		"email":   emailTransport(),
+		"email":   mail,
 		"webhook": webhook,
 		"sms": &smsSender{
 			accountSID: os.Getenv("TWILIO_ACCOUNT_SID"),
@@ -120,17 +121,9 @@ func senders() map[string]sender {
 	}
 }
 
-// emailTransport: EMAIL_TRANSPORT=console sends through the console backend
-// (its own mail settings); smtp (the default) sends directly, for running
-// Pulsegrid standalone.
-func emailTransport() sender {
-	if os.Getenv("EMAIL_TRANSPORT") == "console" {
-		return &consoleMailer{
-			url:    os.Getenv("CONSOLE_EMAIL_URL"),
-			apiKey: os.Getenv("CONSOLE_INTERNAL_API_KEY"),
-			client: &http.Client{Timeout: 30 * time.Second},
-		}
-	}
+// emailTransport sends through SMTP or a provider's SMTP relay (SES,
+// Postmark, Resend and the like all offer one).
+func emailTransport() *emailSender {
 	return &emailSender{
 		host:     os.Getenv("SMTP_HOST"),
 		port:     env("SMTP_PORT", "587"),

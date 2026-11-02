@@ -4,11 +4,13 @@ version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.20.1",
+    "argon2-cffi>=25.1.0",
     "asyncpg>=0.32.0",
     "fastapi[standard]>=0.162.0",
     "httpx>=0.28.1",
     "joserfc>=1.7.7",
     "pydantic-settings>=2.16.1",
+    "pyotp>=2.10.0",
     "redis>=8.1.0",
     "reportlab>=5.1.0",
     "sqlalchemy[asyncio]>=2.1.6",

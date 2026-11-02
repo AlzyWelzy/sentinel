@@ -17,12 +17,13 @@ var retryBackoff = []time.Duration{20 * time.Second, 40 * time.Second, 2 * time.
 type dispatcher struct {
 	store   *store
 	senders map[string]sender
+	mail    *emailSender // account emails (verify, reset, invitations)
 	log     *slog.Logger
 }
 
 func (d *dispatcher) run(ctx context.Context) {
 	for ctx.Err() == nil {
-		n := d.dispatchOnce(ctx)
+		n := d.dispatchOnce(ctx) + d.dispatchAccountEmails(ctx)
 		if n == 0 {
 			select {
 			case <-ctx.Done():
@@ -162,4 +163,39 @@ func mergeHostDown(a, b message) message {
 	text := fmt.Sprintf("%s: %s\n\n%s\n\nServers:\n- %s\n\nTime: %s\n",
 		state, summary, condition, strings.Join(all, "\n- "), time.Now().UTC().Format(time.RFC1123))
 	return message{Subject: "[Pulsegrid] " + state + ": " + summary, Text: text, Event: ev}
+}
+
+// dispatchAccountEmails sends the API's account emails, with the same
+// lease and backoff as alerts: a mail server outage delays them, it
+// doesn't lose them.
+func (d *dispatcher) dispatchAccountEmails(ctx context.Context) int {
+	if d.mail == nil {
+		return 0
+	}
+	claimed, err := d.store.claimAccountEmails(ctx, 50)
+	if err != nil {
+		d.log.Error("claiming account emails", "err", err)
+		return 0
+	}
+	for _, m := range claimed {
+		sendCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+		sendErr := d.mail.sendMail(sendCtx, m.To, m.Subject, m.Text, m.HTML)
+		cancel()
+		if sendErr == nil {
+			if err := d.store.markAccountEmailSent(ctx, m.ID); err != nil {
+				d.log.Error("marking account email sent", "id", m.ID, "err", err)
+			}
+			d.log.Info("account email sent", "id", m.ID, "kind", m.Kind)
+			continue
+		}
+		var retryIn time.Duration
+		if m.Attempts < len(retryBackoff) {
+			retryIn = retryBackoff[m.Attempts]
+		}
+		d.log.Warn("account email not sent", "id", m.ID, "kind", m.Kind, "attempt", m.Attempts+1, "err", sendErr)
+		if err := d.store.markAccountEmailFailed(ctx, m.ID, sendErr, retryIn); err != nil {
+			d.log.Error("recording account email failure", "id", m.ID, "err", err)
+		}
+	}
+	return len(claimed)
 }

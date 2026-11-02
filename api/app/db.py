@@ -12,6 +12,6 @@ ServiceSession = async_sessionmaker(service_engine, expire_on_commit=False)
 
 
 async def service_session() -> AsyncIterator[AsyncSession]:
-    """Cross-tenant session for /internal/* routes. Never use it for customer requests."""
+    """Cross-tenant session for superadmin routes. Never use it for customer requests."""
     async with ServiceSession() as session, session.begin():
         yield session

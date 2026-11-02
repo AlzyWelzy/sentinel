@@ -51,7 +51,7 @@ class ReportSettings(BaseModel):
     monthly_report: bool
     digest: Literal["off", "daily", "weekly"] = "weekly"
     digest_hour: int = Field(default=9, ge=0, le=23, description="in digest_timezone")
-    digest_timezone: str = "Asia/Kolkata"
+    digest_timezone: str = "UTC"
 
     @field_validator("digest_timezone")
     @classmethod
@@ -177,7 +177,7 @@ async def servers_pdf(
     start: datetime | None = None,
     end: datetime | None = None,
     lifetime: Annotated[bool, Query(description="from when the oldest server was added")] = False,
-    tz: str = "Asia/Kolkata",
+    tz: str = "UTC",
 ) -> Response:
     """A detailed PDF for one or more servers: availability, statistics,
     charts and incidents over the period (default the last 30 days)."""

@@ -9,18 +9,12 @@ class Settings(BaseSettings):
 
     ENVIRONMENT: Literal["development", "testing", "production"] = "development"
 
-    # Accept requests without a verifiable console JWT and act as DEV_EXTERNAL_ACCOUNT_ID.
-    # Local development only; refused in production by _validate_auth_bypass.
-    ALLOW_AUTH_BYPASS: bool = False
-    DEV_EXTERNAL_ACCOUNT_ID: str = "00000000-0000-0000-0000-000000000001"
-    DEV_EMAIL: str = "dev@localhost"
-
     # ── Postgres ─────────────────────────────────────────────────────────────
     # Customer requests run as the app role, so row-level security always applies.
     DATABASE_APP_URL: str = (
         "postgresql+asyncpg://pulsegrid_app:pulsegrid_app@localhost:5442/pulsegrid"
     )
-    # Internal routes work across tenants, so they use the BYPASSRLS service role.
+    # Superadmin routes and the auth service work across tenants: BYPASSRLS service role.
     DATABASE_SERVICE_URL: str = (
         "postgresql+asyncpg://pulsegrid_service:pulsegrid_service@localhost:5442/pulsegrid"
     )
@@ -39,11 +33,11 @@ class Settings(BaseSettings):
     # Tempo's query API for APM (ingest writes OTLP to it). Empty: APM is off.
     TEMPO_URL: str = ""
 
-    # Where links in report emails point (the console's Monitoring page).
-    PUBLIC_DASHBOARD_URL: str = ""
-
     # ── Public URLs ──────────────────────────────────────────────────────────
     # Never hardcode these anywhere else: moving domains is a config change.
+    # The web app; links in emails (verify, reset, invitations, alerts,
+    # reports) point here.
+    PUBLIC_APP_URL: str = "http://localhost:3000"
     PUBLIC_API_URL: str = "http://localhost:8010"
     PUBLIC_INGEST_URL: str = "http://localhost:8090"
     PUBLIC_DOWNLOAD_URL: str = "http://localhost:8010"
@@ -57,36 +51,39 @@ class Settings(BaseSettings):
     # Local directory served at /agent/ when present (dev builds of the agent binary).
     AGENT_DIST_DIR: str = "dist"
 
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
-    # Path prefix when served behind a proxy that passes it through unstripped
-    # (e.g. the console's nginx at /api/pulsegrid), like billing-ms.
+    # Browser origins allowed to call the API directly. The web app is served
+    # on the same origin as the API in production, so this is usually empty.
+    CORS_ORIGINS: str = "http://localhost:3000"
+    # Path prefix when served behind a proxy that passes it through unstripped.
     API_ROOT_PATH: str = ""
 
-    # ── Console identity (shared JWKS, same as billing) ──────────────────────
-    TENANT_SOURCE: str = "console"
-    JWKS_URI: str = "http://localhost/.well-known/jwks.json"
-    # NoDecode: env gives "RS256,RS384" (as in billing), split by the validator below.
-    JWT_ALGORITHMS: Annotated[list[str], NoDecode] = ["RS256", "RS384", "RS512"]
-    JWT_TOKEN_ISSUER: str = "issuer.client.com"
-    JWT_TOKEN_AUDIENCE: str = "audience.client.com"
-    # Staff tokens; empty means "same as customer tokens".
-    ADMIN_JWT_TOKEN_ISSUER: str = ""
-    ADMIN_JWT_TOKEN_AUDIENCE: str = ""
-    STAFF_ROLES: Annotated[list[str], NoDecode] = ["admin", "super_admin"]
-    # Customers only look: staff add servers and manage rules for them, and
-    # customers may change nothing but their alert contacts.
-    CUSTOMERS_READ_ONLY: bool = False
-    # Every account gets the recommended alert rules once, when first seen.
+    # ── Accounts ─────────────────────────────────────────────────────────────
+    # Signs access tokens and encrypts TOTP secrets (each through its own
+    # derived key). Rotate by moving the old value to AUTH_SECRET_PREVIOUS:
+    # tokens and secrets made with it keep working until they're renewed.
+    AUTH_SECRET: str = ""
+    AUTH_SECRET_PREVIOUS: str = ""
+    ACCESS_TOKEN_TTL_SECONDS: int = 600
+    REFRESH_TOKEN_TTL_DAYS: int = 30
+    # Refresh cookies need HTTPS; only development over plain http turns it off.
+    COOKIE_SECURE: bool = True
+    SIGNUP_ENABLED: bool = True
+    # Cloudflare Turnstile on sign-up and password reset. Required in
+    # production unless CAPTCHA_DISABLED (for a private install).
+    TURNSTILE_SITE_KEY: str = ""
+    TURNSTILE_SECRET_KEY: str = ""
+    CAPTCHA_DISABLED: bool = False
+    # Verified accounts with these emails are superadmins (a bootstrap: the
+    # flag is stored, and removing an address here revokes it at next sign-in).
+    SUPERADMIN_EMAILS: Annotated[list[str], NoDecode] = []
+    # Every new organisation gets the recommended alert rules.
     AUTO_RECOMMENDED_RULES: bool = True
-
-    # ── Service-to-service (console backend -> /internal/*) ──────────────────
-    INTERNAL_API_KEY: str = "change-me-pulsegrid-internal-key"
 
     # Signs the one-click acknowledge links in alerts; the alerter has the
     # same value. Empty: alerts carry no acknowledge link.
     ACK_SIGNING_SECRET: str = ""
 
-    # Console accounts (uids) whose agents staff may turn into public probes.
+    # Organisations (tenant ids) whose agents superadmins may turn into public probes.
     # Probes receive every account's uptime check targets, so only our own
     # infrastructure may run them.
     PROBE_ACCOUNT_IDS: Annotated[list[str], NoDecode] = []
@@ -102,7 +99,7 @@ class Settings(BaseSettings):
     HOST_OFFLINE_AFTER_SECONDS: int = 120
 
     @field_validator(
-        "JWT_ALGORITHMS", "STAFF_ROLES", "ENABLED_CHANNEL_TYPES", "PROBE_ACCOUNT_IDS", mode="before"
+        "SUPERADMIN_EMAILS", "ENABLED_CHANNEL_TYPES", "PROBE_ACCOUNT_IDS", mode="before"
     )
     @classmethod
     def _split_algorithms(cls, v: object) -> object:
@@ -114,15 +111,21 @@ class Settings(BaseSettings):
     def _validate_production(self) -> "Settings":
         if self.ENVIRONMENT != "production":
             return self
-        if self.ALLOW_AUTH_BYPASS:
-            raise ValueError("ALLOW_AUTH_BYPASS must never be enabled in production")
-        if self.INTERNAL_API_KEY.startswith("change-me") or len(self.INTERNAL_API_KEY) < 32:
-            raise ValueError("Set INTERNAL_API_KEY to a random value of at least 32 characters")
-        if "localhost" in self.JWKS_URI or self.JWT_TOKEN_ISSUER == "issuer.client.com":
+        if len(self.AUTH_SECRET) < 32:
+            raise ValueError("Set AUTH_SECRET to a random value of at least 32 characters")
+        if not self.COOKIE_SECURE:
+            raise ValueError("COOKIE_SECURE must stay on in production")
+        if not self.CAPTCHA_DISABLED and not self.TURNSTILE_SECRET_KEY:
             raise ValueError(
-                "Set JWKS_URI, JWT_TOKEN_ISSUER and JWT_TOKEN_AUDIENCE to the console's"
+                "Set TURNSTILE_SECRET_KEY, or CAPTCHA_DISABLED=true for a private install"
             )
+        if not self.PUBLIC_APP_URL.startswith("https://"):
+            raise ValueError("PUBLIC_APP_URL must be https in production")
         return self
+
+    @property
+    def superadmin_emails(self) -> set[str]:
+        return {e.lower() for e in self.SUPERADMIN_EMAILS}
 
     @property
     def cors_origins(self) -> list[str]:

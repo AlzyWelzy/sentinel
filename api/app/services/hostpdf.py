@@ -403,7 +403,7 @@ async def collect(
     hosts: list[Host],
     start: datetime,
     end: datetime,
-    tz_name: str = "Asia/Kolkata",
+    tz_name: str = "UTC",
 ) -> list[HostData]:
     from app.routes.v1 import processes_of
 
@@ -960,7 +960,7 @@ def render(
     end: datetime,
     *,
     account: str,
-    tz_name: str = "Asia/Kolkata",
+    tz_name: str = "UTC",
 ) -> bytes:
     tz = ZoneInfo(tz_name)
     buf = io.BytesIO()

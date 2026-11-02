@@ -10,20 +10,21 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from app.auth.console import Principal
+from app.auth.principal import Principal
 from app.db import AppSession
-from app.tenancy import bind_tenant
+from app.tenancy import bind_default_tenant
 
-from .conftest import insert_host
-
-
-def principal(email: str = "x@example.com") -> Principal:
-    return Principal(source="console", external_account_id=str(uuid.uuid4()), email=email, name="X")
+from .conftest import ensure_user, insert_host
 
 
 async def new_tenant() -> uuid.UUID:
+    uid = str(uuid.uuid4())
+    email = f"{uid[:8]}@example.com"
+    await ensure_user(uid, email)
     async with AppSession() as db, db.begin():
-        tenant_id, _ = await bind_tenant(db, principal())
+        tenant_id, _, _ = await bind_default_tenant(
+            db, Principal(user_id=uid, email=email, name="X")
+        )
         return tenant_id
 
 
@@ -98,33 +99,36 @@ async def test_cannot_move_row_into_another_tenant():
         await as_tenant(a, "UPDATE hosts SET tenant_id = :b WHERE id = :h", b=b, h=host_a)
 
 
-async def test_resolve_tenant_is_idempotent_and_prefills_console_email():
-    p = principal("owner@example.com")
+async def test_default_tenant_is_idempotent_and_prefills_the_email():
+    uid = str(uuid.uuid4())
+    email = f"owner-{uid[:8]}@example.com"
+    await ensure_user(uid, email)
+    p = Principal(user_id=uid, email=email, name="Owner")
     async with AppSession() as db, db.begin():
-        first, _ = await bind_tenant(db, p)
+        first, _, role = await bind_default_tenant(db, p)
     async with AppSession() as db, db.begin():
-        second, _ = await bind_tenant(db, p)
-    assert first == second
+        second, _, _ = await bind_default_tenant(db, p)
+    assert first == second and role == "owner"
 
     rows = (
         await as_tenant(first, "SELECT type, target, source, is_default FROM notification_channels")
     ).all()
     assert [(r.type, r.target, r.source, r.is_default) for r in rows] == [
-        ("email", "owner@example.com", "console", True)
+        ("email", email, "account", True)
     ]
+    members = (await as_tenant(first, "SELECT user_id, role FROM tenant_members")).all()
+    assert [(str(m.user_id), m.role) for m in members] == [(uid, "owner")]
 
 
-async def test_console_email_change_follows_into_channel():
-    p = principal("old@example.com")
+async def test_member_lookup_needs_a_joined_membership():
+    """pulsegrid_member_tenant() answers only for the user's own memberships."""
+    a = await new_tenant()
+    stranger = str(uuid.uuid4())
+    await ensure_user(stranger, f"{stranger[:8]}@example.com")
     async with AppSession() as db, db.begin():
-        tenant_id, _ = await bind_tenant(db, p)
-    moved = Principal(p.source, p.external_account_id, "new@example.com", p.name)
-    async with AppSession() as db, db.begin():
-        await bind_tenant(db, moved)
-
-    targets = (
-        await as_tenant(
-            tenant_id, "SELECT target FROM notification_channels WHERE source='console'"
-        )
-    ).scalars()
-    assert list(targets) == ["new@example.com"]
+        rows = (
+            await db.execute(
+                text("SELECT * FROM pulsegrid_member_tenant(:t, :u)"), {"t": a, "u": stranger}
+            )
+        ).all()
+    assert rows == []

@@ -2,26 +2,42 @@
 	email {$ACME_EMAIL}
 }
 
-# Dashboard API (called by the console in the browser) and install.sh.
-{$API_HOST} {
-	# Service-to-service routes stay off the internet.
-	@internal path /internal/*
-	respond @internal 404
-	reverse_proxy api:8000
+# The web app, with the API under /api on the same origin: the sign-in
+# cookie is first-party and the browser needs no CORS.
+{$APP_HOST} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	handle_path /api/* {
+		request_body {
+			max_size 5MB
+		}
+		reverse_proxy api:8000
+	}
+	handle {
+		reverse_proxy web:3000
+	}
 }
 
 # Agent registration and metric pushes.
 {$INGEST_HOST} {
 	request_body {
-		max_size 12MB
+		max_size 34MB
 	}
 	reverse_proxy ingest:8080
 }
 
-# install.sh and agent binaries. Binaries are uploaded into the agent-dist
-# volume by the release job (or point this host at a CDN instead).
+# install.sh, install.ps1 and agent binaries. Binaries are uploaded into the
+# agent-dist volume by the release job (or point this host at a CDN instead).
 {$DOWNLOAD_HOST} {
 	handle /install.sh {
+		reverse_proxy api:8000
+	}
+	handle /install.ps1 {
 		reverse_proxy api:8000
 	}
 	handle /agent/* {

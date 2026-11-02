@@ -4,55 +4,54 @@ would test nothing.
 """
 
 import os
-import time
 import uuid
 
 os.environ.update(
     ENVIRONMENT="testing",
-    ALLOW_AUTH_BYPASS="false",
-    JWT_TOKEN_ISSUER="test-issuer",
-    JWT_TOKEN_AUDIENCE="test-audience",
-    JWT_ALGORITHMS="RS256",
+    AUTH_SECRET="test-auth-secret-of-at-least-32-characters",
+    COOKIE_SECURE="false",
     # Every contact type stays under test; the default enabled set is tested
     # by patching settings.
     ENABLED_CHANNEL_TYPES="email,sms,voice,webhook,slack,teams,discord,telegram,pagerduty,push",
     VAPID_PUBLIC_KEY="BPtest-public-key",
-    PROBE_ACCOUNT_IDS="probe-owner",
 )
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402
-from joserfc import jwt  # noqa: E402
-from joserfc.jwk import KeySet, RSAKey  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-from app.auth.console import admin_verifier, console_verifier  # noqa: E402
+from app.auth import native  # noqa: E402
 from app.db import ServiceSession  # noqa: E402
 from app.main import app  # noqa: E402
 
-_KEY = RSAKey.generate_key(2048, parameters={"kid": "test"})
+# One hash for every test user: argon2 is slow on purpose.
+TEST_PASSWORD = "correct horse battery staple"
+_TEST_HASH = native.hash_password(TEST_PASSWORD)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def trust_test_key():
-    """Make the console verifier trust our test signing key instead of fetching JWKS."""
-    for verifier in (console_verifier, admin_verifier):
-        verifier._keys = KeySet([_KEY])
-        verifier._expiry = float("inf")
+def access_token(
+    uid: str,
+    email: str | None = None,
+    superadmin: bool = False,
+    impersonation: tuple[str, str, bool] | None = None,
+) -> str:
+    """A Beyond access token, as /auth/login would issue it."""
+    return native.issue_access_token(
+        uid, None, email or "", "Test User", superadmin=superadmin, impersonation=impersonation
+    )
 
 
-def console_token(uid: str, email: str | None = None, **extra) -> str:
-    claims = {
-        "iss": "test-issuer",
-        "aud": "test-audience",
-        "exp": int(time.time()) + 600,
-        "jti": uuid.uuid4().hex,
-        "uid": uid,
-        "email": email,
-        "name": "Test User",
-        **extra,
-    }
-    return jwt.encode({"alg": "RS256", "kid": "test"}, claims, _KEY)
+async def ensure_user(uid: str, email: str, superadmin: bool = False) -> None:
+    """The users row a token stands for (verified, with TEST_PASSWORD)."""
+    async with ServiceSession() as db, db.begin():
+        await db.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, name, password_hash, email_verified_at, is_superadmin) "
+                "VALUES (:u, :e, 'Test User', :h, now(), :s) ON CONFLICT DO NOTHING"
+            ),
+            {"u": uid, "e": email.lower(), "h": _TEST_HASH, "s": superadmin},
+        )
 
 
 class User:
@@ -60,13 +59,47 @@ class User:
         self.uid = uid
         self.email = email
         self._client = client
-        self.headers = {"Authorization": f"Bearer {console_token(uid, email)}"}
+        self._created = False
+        self.headers = {"Authorization": f"Bearer {access_token(uid, email)}"}
 
     async def request(self, method: str, url: str, **kw) -> httpx.Response:
-        return await self._client.request(method, url, headers=self.headers, **kw)
+        if not self._created:
+            await ensure_user(self.uid, self.email)
+            self._created = True
+        headers = {**self.headers, **kw.pop("headers", {})}
+        return await self._client.request(method, url, headers=headers, **kw)
 
     async def tenant_id(self) -> uuid.UUID:
         return uuid.UUID((await self.request("GET", "/v1/me")).json()["tenant_id"])
+
+
+async def superadmin_headers(email: str = "admin@example.com") -> dict[str, str]:
+    uid = str(uuid.uuid4())
+    await ensure_user(uid, f"{uid[:8]}-{email}", superadmin=True)
+    return {"Authorization": f"Bearer {access_token(uid, email, superadmin=True)}"}
+
+
+async def impersonate(
+    client: httpx.AsyncClient, tenant_id: uuid.UUID, writes: bool = False
+) -> dict[str, str]:
+    """Headers for a superadmin working inside an organisation."""
+    r = await client.post(
+        f"/admin/v1/tenants/{tenant_id}/impersonate",
+        headers=await superadmin_headers(),
+        json={"reason": "customer asked for help", "allow_writes": writes},
+    )
+    assert r.status_code == 201, r.text
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
+@pytest.fixture(autouse=True)
+async def fresh_rate_limits():
+    """Every test signs up from the same address: start each with clean counters."""
+    from app.services.heartbeats import redis
+
+    keys = [k async for k in redis.scan_iter("pg:rl:*")]
+    if keys:
+        await redis.delete(*keys)
 
 
 @pytest.fixture
