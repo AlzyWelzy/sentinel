@@ -66,19 +66,19 @@ jobs:
           POSTGRES_DB: pulsegrid
           POSTGRES_USER: pulsegrid
           POSTGRES_PASSWORD: pulsegrid
-        ports: ["5432:5432"]
+        ports: ["5442:5432"]
         options: >-
           --health-cmd "pg_isready -U pulsegrid" --health-interval 5s --health-retries 20
       redis:
         image: redis:8.10.3-alpine
-        ports: ["6379:6379"]
+        ports: ["6389:6379"]
       # Process, check and chart endpoints are tested against real queries.
       victoriametrics:
         image: victoriametrics/victoria-metrics:v1.155.0
-        ports: ["8428:8428"]
+        ports: ["8438:8428"]
     env:
       PGPASSWORD: pulsegrid
-      DATABASE_OWNER_URL: postgresql+asyncpg://pulsegrid:pulsegrid@localhost:5432/pulsegrid
+      DATABASE_OWNER_URL: postgresql+asyncpg://pulsegrid:pulsegrid@localhost:5442/pulsegrid
     defaults:
       run:
         working-directory: api
@@ -97,7 +97,7 @@ jobs:
           PULSEGRID_APP_PASSWORD: pulsegrid_app
           PULSEGRID_SERVICE_PASSWORD: pulsegrid_service
         # init-roles.sh calls psql without a host; point it at the service.
-        run: PGHOST=localhost sh deploy/postgres/init-roles.sh
+        run: PGHOST=localhost PGPORT=5442 sh deploy/postgres/init-roles.sh
       - run: uv run alembic upgrade head
       - run: uv run pytest
       - name: Downgrade and upgrade again

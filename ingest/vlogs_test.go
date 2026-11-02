@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 func TestToLogRows(t *testing.T) {

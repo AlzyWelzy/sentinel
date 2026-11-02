@@ -15,7 +15,7 @@ import (
 	"github.com/shirou/gopsutil/v4/net"
 	"github.com/shirou/gopsutil/v4/process"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 const maxPackages = 5000

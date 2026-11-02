@@ -6,7 +6,7 @@ import (
 	"context"
 	"net/netip"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 func tracePath(_ context.Context, _ netip.Addr, _ int) ([]proto.Hop, string) {

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"runtime"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 var errUnsupported = errors.New("pulsegrid agent doesn't support " + runtime.GOOS + " yet")

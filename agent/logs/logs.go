@@ -32,8 +32,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example-org/pulsegrid/agent/plugins"
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/agent/plugins"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 const (

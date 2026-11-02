@@ -1,13 +1,14 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 // spool keeps every collected batch on disk until ingest accepts it, so
@@ -23,6 +24,12 @@ func newSpool(stateDir string, max int) (*spool, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
+	// Leftovers of writes interrupted by a crash.
+	if tmps, err := filepath.Glob(filepath.Join(dir, "*.tmp")); err == nil {
+		for _, t := range tmps {
+			os.Remove(t)
+		}
+	}
 	return &spool{dir: dir, max: max}, nil
 }
 
@@ -31,12 +38,40 @@ func (s *spool) add(b proto.Batch) error {
 	if err != nil {
 		return err
 	}
-	// Zero-padded timestamps sort lexically in time order.
-	name := filepath.Join(s.dir, fmt.Sprintf("%020d.json", b.TimestampMs))
-	if err := os.WriteFile(name, data, 0o600); err != nil {
+	// Zero-padded timestamps sort lexically in time order; the random
+	// suffix keeps two batches in one millisecond apart.
+	var suffix [4]byte
+	rand.Read(suffix[:])
+	name := filepath.Join(s.dir, fmt.Sprintf("%020d-%x.json", b.TimestampMs, suffix))
+	if err := writeAtomic(name, data); err != nil {
 		return err
 	}
 	return s.trim()
+}
+
+// writeAtomic writes to a temporary file, syncs it and renames it into
+// place, so a crash or power loss leaves the whole batch or nothing (a
+// half-written file would be read back as corrupt and discarded).
+func writeAtomic(name string, data []byte) error {
+	tmp := name + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp, name)
+	}
+	if err != nil {
+		os.Remove(tmp)
+	}
+	return err
 }
 
 func (s *spool) files() ([]string, error) {

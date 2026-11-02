@@ -23,12 +23,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/example-org/pulsegrid/agent/apm"
-	"github.com/example-org/pulsegrid/agent/checks"
-	"github.com/example-org/pulsegrid/agent/collector"
-	"github.com/example-org/pulsegrid/agent/logs"
-	"github.com/example-org/pulsegrid/agent/plugins"
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/agent/apm"
+	"github.com/AlzyWelzy/pulsegrid-beyond/agent/checks"
+	"github.com/AlzyWelzy/pulsegrid-beyond/agent/collector"
+	"github.com/AlzyWelzy/pulsegrid-beyond/agent/logs"
+	"github.com/AlzyWelzy/pulsegrid-beyond/agent/plugins"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 // Set at build time: -ldflags "-X main.version=1.2.3"
@@ -553,8 +553,9 @@ func (a *agent) tick(ctx context.Context) {
 
 // flush sends spooled batches oldest first until the spool is empty or a push fails.
 func (a *agent) flush(ctx context.Context) {
+	n := maxBatchesPerPush
 	for ctx.Err() == nil {
-		batches, files, err := a.spool.oldest(maxBatchesPerPush)
+		batches, files, err := a.spool.oldest(n)
 		if err != nil || len(batches) == 0 {
 			return
 		}
@@ -583,6 +584,11 @@ func (a *agent) flush(ctx context.Context) {
 				default:
 				}
 			}
+		case errors.As(err, &se) && se.Code == http.StatusRequestEntityTooLarge && len(batches) > 1:
+			// Too big for one request: send fewer at a time. Only a single
+			// batch that's still too big is dropped below.
+			n = max(1, len(batches)/2)
+			a.log.Warn("push too large; sending fewer batches", "batches", n)
 		case errors.As(err, &se) && se.permanent():
 			a.log.Error("ingest rejected batches; dropping them", "err", err)
 			a.spool.remove(files)

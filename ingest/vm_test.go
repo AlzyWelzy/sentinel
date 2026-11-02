@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 func req(samples ...proto.Sample) proto.MetricsRequest {
@@ -16,7 +16,7 @@ var host1 = hostIdentity{HostID: "host-1", TenantID: "t1", Active: true}
 
 // convert runs toPrometheusText for host-1 with no checks and returns tenant t1's body.
 func convert(r proto.MetricsRequest) ([]byte, int, int) {
-	bodies, kept, dropped := toPrometheusText(r, host1, &hostConfig{checks: map[string]checkDef{}})
+	bodies, kept, dropped := toPrometheusText(r, host1, &hostConfig{checks: map[string]checkDef{}}, time.UnixMilli(r.Batches[0].TimestampMs))
 	return bodies["t1"], kept, dropped
 }
 
@@ -78,7 +78,7 @@ func TestCheckSamplesRouted(t *testing.T) {
 		proto.Sample{Name: "pulsegrid_check_up", Value: 0, Labels: map[string]string{"check_id": "public", "probe": "spoofed"}},
 		proto.Sample{Name: "pulsegrid_check_up", Value: 1, Labels: map[string]string{"check_id": "someone-elses"}},
 	)
-	bodies, kept, dropped := toPrometheusText(r, host1, hc)
+	bodies, kept, dropped := toPrometheusText(r, host1, hc, time.UnixMilli(r.Batches[0].TimestampMs))
 	if kept != 2 || dropped != 1 {
 		t.Fatalf("kept=%d dropped=%d", kept, dropped)
 	}

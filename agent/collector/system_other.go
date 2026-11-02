@@ -2,7 +2,7 @@
 
 package collector
 
-import "github.com/example-org/pulsegrid/proto"
+import "github.com/AlzyWelzy/pulsegrid-beyond/proto"
 
 func platformActivity() []proto.Sample { return nil }
 

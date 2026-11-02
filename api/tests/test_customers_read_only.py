@@ -11,7 +11,7 @@ from .conftest import User, console_token, insert_host
 
 
 def _staff(tenant_id=None, **extra) -> dict:
-    token = console_token(str(uuid.uuid4()), "support@Example.com", role="admin", **extra)
+    token = console_token(str(uuid.uuid4()), "support@example.com", role="admin", **extra)
     h = {"Authorization": f"Bearer {token}"}
     return {**h, "X-Pulsegrid-Account": str(tenant_id)} if tenant_id else h
 

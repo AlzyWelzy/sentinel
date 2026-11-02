@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 // maxContainers bounds the per-container stats calls (one HTTP request each).

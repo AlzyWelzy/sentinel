@@ -28,7 +28,7 @@ import (
 
 	"github.com/gosnmp/gosnmp"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 const (

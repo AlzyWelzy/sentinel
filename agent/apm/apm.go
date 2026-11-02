@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/example-org/pulsegrid/agent/plugins"
+	"github.com/AlzyWelzy/pulsegrid-beyond/agent/plugins"
 )
 
 const (

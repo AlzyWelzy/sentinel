@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 const (
@@ -152,7 +152,7 @@ func (s *server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	var req proto.LogsRequest
 	if err := decodeBody(r, &req); err != nil {
-		httpError(w, http.StatusBadRequest, err.Error())
+		bodyError(w, err)
 		return
 	}
 	if len(req.Entries) > maxLogEntriesPerReq {

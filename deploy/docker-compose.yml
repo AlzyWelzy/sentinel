@@ -40,6 +40,8 @@ services:
     image: victoriametrics/victoria-metrics:v1.155.0
     command:
       - -storageDataPath=/storage
+      # Retried pushes resend samples: keep one per series and timestamp.
+      - -dedup.minScrapeInterval=1ms
       - -retentionPeriod=90d
       - -httpListenAddr=:8428
     volumes:
@@ -51,6 +53,8 @@ services:
     image: victoriametrics/victoria-metrics:v1.155.0
     command:
       - -storageDataPath=/storage
+      # Retried pushes resend samples: keep one per series and timestamp.
+      - -dedup.minScrapeInterval=1ms
       - -retentionPeriod=2y
       - -httpListenAddr=:8428
     volumes:

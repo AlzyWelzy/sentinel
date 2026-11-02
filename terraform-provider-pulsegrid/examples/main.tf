@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    pulsegrid = { source = "Example/pulsegrid" }
+    pulsegrid = { source = "alzywelzy/pulsegrid" }
   }
 }
 
@@ -15,7 +15,7 @@ data "pulsegrid_hosts" "web" {
 resource "pulsegrid_check" "site" {
   name             = "website"
   type             = "http"
-  target           = "https://www.Example.com/"
+  target           = "https://example.com/"
   on_probes        = true
   min_failing      = 1
   interval_seconds = 60

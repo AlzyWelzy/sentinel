@@ -8,7 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"github.com/example-org/pulsegrid/terraform-provider-pulsegrid/internal/provider"
+	"github.com/AlzyWelzy/pulsegrid-beyond/terraform-provider-pulsegrid/internal/provider"
 )
 
 // Set by the release build.
@@ -18,7 +18,7 @@ func main() {
 	debug := flag.Bool("debug", false, "run with support for debuggers like delve")
 	flag.Parse()
 	err := providerserver.Serve(context.Background(), provider.New(version), providerserver.ServeOpts{
-		Address: "registry.terraform.io/Example/pulsegrid",
+		Address: "registry.terraform.io/alzywelzy/pulsegrid",
 		Debug:   *debug,
 	})
 	if err != nil {

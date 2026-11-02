@@ -53,7 +53,7 @@ services:
     deploy: *rolling
 
   api:
-    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-api:${PULSEGRID_VERSION:?}
+    image: ${REGISTRY:-ghcr.io/alzywelzy}/pulsegrid-beyond-api:${PULSEGRID_VERSION:?}
     environment:
       ENVIRONMENT: production
       DATABASE_APP_URL: *app_db
@@ -83,7 +83,7 @@ services:
       replicas: 2
 
   ingest:
-    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-ingest:${PULSEGRID_VERSION:?}
+    image: ${REGISTRY:-ghcr.io/alzywelzy}/pulsegrid-beyond-ingest:${PULSEGRID_VERSION:?}
     environment:
       DATABASE_URL: *service_db_go
       REDIS_URL: redis://redis:6379/0
@@ -99,7 +99,7 @@ services:
       replicas: 2
 
   alerter:
-    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-alerter:${PULSEGRID_VERSION:?}
+    image: ${REGISTRY:-ghcr.io/alzywelzy}/pulsegrid-beyond-alerter:${PULSEGRID_VERSION:?}
     environment:
       DATABASE_URL: *service_db_go
       REDIS_URL: redis://redis:6379/0
@@ -127,7 +127,7 @@ services:
   # Monthly reports, hourly metric rollups, cleanup and agent rollouts
   # (python -m app.jobs). Extra replicas stand by on an advisory lock.
   jobs:
-    image: ${REGISTRY:-ghcr.io/example-org}/pulsegrid-api:${PULSEGRID_VERSION:?}
+    image: ${REGISTRY:-ghcr.io/alzywelzy}/pulsegrid-beyond-api:${PULSEGRID_VERSION:?}
     command: ["python", "-m", "app.jobs"]
     environment:
       ENVIRONMENT: production
@@ -200,6 +200,8 @@ services:
     image: victoriametrics/victoria-metrics:v1.155.0
     command:
       - -storageDataPath=/storage
+      # Retried pushes resend samples: keep one per series and timestamp.
+      - -dedup.minScrapeInterval=1ms
       - -retentionPeriod=${METRICS_RETENTION:-90d}
       - -httpListenAddr=:8428
     volumes:

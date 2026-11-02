@@ -6,7 +6,7 @@ from .conftest import User, console_token, insert_host
 
 
 def _headers(tenant_id, role="admin", **extra) -> dict:
-    token = console_token(str(uuid.uuid4()), "support@Example.com", role=role, **extra)
+    token = console_token(str(uuid.uuid4()), "support@example.com", role=role, **extra)
     return {"Authorization": f"Bearer {token}", "X-Pulsegrid-Account": str(tenant_id)}
 
 
@@ -27,7 +27,7 @@ async def test_staff_can_read_and_change_any_account(client, alice: User):
     keys = (await alice.request("GET", "/v1/agent-keys")).json()
     assert [k["name"] for k in keys] == ["for alice"]
     entry = (await alice.request("GET", "/v1/audit-log")).json()[0]
-    assert entry["actor"] == "support@Example.com" and entry["actor_kind"] == "staff"
+    assert entry["actor"] == "support@example.com" and entry["actor_kind"] == "staff"
 
 
 async def test_customers_and_view_as_sessions_cannot(client, alice: User, bob: User):

@@ -7,7 +7,7 @@ package collector
 import (
 	"context"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 type Collector interface {

@@ -10,8 +10,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 var (
@@ -26,6 +27,13 @@ var reservedLabels = map[string]bool{"tenant_id": true, "host_id": true}
 const (
 	maxLabelsPerSample = 10
 	maxLabelValueLen   = 200
+)
+
+// The accepted range of batch timestamps: the agent's spool holds 24 hours,
+// plus an hour of slack; and a clock up to 10 minutes fast.
+const (
+	maxSampleAge  = 25 * time.Hour
+	maxClockAhead = 10 * time.Minute
 )
 
 type victoriaMetrics struct {
@@ -43,7 +51,11 @@ type victoriaMetrics struct {
 // own checks go to its tenant as usual; a probe's results for another
 // tenant's uptime check go to that tenant, labelled with the probe's region
 // instead of a host it doesn't own.
-func toPrometheusText(req proto.MetricsRequest, id hostIdentity, hc *hostConfig) (bodies map[string][]byte, kept, dropped int) {
+//
+// Batches stamped too far from now are dropped whole: a clock in the future
+// would write samples that hide the real ones, and anything older than the
+// agent's spool can hold is a wrong clock rather than buffered data.
+func toPrometheusText(req proto.MetricsRequest, id hostIdentity, hc *hostConfig, now time.Time) (bodies map[string][]byte, kept, dropped int) {
 	bufs := map[string]*bytes.Buffer{}
 	buf := func(tenantID string) *bytes.Buffer {
 		b, ok := bufs[tenantID]
@@ -53,7 +65,12 @@ func toPrometheusText(req proto.MetricsRequest, id hostIdentity, hc *hostConfig)
 		}
 		return b
 	}
+	earliest, latest := now.Add(-maxSampleAge).UnixMilli(), now.Add(maxClockAhead).UnixMilli()
 	for _, batch := range req.Batches {
+		if batch.TimestampMs < earliest || batch.TimestampMs > latest {
+			dropped += len(batch.Samples)
+			continue
+		}
 		ts := strconv.FormatInt(batch.TimestampMs, 10)
 		for _, s := range batch.Samples {
 			if !validSample(s) {

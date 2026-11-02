@@ -80,6 +80,7 @@ func main() {
 		vm:      &victoriaMetrics{baseURL: cfg.VictoriaMetrics, client: &http.Client{Timeout: 15 * time.Second}},
 		log:     log,
 		configs: newConfigCache(),
+		limits:  newLimits(),
 	}
 	if cfg.TempoURL != "" {
 		srv.tempo = &tempo{baseURL: cfg.TempoURL, client: &http.Client{Timeout: 15 * time.Second}}

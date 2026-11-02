@@ -9,7 +9,7 @@ from .conftest import User, console_token, insert_host
 
 @pytest.fixture
 def staff_headers() -> dict:
-    token = console_token(str(uuid.uuid4()), "support@Example.com", role="admin")
+    token = console_token(str(uuid.uuid4()), "support@example.com", role="admin")
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -116,7 +116,7 @@ async def test_staff_make_install_keys_for_an_account(client, staff_headers, ali
     assert r.status_code == 201
     made = r.json()
     assert made["key"] in made["install_command"] and "web" in made["install_command"]
-    assert made["name"] == "Web server (by support@Example.com)"
+    assert made["name"] == "Web server (by support@example.com)"
     # The customer sees it among their own keys and can revoke it.
     keys = (await alice.request("GET", "/v1/agent-keys")).json()
     assert [k["id"] for k in keys] == [made["id"]]

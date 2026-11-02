@@ -97,7 +97,7 @@ func (s *server) handleTraces(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := readBody(r)
 	if err != nil {
-		httpError(w, http.StatusBadRequest, err.Error())
+		bodyError(w, err)
 		return
 	}
 	req, err := decodeTraces(r.Header.Get("Content-Type"), body)

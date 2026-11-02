@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example-org/pulsegrid/agent/plugins"
+	"github.com/AlzyWelzy/pulsegrid-beyond/agent/plugins"
 )
 
 // cmdEnableHardware: pulsegrid-agent enable-hardware [--remove]. Run as

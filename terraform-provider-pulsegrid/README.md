@@ -41,7 +41,7 @@ See [examples/main.tf](examples/main.tf).
 go build -o ~/.terraform.d/plugins/terraform-provider-pulsegrid .
 cat >> ~/.terraformrc <<'RC'
 provider_installation {
-  dev_overrides { "Example/pulsegrid" = "/Users/<you>/.terraform.d/plugins" }
+  dev_overrides { "alzywelzy/pulsegrid" = "/Users/<you>/.terraform.d/plugins" }
   direct {}
 }
 RC

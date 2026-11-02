@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 var httpClient = &http.Client{Timeout: pluginTimeout}

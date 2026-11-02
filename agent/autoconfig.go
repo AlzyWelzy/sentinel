@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example-org/pulsegrid/agent/plugins"
+	"github.com/AlzyWelzy/pulsegrid-beyond/agent/plugins"
 )
 
 // autoconfigRev is bumped when autoconfig learns something new, so servers

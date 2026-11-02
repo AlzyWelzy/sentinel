@@ -5,7 +5,7 @@ package collector
 import (
 	"context"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 func windowsPackages(context.Context) []proto.Package { return nil }

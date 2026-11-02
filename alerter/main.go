@@ -114,7 +114,7 @@ func senders() map[string]sender {
 		"push": &pushSender{
 			publicKey:  os.Getenv("VAPID_PUBLIC_KEY"),
 			privateKey: os.Getenv("VAPID_PRIVATE_KEY"),
-			subject:    env("VAPID_SUBJECT", "mailto:support@Example.com"),
+			subject:    env("VAPID_SUBJECT", "mailto:admin@localhost"),
 			client:     public,
 		},
 	}

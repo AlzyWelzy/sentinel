@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     AGENT_VERSION: str = "latest"
     AGENT_CANARY_PERCENT: int = 10
     # The self-updating agent container (deploy/agent-container).
-    AGENT_IMAGE: str = "ghcr.io/example-org/pulsegrid-agent:latest"
+    AGENT_IMAGE: str = "ghcr.io/alzywelzy/pulsegrid-beyond-agent:latest"
     # Local directory served at /agent/ when present (dev builds of the agent binary).
     AGENT_DIST_DIR: str = "dist"
 

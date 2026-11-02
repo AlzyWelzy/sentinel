@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 // procRoot honours HOST_PROC (the agent in a container watching its host).

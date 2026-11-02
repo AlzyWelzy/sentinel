@@ -12,17 +12,23 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/example-org/pulsegrid/proto"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 const (
-	hostTokenPrefix  = "pgh_"
-	maxBodyBytes     = 10 << 20 // after decompression
-	maxSamplesPerReq = 50_000
+	hostTokenPrefix = "pgh_"
+	// After decompression. Agents send at most 20 batches per push, far
+	// below this; agents before 0.9.0 drop batches on 413, so the limit
+	// stays well above anything they send.
+	maxBodyBytes     = 32 << 20
+	maxSamplesPerReq = 100_000
 )
+
+var errBodyTooLarge = errors.New("body too large")
 
 type server struct {
 	cfg     config
@@ -34,15 +40,59 @@ type server struct {
 	log     *slog.Logger
 	configs *configCache
 	rollout rolloutCache
+	limits  map[string]*limiter
+}
+
+// Requests per minute and burst, per host token (per client address for
+// registration). An agent catching up after an outage pushes back to back:
+// a full 24h spool is 144 pushes, so the burst covers that.
+var rateLimits = map[string][2]int{
+	"register": {30, 60},
+	"metrics":  {60, 200},
+	"config":   {20, 30},
+	"logs":     {60, 200},
+	"traces":   {120, 300},
+}
+
+func newLimits() map[string]*limiter {
+	m := map[string]*limiter{}
+	for name, l := range rateLimits {
+		m[name] = newLimiter(l[0], l[1])
+	}
+	return m
+}
+
+// limited refuses a caller over its rate with 429 and Retry-After. Agents
+// keep their data and retry on 429, so this only slows them down.
+func (s *server) limited(name string, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		key := r.Header.Get("Authorization")
+		if key == "" {
+			key = publicClientIP(r)
+			if key == "" {
+				key = r.RemoteAddr
+			}
+		} else {
+			key = hashSecret(key)
+		}
+		if l := s.limits[name]; l != nil {
+			if ok, wait := l.allow(key); !ok {
+				w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+				httpError(w, http.StatusTooManyRequests, "too many requests, slow down")
+				return
+			}
+		}
+		h(w, r)
+	}
 }
 
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/register", s.handleRegister)
-	mux.HandleFunc("POST /v1/metrics", s.handleMetrics)
-	mux.HandleFunc("GET /v1/agent/config", s.handleAgentConfig)
-	mux.HandleFunc("POST /v1/logs", s.handleLogs)
-	mux.HandleFunc("POST /v1/traces", s.handleTraces)
+	mux.HandleFunc("POST /v1/register", s.limited("register", s.handleRegister))
+	mux.HandleFunc("POST /v1/metrics", s.limited("metrics", s.handleMetrics))
+	mux.HandleFunc("GET /v1/agent/config", s.limited("config", s.handleAgentConfig))
+	mux.HandleFunc("POST /v1/logs", s.limited("logs", s.handleLogs))
+	mux.HandleFunc("POST /v1/traces", s.limited("traces", s.handleTraces))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("ok"))
 	})
@@ -61,7 +111,7 @@ func (s *server) agentConfig(ctx context.Context, id hostIdentity) (proto.AgentC
 func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var req proto.RegisterRequest
 	if err := decodeBody(r, &req); err != nil {
-		httpError(w, http.StatusBadRequest, err.Error())
+		bodyError(w, err)
 		return
 	}
 	if req.InstallKey == "" || req.MachineID == "" || req.Hostname == "" {
@@ -105,7 +155,7 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	var req proto.MetricsRequest
 	if err := decodeBody(r, &req); err != nil {
-		httpError(w, http.StatusBadRequest, err.Error())
+		bodyError(w, err)
 		return
 	}
 	total := 0
@@ -123,7 +173,7 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		// rest still go in.
 		s.log.Warn("host config not loaded", "err", err, "host_id", id.HostID)
 	}
-	bodies, kept, dropped := toPrometheusText(req, id, hc)
+	bodies, kept, dropped := toPrometheusText(req, id, hc, time.Now())
 	for tenantID, body := range bodies {
 		if err := s.vm.write(r.Context(), tenantID, body); err != nil {
 			s.log.Error("metrics write failed", "err", err, "host_id", id.HostID)
@@ -225,26 +275,31 @@ func readBody(r *http.Request) ([]byte, error) {
 		return nil, err
 	}
 	if len(body) > maxBodyBytes {
-		return nil, errors.New("body too large")
+		return nil, errBodyTooLarge
 	}
 	return body, nil
 }
 
+// decodeBody reads the whole body first, so a body over the limit is
+// reported as too large (413, which agents split and retry) rather than
+// as truncated JSON (400, which they drop).
 func decodeBody(r *http.Request, v any) error {
-	var reader io.Reader = r.Body
-	if r.Header.Get("Content-Encoding") == "gzip" {
-		gz, err := gzip.NewReader(r.Body)
-		if err != nil {
-			return errors.New("invalid gzip body")
-		}
-		defer gz.Close()
-		reader = gz
+	body, err := readBody(r)
+	if err != nil {
+		return err
 	}
-	dec := json.NewDecoder(io.LimitReader(reader, maxBodyBytes))
-	if err := dec.Decode(v); err != nil {
+	if err := json.Unmarshal(body, v); err != nil {
 		return errors.New("invalid JSON body")
 	}
 	return nil
+}
+
+func bodyError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errBodyTooLarge) {
+		httpError(w, http.StatusRequestEntityTooLarge, err.Error())
+		return
+	}
+	httpError(w, http.StatusBadRequest, err.Error())
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
