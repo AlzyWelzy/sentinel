@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -102,4 +102,9 @@ async def list_deliveries(
 
 @router.get("/incidents/{incident_id}/deliveries")
 async def incident_deliveries(incident_id: uuid.UUID, t: Tenant) -> list[DeliveryOut]:
+    exists = await t.db.scalar(
+        select(Incident.id).where(Incident.id == incident_id, Incident.tenant_id == t.tenant_id)
+    )
+    if exists is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
     return await _query(t, incident_id=incident_id, limit=200)
