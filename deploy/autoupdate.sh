@@ -40,7 +40,7 @@ newest=$(tags api | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
 [ "$newest" = "$current" ] && exit 0
 # Only move forward.
 [ "$(printf '%s\n%s\n' "$current" "$newest" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)" = "$newest" ] || exit 0
-for c in ingest alerter; do
+for c in ingest alerter web; do
 	tags "$c" | grep -qx "$newest" || exit 0 # not all published yet
 done
 
@@ -51,6 +51,7 @@ done
 agent=$(docker image inspect "ghcr.io/$REPO/$IMG-api:$newest" \
 	--format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^AGENT_VERSION=//p')
 [ -n "$agent" ] && [ "$agent" != dev ] || { log "no AGENT_VERSION in the api image; skipped"; exit 1; }
+tags agent | grep -qx "$agent" || exit 0 # agent image not published yet
 
 deploy() {
 	set -a; . ./prod.env; set +a

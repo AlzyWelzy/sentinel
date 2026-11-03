@@ -57,7 +57,12 @@ jobs:
           # The API image carries the agent binaries of agent/VERSION.
           build-args: AGENT_VERSION=${{ steps.tag.outputs.agent }}
           push: true
-          tags: ghcr.io/${{ steps.tag.outputs.owner }}/sentinel-${{ matrix.name }}:${{ steps.tag.outputs.version }}
+          # The agent image is tagged with agent/VERSION (production's
+          # AGENT_IMAGE uses AGENT_VERSION), the rest with the release; :latest
+          # too, for anyone running the agent container without a version.
+          tags: |
+            ghcr.io/${{ steps.tag.outputs.owner }}/sentinel-${{ matrix.name }}:${{ matrix.name == 'agent' && steps.tag.outputs.agent || steps.tag.outputs.version }}
+            ghcr.io/${{ steps.tag.outputs.owner }}/sentinel-${{ matrix.name }}:latest
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
