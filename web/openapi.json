@@ -653,8 +653,15 @@
      "required": true
     },
     "responses": {
-     "204": {
-      "description": "Successful Response"
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecoveryCodesOut"
+        }
+       }
+      }
      },
      "422": {
       "description": "Validation Error",
@@ -694,6 +701,53 @@
     "responses": {
      "204": {
       "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/auth/totp/recovery-codes": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Totp Recovery Codes",
+    "description": "New recovery codes (password and a current code); the old ones stop working.",
+    "operationId": "totp_recovery_codes_auth_totp_recovery_codes_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TotpDisableIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecoveryCodesOut"
+        }
+       }
+      }
      },
      "422": {
       "description": "Validation Error",
@@ -10164,6 +10218,45 @@
     }
    }
   },
+  "/admin/v1/users/{user_id}/totp/reset": {
+   "post": {
+    "summary": "Reset User Totp",
+    "description": "Two-factor off, for someone who lost their phone and their recovery\ncodes (check who they are first). Their sessions end; they sign in with\nthe password and can turn it on again.",
+    "operationId": "reset_user_totp_admin_v1_users__user_id__totp_reset_post",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "User Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/admin/v1/tenants/{tenant_id}/impersonate": {
    "post": {
     "summary": "Impersonate",
@@ -15697,6 +15790,23 @@
     ],
     "title": "RecommendedResult"
    },
+   "RecoveryCodesOut": {
+    "properties": {
+     "recovery_codes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Recovery Codes",
+      "description": "shown this once; each works once"
+     }
+    },
+    "type": "object",
+    "required": [
+     "recovery_codes"
+    ],
+    "title": "RecoveryCodesOut"
+   },
    "ReportSettings": {
     "properties": {
      "monthly_report": {
@@ -18742,6 +18852,11 @@
      "totp_enabled": {
       "type": "boolean",
       "title": "Totp Enabled"
+     },
+     "recovery_codes_left": {
+      "type": "integer",
+      "title": "Recovery Codes Left",
+      "default": 0
      },
      "superadmin": {
       "type": "boolean",

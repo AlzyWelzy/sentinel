@@ -31,6 +31,12 @@ All three hostnames point at the server (A and AAAA):
 Caddy gets certificates for them on first start (HTTP-01), so DNS must
 resolve before deploying.
 
+Keep the records **DNS only** if the domain is on Cloudflare (grey cloud, not
+proxied). Behind Cloudflare's proxy, every visitor arrives from a Cloudflare
+address, so the per-IP limits on sign-up and sign-in would be shared by
+strangers; agent pushes would also meet Cloudflare's body limits and bot
+checks.
+
 ## 3. Email
 
 Pick an SMTP server or a provider with an SMTP relay (Amazon SES, Postmark,

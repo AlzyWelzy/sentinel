@@ -18,8 +18,29 @@ Edge cases found by probing the running stack before going live.
   that's behind, plugin problems, and a clock running fast (its samples are
   discarded), each with how to fix it. The diagnosis existed in the API but
   wasn't shown.
+- **Two-factor recovery codes.** Turning on two-factor sign-in now gives ten
+  single-use recovery codes (stored hashed); each works in place of an
+  authenticator code to sign in or turn two-factor off, and they can be
+  renewed. Superadmins can reset two-factor for someone who lost both
+  (audited, ends their sessions). Before, a lost phone locked the account
+  for good.
 
 ### Fixed
+
+- **Docker install command didn't work:** it pulls
+  `sentinel-agent:latest`, which releases never published. Releases now tag
+  every image `:latest` too, and the agent image with the agent's version
+  (production's `AGENT_IMAGE` uses `AGENT_VERSION`, which differs from the
+  release number). Autoupdate waits for the web and agent images as well,
+  so a slow web build no longer fails a deploy and rolls it back.
+- **Install command failed on servers without sudo:** it was
+  `curl … | sudo sh`, and many root shells have no sudo. It's
+  `curl … | sh` now: as root it installs directly, otherwise the installer
+  re-runs itself through sudo or doas. Cloud-init user data falls back to
+  wget when curl is missing.
+- An incident's delivery list answered an empty list for an incident that
+  doesn't exist or belongs to another organisation; it's 404 now, like
+  every other incident route.
 
 - **Signed out during a deploy:** while the API restarted, the web app
   treated a failed session refresh as signing out. Only a refusal does now;
