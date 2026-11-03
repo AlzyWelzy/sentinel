@@ -189,6 +189,7 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		s.log.Warn("host config not loaded", "err", err, "host_id", id.HostID)
 	}
 	bodies, kept, dropped := toPrometheusText(req, id, hc, time.Now())
+	s.cache.noteClock(r.Context(), id.HostID, clockAhead(req, time.Now()))
 	for tenantID, body := range bodies {
 		if err := s.vm.write(r.Context(), tenantID, body); err != nil {
 			s.log.Error("metrics write failed", "err", err, "host_id", id.HostID)
@@ -219,7 +220,7 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	if err := s.cache.markSeen(r.Context(), id.HostID, now); err != nil {
+	if err := s.cache.markSeen(r.Context(), id, now); err != nil {
 		s.log.Warn("heartbeat not recorded", "err", err, "host_id", id.HostID)
 	}
 	if err := s.store.touchHost(r.Context(), id.HostID, req.AgentVersion, publicClientIP(r), req.Host); err != nil {

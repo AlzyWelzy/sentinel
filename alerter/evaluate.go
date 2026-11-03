@@ -42,6 +42,9 @@ type evaluator struct {
 // cycle caches per-tenant lookups for one evaluation pass.
 type cycle struct {
 	windows map[string][]window
+	// platformSilent: Sentinel itself isn't receiving data (fleet.go), so
+	// host_down rules hold this pass.
+	platformSilent bool
 }
 
 func (e *evaluator) maintenanceFor(ctx context.Context, c *cycle, tenantID string) []window {
@@ -63,7 +66,7 @@ func (e *evaluator) evaluateAll(ctx context.Context, partition, partitions int) 
 		e.log.Error("loading rules", "err", err)
 		return
 	}
-	c := &cycle{windows: map[string][]window{}}
+	c := &cycle{windows: map[string][]window{}, platformSilent: e.platformSilent(ctx)}
 	for _, r := range rules {
 		if ctx.Err() != nil {
 			return
@@ -76,6 +79,9 @@ func (e *evaluator) evaluateAll(ctx context.Context, partition, partitions int) 
 }
 
 func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
+	if r.Kind == "host_down" && c.platformSilent {
+		return nil // nothing fires or resolves until data arrives again
+	}
 	hosts, err := e.subjects(ctx, r)
 	if err != nil || len(hosts) == 0 {
 		return err

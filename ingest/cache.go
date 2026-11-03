@@ -17,6 +17,14 @@ import (
 const (
 	lastSeenKey       = "pg:last_seen:"
 	hostTokenCacheKey = "pg:host_token:"
+	// fleetSeenKey is every host's last push across all tenants (member
+	// "<tenant>:<host>", score unix seconds). The alerter reads it to tell
+	// Sentinel's own outage from customers' (alerter/fleet.go).
+	fleetSeenKey = "pg:fleet:seen"
+	// clockAheadKey holds how many seconds a host's clock runs fast, while it
+	// does by more than a minute; the API's doctor reports it.
+	clockAheadKey = "pg:clock_ahead:"
+	fleetSeenAge  = 24 * time.Hour
 
 	hostTokenCacheTTL = 5 * time.Minute
 	lastSeenTTL       = 7 * 24 * time.Hour
@@ -53,8 +61,15 @@ func (c *cache) forgetHost(ctx context.Context, tokenHash string) {
 	c.rdb.Del(ctx, hostTokenCacheKey+tokenHash)
 }
 
-func (c *cache) markSeen(ctx context.Context, hostID string, at time.Time) error {
-	return c.rdb.Set(ctx, lastSeenKey+hostID, strconv.FormatInt(at.Unix(), 10), lastSeenTTL).Err()
+func (c *cache) markSeen(ctx context.Context, id hostIdentity, at time.Time) error {
+	_, err := c.rdb.Pipelined(ctx, func(p redis.Pipeliner) error {
+		p.Set(ctx, lastSeenKey+id.HostID, strconv.FormatInt(at.Unix(), 10), lastSeenTTL)
+		p.ZAdd(ctx, fleetSeenKey, redis.Z{Score: float64(at.Unix()), Member: id.TenantID + ":" + id.HostID})
+		// Removed hosts age out; a few hosts' worth of work per push.
+		p.ZRemRangeByScore(ctx, fleetSeenKey, "-inf", strconv.FormatInt(at.Add(-fleetSeenAge).Unix(), 10))
+		return nil
+	})
+	return err
 }
 
 // checkResultKey holds the latest result of a check per place it runs: a
@@ -173,4 +188,23 @@ func capDiagnosis(d *proto.Diagnosis) *proto.Diagnosis {
 		c.Path = c.Path[:30]
 	}
 	return &c
+}
+
+// clockAhead is how far the newest batch is stamped in the future. Only a
+// fast clock can be told from batches: old ones are normal while the agent
+// replays its spool after an outage.
+func clockAhead(req proto.MetricsRequest, now time.Time) time.Duration {
+	var newest int64
+	for _, b := range req.Batches {
+		newest = max(newest, b.TimestampMs)
+	}
+	return max(0, time.UnixMilli(newest).Sub(now))
+}
+
+func (c *cache) noteClock(ctx context.Context, hostID string, ahead time.Duration) {
+	if ahead > time.Minute {
+		c.rdb.Set(ctx, clockAheadKey+hostID, strconv.Itoa(int(ahead.Seconds())), time.Hour)
+	} else {
+		c.rdb.Del(ctx, clockAheadKey+hostID)
+	}
 }
