@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -34,6 +35,7 @@ func newSpool(stateDir string, max int) (*spool, error) {
 }
 
 func (s *spool) add(b proto.Batch) error {
+	b.Samples = finiteSamples(b.Samples)
 	data, err := json.Marshal(b)
 	if err != nil {
 		return err
@@ -120,4 +122,18 @@ func (s *spool) remove(names []string) {
 	for _, name := range names {
 		os.Remove(name)
 	}
+}
+
+// finiteSamples drops NaN and ±Inf values, which JSON can't carry: one would
+// fail the whole batch, and every batch after it while the source keeps
+// reporting one. Prometheus summaries export NaN for quantiles with no
+// observations, and custom scripts can divide by zero.
+func finiteSamples(in []proto.Sample) []proto.Sample {
+	out := in[:0]
+	for _, s := range in {
+		if !math.IsNaN(s.Value) && !math.IsInf(s.Value, 0) {
+			out = append(out, s)
+		}
+	}
+	return out
 }

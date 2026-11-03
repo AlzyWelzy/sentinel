@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -149,5 +150,24 @@ func TestRefusedBackoffGrowsToHalfAnHour(t *testing.T) {
 		if got := refusedBackoff(n); got != want {
 			t.Errorf("refusedBackoff(%d) = %v, want %v", n, got, want)
 		}
+	}
+}
+
+// One NaN from a plugin (an empty Prometheus summary) mustn't lose the
+// batch: the finite samples are kept.
+func TestSpoolKeepsBatchesWithNaN(t *testing.T) {
+	sp, err := newSpool(t.TempDir(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = sp.add(proto.Batch{TimestampMs: 1, Samples: []proto.Sample{
+		{Name: "ok", Value: 1}, {Name: "nan", Value: math.NaN()}, {Name: "inf", Value: math.Inf(1)},
+	}})
+	if err != nil {
+		t.Fatalf("batch with NaN refused: %v", err)
+	}
+	b, _, _ := sp.oldest(1)
+	if len(b) != 1 || len(b[0].Samples) != 1 || b[0].Samples[0].Name != "ok" {
+		t.Fatalf("got %+v", b)
 	}
 }
