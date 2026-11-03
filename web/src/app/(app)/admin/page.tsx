@@ -221,6 +221,15 @@ function Users() {
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
   });
+  const resetTotp = useMutation({
+    mutationFn: async (id: string) =>
+      unwrap(
+        await api.POST("/admin/v1/users/{user_id}/totp/reset", {
+          params: { path: { user_id: id } },
+        }),
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
+  });
   return (
     <Card pad={false}>
       <div className="border-b border-line p-3">
@@ -260,7 +269,21 @@ function Users() {
                   </div>
                 </td>
                 <td className="text-ink-2">{ago(u.created_at)}</td>
-                <td className="text-right">
+                <td className="text-right whitespace-nowrap">
+                  {u.totp_enabled && (
+                    <Button
+                      variant="ghost"
+                      loading={resetTotp.isPending && resetTotp.variables === u.id}
+                      onClick={() => {
+                        const ok = window.confirm(
+                          `Turn off two-factor for ${u.email}? Only do this after confirming who they are. They're signed out everywhere.`,
+                        );
+                        if (ok) resetTotp.mutate(u.id);
+                      }}
+                    >
+                      Reset 2FA
+                    </Button>
+                  )}
                   <Button variant="ghost" onClick={() => disable.mutate([u.id, !u.disabled])}>
                     {u.disabled ? "Enable" : "Disable"}
                   </Button>

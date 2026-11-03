@@ -16,6 +16,7 @@ import {
   PageHeader,
   Table,
 } from "@/components/ui";
+import { CopyBlock } from "@/components/copy-block";
 import { api, endSession, errorText } from "@/lib/api/client";
 import { ago, dateTime } from "@/lib/format";
 import { unwrap } from "@/lib/queries";
@@ -38,6 +39,8 @@ export default function AccountPage() {
   const [setup, setSetup] = useState<{ secret: string; otpauth_uri: string } | null>(null);
   const [code, setCode] = useState("");
   const [disablePw, setDisablePw] = useState("");
+  // Recovery codes come back once, when two-factor is turned on or renewed.
+  const [codes, setCodes] = useState<string[] | null>(null);
   const ok = (text: string) => {
     setMsg({ tone: "ok", text });
     qc.invalidateQueries({ queryKey: ["auth-me"] });
@@ -71,10 +74,11 @@ export default function AccountPage() {
   });
   const enableTotp = useMutation({
     mutationFn: async () => unwrap(await api.POST("/auth/totp/enable", { body: { code } })),
-    onSuccess: () => {
+    onSuccess: (r) => {
       setSetup(null);
       setCode("");
-      ok("Two-factor sign-in is on.");
+      setCodes(r.recovery_codes);
+      ok("Two-factor sign-in is on. Save your recovery codes now.");
     },
     onError: fail,
   });
@@ -85,6 +89,17 @@ export default function AccountPage() {
       setCode("");
       setDisablePw("");
       ok("Two-factor sign-in is off.");
+    },
+    onError: fail,
+  });
+  const renewCodes = useMutation({
+    mutationFn: async () =>
+      unwrap(await api.POST("/auth/totp/recovery-codes", { body: { password: disablePw, code } })),
+    onSuccess: (r) => {
+      setCode("");
+      setDisablePw("");
+      setCodes(r.recovery_codes);
+      ok("New recovery codes. The old ones no longer work.");
     },
     onError: fail,
   });
@@ -172,6 +187,16 @@ export default function AccountPage() {
             </span>
           }
         >
+          {codes && (
+            <div className="mb-4 space-y-2">
+              <Notice tone="ok">
+                Recovery codes: each signs you in once if you lose your phone. Store them somewhere
+                safe; they aren&apos;t shown again.
+              </Notice>
+              <CopyBlock text={codes.join("\n")} />
+              <Button onClick={() => setCodes(null)}>I&apos;ve saved them</Button>
+            </div>
+          )}
           {u.totp_enabled ? (
             <form
               className="space-y-3"
@@ -181,7 +206,8 @@ export default function AccountPage() {
               }}
             >
               <p className="text-sm text-ink-2">
-                To turn it off, confirm your password and a current code.
+                {u.recovery_codes_left} recovery code{u.recovery_codes_left === 1 ? "" : "s"} left.
+                To turn it off or get new recovery codes, confirm your password and a current code.
               </p>
               <Field label="Password">
                 <Input
@@ -191,17 +217,27 @@ export default function AccountPage() {
                   onChange={(e) => setDisablePw(e.target.value)}
                 />
               </Field>
-              <Field label="Code">
+              <Field label="Code" hint="From your authenticator app, or a recovery code">
                 <Input
-                  inputMode="numeric"
+                  autoComplete="one-time-code"
                   required
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                 />
               </Field>
-              <Button type="submit" variant="danger" loading={disableTotp.isPending}>
-                Turn off
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" variant="danger" loading={disableTotp.isPending}>
+                  Turn off
+                </Button>
+                <Button
+                  type="button"
+                  loading={renewCodes.isPending}
+                  disabled={!disablePw || !code}
+                  onClick={() => renewCodes.mutate()}
+                >
+                  New recovery codes
+                </Button>
+              </div>
             </form>
           ) : setup ? (
             <form

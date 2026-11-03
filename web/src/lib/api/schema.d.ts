@@ -300,6 +300,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/totp/recovery-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Totp Recovery Codes
+         * @description New recovery codes (password and a current code); the old ones stop working.
+         */
+        post: operations["totp_recovery_codes_auth_totp_recovery_codes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/invitations/pending": {
         parameters: {
             query?: never;
@@ -2997,6 +3017,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/v1/users/{user_id}/totp/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset User Totp
+         * @description Two-factor off, for someone who lost their phone and their recovery
+         *     codes (check who they are first). Their sessions end; they sign in with
+         *     the password and can turn it on again.
+         */
+        post: operations["reset_user_totp_admin_v1_users__user_id__totp_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/v1/tenants/{tenant_id}/impersonate": {
         parameters: {
             query?: never;
@@ -4845,6 +4887,14 @@ export interface components {
             /** Rules Added */
             rules_added: number;
         };
+        /** RecoveryCodesOut */
+        RecoveryCodesOut: {
+            /**
+             * Recovery Codes
+             * @description shown this once; each works once
+             */
+            recovery_codes: string[];
+        };
         /** ReportSettings */
         ReportSettings: {
             /** Monthly Report */
@@ -5879,6 +5929,11 @@ export interface components {
             email_verified: boolean;
             /** Totp Enabled */
             totp_enabled: boolean;
+            /**
+             * Recovery Codes Left
+             * @default 0
+             */
+            recovery_codes_left: number;
             /** Superadmin */
             superadmin: boolean;
             /**
@@ -6663,11 +6718,13 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodesOut"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -6699,6 +6756,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    totp_recovery_codes_auth_totp_recovery_codes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpDisableIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodesOut"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -12120,6 +12210,35 @@ export interface operations {
                 "application/json": components["schemas"]["DisableIn"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_user_totp_admin_v1_users__user_id__totp_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             204: {

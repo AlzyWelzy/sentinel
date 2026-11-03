@@ -183,7 +183,8 @@ async def test_two_factor(client):
     r = await client.post("/auth/totp/enable", headers=h, json={"code": wrong})
     assert r.status_code == 400
     r = await client.post("/auth/totp/enable", headers=h, json={"code": totp.now()})
-    assert r.status_code == 204
+    assert r.status_code == 200
+    assert len(r.json()["recovery_codes"]) == 10
     assert (await client.get("/auth/me", headers=h)).json()["totp_enabled"]
     # The secret is stored encrypted.
     async with ServiceSession() as db:
@@ -234,6 +235,70 @@ async def test_sign_in_is_rate_limited_per_address(client):
         r = await client.post("/auth/login", json={"email": email, "password": PASSWORD})
         codes.append(r.status_code)
     assert codes[-1] == 429 and set(codes[:15]) == {401}
+
+
+async def two_factor_on(client) -> tuple[str, dict, pyotp.TOTP, list[str]]:
+    email = new_email()
+    session = await sign_up_and_verify(client, email)
+    h = {"Authorization": f"Bearer {session['access_token']}"}
+    totp = pyotp.TOTP((await client.post("/auth/totp/setup", headers=h)).json()["secret"])
+    r = await client.post("/auth/totp/enable", headers=h, json={"code": totp.now()})
+    return email, h, totp, r.json()["recovery_codes"]
+
+
+async def test_a_lost_phone_does_not_lock_the_account(client):
+    email, h, totp, codes = await two_factor_on(client)
+    # Recovery codes are stored hashed, never as given.
+    async with ServiceSession() as db:
+        stored = await db.scalar(
+            text("SELECT totp_recovery::text FROM users WHERE email = :e"), {"e": email}
+        )
+    assert codes[0].replace("-", "") not in stored
+    # Each signs in once, typed loosely (case, spaces, no dash).
+    loose = " " + codes[0].upper().replace("-", "") + " "
+    r = await client.post(
+        "/auth/login", json={"email": email, "password": PASSWORD, "totp_code": loose}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["user"]["recovery_codes_left"] == 9
+    r = await client.post(
+        "/auth/login", json={"email": email, "password": PASSWORD, "totp_code": codes[0]}
+    )
+    assert r.status_code == 401
+    # New codes replace the old ones.
+    r = await client.post(
+        "/auth/totp/recovery-codes", headers=h, json={"password": PASSWORD, "code": totp.now()}
+    )
+    assert r.status_code == 200
+    fresh = r.json()["recovery_codes"]
+    r = await client.post(
+        "/auth/login", json={"email": email, "password": PASSWORD, "totp_code": codes[1]}
+    )
+    assert r.status_code == 401
+    # A recovery code can also turn two-factor off.
+    r = await client.post(
+        "/auth/totp/disable", headers=h, json={"password": PASSWORD, "code": fresh[0]}
+    )
+    assert r.status_code == 204
+    assert not (await client.get("/auth/me", headers=h)).json()["totp_enabled"]
+
+
+async def test_superadmins_can_reset_two_factor(client):
+    from .conftest import superadmin_headers
+
+    email, h, _, _ = await two_factor_on(client)
+    uid = (await client.get("/auth/me", headers=h)).json()["id"]
+    admin = await superadmin_headers()
+    # Only superadmins.
+    assert (await client.post(f"/admin/v1/users/{uid}/totp/reset", headers=h)).status_code == 403
+    r = await client.post(f"/admin/v1/users/{uid}/totp/reset", headers=admin)
+    assert r.status_code == 204
+    # Signed out everywhere, and the password alone signs in.
+    assert (await client.post("/auth/refresh", headers=CSRF)).status_code == 401
+    r = await client.post("/auth/login", json={"email": email, "password": PASSWORD})
+    assert r.status_code == 200 and not r.json()["user"]["totp_enabled"]
+    r = await client.post(f"/admin/v1/users/{uid}/totp/reset", headers=admin)
+    assert r.status_code == 404
 
 
 async def test_superadmins_come_from_the_configured_emails(client, monkeypatch):

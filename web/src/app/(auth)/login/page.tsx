@@ -16,6 +16,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
+  const [recovery, setRecovery] = useState(false);
   const [needCode, setNeedCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unverified, setUnverified] = useState(false);
@@ -90,16 +91,35 @@ function LoginForm() {
           </Field>
         </>
       ) : (
-        <Field label="Authentication code" hint="The 6-digit code from your authenticator app.">
-          <Input
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            autoFocus
-            required
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-          />
-        </Field>
+        <>
+          <Field
+            label={recovery ? "Recovery code" : "Authentication code"}
+            hint={
+              recovery
+                ? "One of the codes you saved when you turned on two-factor. Each works once."
+                : "The 6-digit code from your authenticator app."
+            }
+          >
+            <Input
+              inputMode={recovery ? "text" : "numeric"}
+              autoComplete="one-time-code"
+              autoFocus
+              required
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+          </Field>
+          <button
+            type="button"
+            className="text-sm text-ink-2 underline-offset-4 hover:underline"
+            onClick={() => {
+              setRecovery(!recovery);
+              setCode("");
+            }}
+          >
+            {recovery ? "Use the authenticator app" : "Lost your phone? Use a recovery code"}
+          </button>
+        </>
       )}
       <Button type="submit" variant="primary" loading={busy} className="w-full">
         {needCode ? "Verify" : "Sign in"}

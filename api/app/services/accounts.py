@@ -16,6 +16,8 @@ Security decisions:
   few seconds (two tabs refreshing at once).
 """
 
+import hashlib
+import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -77,6 +79,7 @@ def user_out(row) -> dict:
         "name": row.name,
         "email_verified": row.email_verified_at is not None,
         "totp_enabled": row.totp_enabled_at is not None,
+        "recovery_codes_left": len(getattr(row, "totp_recovery", None) or []),
         "superadmin": bool(row.is_superadmin),
         "created_at": row.created_at.isoformat(),
     }
@@ -263,8 +266,10 @@ async def sign_in(
             if not totp_code:
                 raise _unauthorized("Enter the code from your authenticator app", "totp_required")
             if not _totp_ok(user.totp_secret, totp_code):
-                await _failed(user)
-                raise _unauthorized("That code isn't right", "totp_invalid")
+                if not await _use_recovery_code(db, user.id, totp_code):
+                    await _failed(user)
+                    raise _unauthorized("That code isn't right", "totp_invalid")
+                user = await _user_by_id(db, user.id)  # one code fewer
         params: dict = {"u": user.id}
         rehash = ""
         if native.password_needs_rehash(user.password_hash):
@@ -288,6 +293,36 @@ async def _failed(user) -> None:
             text("UPDATE users SET failed_logins = :f, locked_until = :l WHERE id = :u"),
             {"f": failures, "l": lock, "u": user.id},
         )
+
+
+RECOVERY_CODES = 10
+
+
+def _recovery_hash(code: str) -> str:
+    return hashlib.sha256(
+        code.strip().lower().replace("-", "").replace(" ", "").encode()
+    ).hexdigest()
+
+
+def new_recovery_codes() -> tuple[list[str], list[str]]:
+    """(codes to show once, hashes to store)."""
+    codes = []
+    for _ in range(RECOVERY_CODES):
+        raw = secrets.token_hex(5)
+        codes.append(f"{raw[:5]}-{raw[5:]}")
+    return codes, [_recovery_hash(c) for c in codes]
+
+
+async def _use_recovery_code(db: AsyncSession, user_id, code: str) -> bool:
+    """Spend one recovery code; each works once."""
+    spent = await db.execute(
+        text(
+            "UPDATE users SET totp_recovery = array_remove(totp_recovery, :h) "
+            "WHERE id = :u AND :h = ANY(totp_recovery) RETURNING id"
+        ),
+        {"h": _recovery_hash(code), "u": user_id},
+    )
+    return spent.first() is not None
 
 
 def _totp_ok(stored: str | None, code: str) -> bool:
@@ -518,16 +553,60 @@ async def totp_setup(user_id: str) -> dict:
         return {"secret": secret, "otpauth_uri": uri}
 
 
-async def totp_enable(user_id: str, code: str) -> None:
+async def totp_enable(user_id: str, code: str) -> list[str]:
+    """Turn it on; returns the recovery codes, shown this once."""
     async with ServiceSession() as db, db.begin():
         user = await _user_by_id(db, user_id)
         if user.totp_enabled_at is not None:
             raise HTTPException(status_code=409, detail="Two-factor sign-in is already on")
         if not _totp_ok(user.totp_secret, code):
             raise HTTPException(status_code=400, detail="That code isn't right")
+        codes, hashes = new_recovery_codes()
         await db.execute(
-            text("UPDATE users SET totp_enabled_at = now() WHERE id = :u"), {"u": user_id}
+            text("UPDATE users SET totp_enabled_at = now(), totp_recovery = :r WHERE id = :u"),
+            {"r": hashes, "u": user_id},
         )
+        return codes
+
+
+async def totp_recovery_regenerate(user_id: str, password: str, code: str) -> list[str]:
+    """New recovery codes; the old ones stop working."""
+    async with ServiceSession() as db, db.begin():
+        user = await _user_by_id(db, user_id)
+        if user.totp_enabled_at is None:
+            raise HTTPException(status_code=409, detail="Two-factor sign-in is off")
+        if not native.check_password(user.password_hash, password) or not _totp_ok(
+            user.totp_secret, code
+        ):
+            raise HTTPException(status_code=400, detail="Password or code isn't right")
+        codes, hashes = new_recovery_codes()
+        await db.execute(
+            text("UPDATE users SET totp_recovery = :r WHERE id = :u"), {"r": hashes, "u": user_id}
+        )
+        return codes
+
+
+async def totp_reset_by_admin(user_id: str) -> bool:
+    """A superadmin turns two-factor off for someone who lost their phone and
+    their recovery codes; their sessions end too."""
+    async with ServiceSession() as db, db.begin():
+        r = await db.execute(
+            text(
+                "UPDATE users SET totp_enabled_at = NULL, totp_secret = NULL, "
+                "totp_recovery = NULL WHERE id = :u AND totp_enabled_at IS NOT NULL RETURNING id"
+            ),
+            {"u": user_id},
+        )
+        if r.first() is None:
+            return False
+        await db.execute(
+            text(
+                "UPDATE user_sessions SET revoked_at = now() "
+                "WHERE user_id = :u AND revoked_at IS NULL"
+            ),
+            {"u": user_id},
+        )
+        return True
 
 
 async def totp_disable(user_id: str, password: str, code: str) -> None:
@@ -535,12 +614,15 @@ async def totp_disable(user_id: str, password: str, code: str) -> None:
         user = await _user_by_id(db, user_id)
         if user.totp_enabled_at is None:
             return
-        if not native.check_password(user.password_hash, password) or not _totp_ok(
-            user.totp_secret, code
+        if not native.check_password(user.password_hash, password) or not (
+            _totp_ok(user.totp_secret, code) or await _use_recovery_code(db, user.id, code)
         ):
             raise HTTPException(status_code=400, detail="Password or code isn't right")
         await db.execute(
-            text("UPDATE users SET totp_enabled_at = NULL, totp_secret = NULL WHERE id = :u"),
+            text(
+                "UPDATE users SET totp_enabled_at = NULL, totp_secret = NULL, "
+                "totp_recovery = NULL WHERE id = :u"
+            ),
             {"u": user_id},
         )
 

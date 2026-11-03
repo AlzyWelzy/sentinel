@@ -72,6 +72,7 @@ class UserOut(BaseModel):
     name: str | None
     email_verified: bool
     totp_enabled: bool
+    recovery_codes_left: int = 0
     superadmin: bool
     created_at: datetime
 
@@ -301,10 +302,14 @@ class CodeIn(BaseModel):
     code: str = Field(min_length=6, max_length=12)
 
 
-@router.post("/totp/enable", status_code=status.HTTP_204_NO_CONTENT)
-async def totp_enable(body: CodeIn, user: User) -> None:
+class RecoveryCodesOut(BaseModel):
+    recovery_codes: list[str] = Field(description="shown this once; each works once")
+
+
+@router.post("/totp/enable")
+async def totp_enable(body: CodeIn, user: User) -> RecoveryCodesOut:
     await ratelimit.hit("totp", str(user.user_id), 10, 600)
-    await accounts.totp_enable(str(user.user_id), body.code)
+    return RecoveryCodesOut(recovery_codes=await accounts.totp_enable(str(user.user_id), body.code))
 
 
 class TotpDisableIn(BaseModel):
@@ -316,6 +321,14 @@ class TotpDisableIn(BaseModel):
 async def totp_disable(body: TotpDisableIn, user: User) -> None:
     await ratelimit.hit("totp", str(user.user_id), 10, 600)
     await accounts.totp_disable(str(user.user_id), body.password, body.code)
+
+
+@router.post("/totp/recovery-codes")
+async def totp_recovery_codes(body: TotpDisableIn, user: User) -> RecoveryCodesOut:
+    """New recovery codes (password and a current code); the old ones stop working."""
+    await ratelimit.hit("totp", str(user.user_id), 10, 600)
+    codes = await accounts.totp_recovery_regenerate(str(user.user_id), body.password, body.code)
+    return RecoveryCodesOut(recovery_codes=codes)
 
 
 @router.get("/invitations/pending")

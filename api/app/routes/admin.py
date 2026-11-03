@@ -982,6 +982,19 @@ async def disable_user(
         )
 
 
+@router.post("/users/{user_id}/totp/reset", status_code=204)
+async def reset_user_totp(
+    user_id: uuid.UUID, principal: Annotated[Principal, Depends(staff)]
+) -> None:
+    """Two-factor off, for someone who lost their phone and their recovery
+    codes (check who they are first). Their sessions end; they sign in with
+    the password and can turn it on again."""
+    from app.services import accounts
+
+    if not await accounts.totp_reset_by_admin(str(user_id)):
+        raise HTTPException(status_code=404, detail="No user with two-factor on")
+
+
 # ── Impersonation ────────────────────────────────────────────────────────────
 
 IMPERSONATION_MINUTES = 60
