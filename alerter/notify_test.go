@@ -40,12 +40,13 @@ func TestWebhookSignsBody(t *testing.T) {
 }
 
 func TestPublicIP(t *testing.T) {
-	for _, s := range []string{"10.0.0.1", "172.23.2.12", "192.168.1.1", "127.0.0.1", "169.254.169.254", "100.64.0.1", "::1", "fd00::1"} {
+	for _, s := range []string{"10.0.0.1", "172.23.2.12", "192.168.1.1", "127.0.0.1", "169.254.169.254", "100.64.0.1", "::1", "fd00::1",
+		"0.1.2.3", "198.18.0.1", "240.0.0.1", "::ffff:127.0.0.1", "64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe"} {
 		if publicIP(net.ParseIP(s)) {
 			t.Errorf("%s treated as public", s)
 		}
 	}
-	for _, s := range []string{"8.8.8.8", "103.129.97.5", "2606:4700::1111"} {
+	for _, s := range []string{"8.8.8.8", "103.129.97.5", "2606:4700::1111", "64:ff9b::808:808"} {
 		if !publicIP(net.ParseIP(s)) {
 			t.Errorf("%s treated as private", s)
 		}

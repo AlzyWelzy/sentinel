@@ -48,8 +48,16 @@ var nonPublic = []netip.Prefix{
 	netip.MustParsePrefix("2001:db8::/32"),  // documentation
 }
 
+// nat64 is the well-known NAT64 prefix: an address in it reaches the IPv4
+// address in its last 32 bits, so it's judged by that one.
+var nat64 = netip.MustParsePrefix("64:ff9b::/96")
+
 func publicAddress(ip netip.Addr) bool {
 	ip = ip.Unmap()
+	if nat64.Contains(ip) {
+		b := ip.As16()
+		ip = netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]})
+	}
 	if !ip.IsValid() || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
 		ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() || ip.IsInterfaceLocalMulticast() {
 		return false

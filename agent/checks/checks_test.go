@@ -170,7 +170,8 @@ func TestPublicOnlyGuard(t *testing.T) {
 		t.Fatal("probe http check reached loopback")
 	}
 	for addr, want := range map[string]bool{"8.8.8.8": true, "10.1.2.3": false, "169.254.169.254": false,
-		"100.64.1.1": false, "::1": false, "2606:4700::1111": true, "::ffff:192.168.1.1": false, "fd00::1": false} {
+		"100.64.1.1": false, "::1": false, "2606:4700::1111": true, "::ffff:192.168.1.1": false, "fd00::1": false,
+		"64:ff9b::7f00:1": false, "64:ff9b::a9fe:a9fe": false, "64:ff9b::808:808": true} {
 		if got := publicAddress(netip.MustParseAddr(addr)); got != want {
 			t.Errorf("%s: %v", addr, got)
 		}

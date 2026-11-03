@@ -15,6 +15,7 @@ import (
 	"mime/quotedprintable"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/smtp"
 	"net/url"
 	"strings"
@@ -211,16 +212,43 @@ func newWebhookSender(signingSecret string, allowPrivate bool) *webhookSender {
 	}
 }
 
+// publicIP matches the agent's probe guard (agent/checks/guard.go): no
+// loopback, private, link-local, CGNAT or reserved ranges, and a NAT64
+// address is judged by the IPv4 address it reaches.
 func publicIP(ip net.IP) bool {
-	return !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() ||
-		ip.IsInterfaceLocalMulticast() || isCGNAT(ip))
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return false
+	}
+	addr = addr.Unmap()
+	if nat64.Contains(addr) {
+		b := addr.As16()
+		addr = netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]})
+	}
+	if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() ||
+		addr.IsMulticast() || addr.IsUnspecified() || addr.IsInterfaceLocalMulticast() {
+		return false
+	}
+	for _, p := range nonPublic {
+		if p.Contains(addr) {
+			return false
+		}
+	}
+	return true
 }
 
-func isCGNAT(ip net.IP) bool {
-	_, cgnat, _ := net.ParseCIDR("100.64.0.0/10")
-	return cgnat.Contains(ip)
-}
+var (
+	nat64     = netip.MustParsePrefix("64:ff9b::/96")
+	nonPublic = []netip.Prefix{
+		netip.MustParsePrefix("100.64.0.0/10"),  // carrier-grade NAT
+		netip.MustParsePrefix("192.0.0.0/24"),   // IETF protocol assignments
+		netip.MustParsePrefix("198.18.0.0/15"),  // benchmarking
+		netip.MustParsePrefix("0.0.0.0/8"),      // "this network"
+		netip.MustParsePrefix("240.0.0.0/4"),    // reserved
+		netip.MustParsePrefix("64:ff9b:1::/48"), // local-use NAT64
+		netip.MustParsePrefix("2001:db8::/32"),  // documentation
+	}
+)
 
 func (w *webhookSender) send(ctx context.Context, target string, m message) error {
 	u, err := url.Parse(target)
