@@ -7,8 +7,48 @@ where they change.
 
 Edge cases found by probing the running stack before going live.
 
+### Added
+
+- **Sentinel's own outage doesn't page everyone.** When no server anywhere
+  has reported for 90 seconds, and just before that servers in at least
+  three organisations were reporting, "not reporting" alerts hold until data
+  arrives again, and the alerter logs an error. One organisation's outage
+  (servers behind one NAT) still alerts.
+- **Server diagnosis on the server page:** never reported, silent, an agent
+  that's behind, plugin problems, and a clock running fast (its samples are
+  discarded), each with how to fix it. The diagnosis existed in the API but
+  wasn't shown.
+
 ### Fixed
 
+- **Signed out during a deploy:** while the API restarted, the web app
+  treated a failed session refresh as signing out. Only a refusal does now;
+  a proxy error or dropped connection is retried for about 30 seconds.
+- **On-call:** a daily or weekly rotation kept handing off at the same UTC
+  time, so a 09:00 handoff moved to 08:00 or 10:00 when the clocks changed.
+  Whole-day shifts keep their local time (the alerter and the API agree).
+- **Recommended rules** were added only when the dashboard first opened, so
+  an organisation used only through the API or Terraform had no "not
+  reporting" rule. The jobs service now adds them to any organisation
+  without them.
+- **NaN and Infinity** in a request were accepted: a rule with a NaN
+  threshold was saved and could never fire, and Infinity failed some
+  requests. Every JSON body is checked; they get 422.
+- **Agent:** one NaN or infinite value (a Prometheus summary with no
+  observations, a script dividing by zero) made the whole batch fail to
+  spool, so the server sent no metrics while it lasted. Those values are
+  dropped; the rest arrive.
+- **Charts and reports** failed when a metric was a ratio over zero
+  (VictoriaMetrics returns +Inf, which JSON can't carry); those points are
+  gaps now.
+- **Webhooks and probe checks** also refuse NAT64 addresses that reach a
+  private IPv4 address, and the alerter's webhook guard matches the probes'
+  (reserved and benchmarking ranges).
+- **Custom rule label values** are capped at 200 characters.
+- **Server diagnosis** called an agent newer than the offered version
+  "behind".
+- **Superadmin panel:** the organisation list shows newest first after the
+  busiest, and says when it's showing only the first 100.
 - **Agent:** a server removed in Sentinel (or whose organisation is
   suspended) backed its agent off to nothing: it re-sent up to 24 h of spool
   every 30 seconds for ever. It now waits 1, 2, 4 … up to 30 minutes between
