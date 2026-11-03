@@ -114,14 +114,26 @@ export function isImpersonating(): boolean {
 }
 
 async function doRefresh(): Promise<Session | null> {
+  // Only the server saying no (401/403) ends the session. A deploy restarting
+  // the API answers 502 or drops the connection for a few seconds; signing
+  // everyone out then would be wrong, so those are retried. A refresh the
+  // server did commit (response lost) is safe to repeat within its 10 s
+  // reuse grace; a 502 from the proxy committed nothing.
   const run = async () => {
-    const r = await fetch(`${API_BASE}/auth/refresh`, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "X-Requested-With": "sentinel" },
-    });
-    if (!r.ok) return null;
-    return (await r.json()) as Session;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const r = await fetch(`${API_BASE}/auth/refresh`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "sentinel" },
+        });
+        if (r.ok) return (await r.json()) as Session;
+        if (r.status < 500 || attempt >= 5) return null;
+      } catch {
+        if (attempt >= 5) return null;
+      }
+      await new Promise((done) => setTimeout(done, 1000 * 2 ** attempt)); // 1, 2, 4, 8, 16 s
+    }
   };
   const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
   const session = locks ? await locks.request("pg-refresh", run) : await run();

@@ -132,6 +132,12 @@ function Orgs() {
           onChange={(e) => setQ(e.target.value)}
           className="max-w-sm"
         />
+        {list.data?.length === 100 && (
+          <p className="mt-2 text-xs text-ink-3">
+            Showing the first 100: those with open incidents and the most servers first, then the
+            newest. Search to find any other.
+          </p>
+        )}
       </div>
       {msg && (
         <div className="p-3">

@@ -18,6 +18,7 @@ import {
   Input,
   Loading,
   Meter,
+  Notice,
   PageHeader,
   Select,
   Table,
@@ -42,6 +43,34 @@ const TABS = [
   "Settings",
 ] as const;
 type Tab = (typeof TABS)[number];
+
+/** What the doctor found wrong with this server (warnings and problems
+ * only), with how to fix each: silent, outdated agent, fast clock, plugins. */
+function Diagnosis({ hostId }: { hostId: string }) {
+  const q = useQuery({
+    queryKey: ["doctor", hostId],
+    refetchInterval: 60_000,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/hosts/{host_id}/doctor", { params: { path: { host_id: hostId } } }),
+      ),
+  });
+  const issues = (q.data?.findings ?? []).filter((f) => f.level !== "ok");
+  if (!issues.length) return null;
+  return (
+    <div className="space-y-2">
+      {issues.map((f) => (
+        <Notice key={f.title} tone={f.level === "problem" ? "bad" : "warn"}>
+          <p className="font-semibold">{f.title}</p>
+          <p className="mt-0.5 text-ink-2">{f.detail}</p>
+          {f.fix && (
+            <p className="mt-1 font-mono text-xs [overflow-wrap:anywhere] text-ink">{f.fix}</p>
+          )}
+        </Notice>
+      ))}
+    </div>
+  );
+}
 
 function useMetric(hostId: string, metric: Metric, range: Range) {
   return useQuery({
@@ -219,6 +248,7 @@ export default function ServerPage() {
 
       {tab === "Overview" && (
         <div className="space-y-6">
+          <Diagnosis hostId={id} />
           {health && (
             <div className="grid gap-3 sm:grid-cols-4">
               {[
