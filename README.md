@@ -60,7 +60,7 @@ NetBSD 10.2 and Windows Server 2025, plus macOS for development.
 
 | Platform | Install | Runs as | Supervised by | Self-update |
 |---|---|---|---|---|
-| Linux (amd64, arm64) | `curl … install.sh \| sudo sh` | `sentinel` | systemd (`Restart=always`) or OpenRC | root systemd timer / cron |
+| Linux (amd64, arm64) | `curl … install.sh \| sh` | `sentinel` | systemd (`Restart=always`) or OpenRC | root systemd timer / cron |
 | FreeBSD (amd64, arm64) | `fetch -qo - … \| sh` | `sentinel` | `daemon(8) -r` via rc.d | root cron |
 | OpenBSD (amd64) | `ftp -o - … \| doas sh` | `_sentinel` | rc.d + 5-minute cron watchdog | root cron |
 | NetBSD (amd64) | `ftp -o - … \| sh` | `sentinel` | rc.d (pidfile) + 5-minute cron watchdog | root cron |

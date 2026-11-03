@@ -1,8 +1,9 @@
 #!/bin/sh
 # Sentinel agent installer for Linux, FreeBSD, OpenBSD and NetBSD.
-#   curl -fsSL __DOWNLOAD_URL__/install.sh | sudo sh -s -- --key <install key> [--tags web,production]
-#   (FreeBSD without curl: fetch -qo - ... | sh -s -- ...; OpenBSD: ftp -o - ... | doas sh -s -- ...)
-#   ... | sudo sh -s -- --uninstall [--keep-config]   removes the agent again
+#   curl -fsSL __DOWNLOAD_URL__/install.sh | sh -s -- --key <install key> [--tags web,production]
+#   (FreeBSD without curl: fetch -qo - ... | sh -s -- ...; OpenBSD: ftp -o - ... | sh -s -- ...)
+#   ... | sh -s -- --uninstall [--keep-config]   removes the agent again
+# As root it runs directly; otherwise it re-runs itself through sudo or doas.
 #
 # Served by the Sentinel API with the URLs below filled in from its config.
 # Windows uses install.ps1 instead.
@@ -45,7 +46,6 @@ while [ $# -gt 0 ]; do
         *) die "unknown option: $1" ;;
     esac
 done
-[ "$(id -u)" -eq 0 ] || die "run as root (sudo or doas)"
 [ -n "$KEY" ] || [ "$UNINSTALL" = 1 ] ||
     die "usage: install.sh --key <install key> [--tags a,b] [--no-logs] [--no-autoconfig] | --uninstall [--keep-config]"
 
@@ -62,6 +62,39 @@ esac
 # OpenBSD convention: daemon accounts start with an underscore.
 SERVICE_USER=sentinel
 [ "$os" = openbsd ] && SERVICE_USER=_sentinel
+
+fetch_url() {
+    if have curl; then
+        curl -fsSL -o "$2" "$1"
+    elif have wget; then
+        wget -qO "$2" "$1"
+    elif [ "$os" = freebsd ] && have fetch; then
+        fetch -qo "$2" "$1"
+    elif [ "$os" = openbsd ] || [ "$os" = netbsd ]; then
+        ftp -V -o "$2" "$1"
+    else
+        die "curl or wget is required"
+    fi
+}
+
+# Not root: run again through sudo or doas. Root shells on many servers have
+# no sudo at all, so the shown command pipes into plain sh and this steps up
+# only when needed. Piped in, there's no file to re-run: fetch it again.
+if [ "$(id -u)" -ne 0 ]; then
+    for elevate in sudo doas; do have "$elevate" && break; elevate=""; done
+    [ -n "$elevate" ] || die "run as root (no sudo or doas found)"
+    self=$(mktemp)
+    fetch_url "$DOWNLOAD_URL/install.sh" "$self"
+    set -- ${KEY:+--key "$KEY"} ${TAGS:+--tags "$TAGS"}
+    [ "$LOGS" = 1 ] || set -- "$@" --no-logs
+    [ "$AUTO" = 1 ] || set -- "$@" --no-autoconfig
+    [ "$UNINSTALL" = 1 ] && set -- "$@" --uninstall
+    [ "$KEEP_CONFIG" = 1 ] && set -- "$@" --keep-config
+    rc=0
+    "$elevate" sh "$self" "$@" || rc=$?
+    rm -f "$self"
+    exit "$rc"
+fi
 
 # Everything install puts on the machine, on every init system it supports.
 # The server stays listed in Sentinel (as not reporting) until it's removed
@@ -118,20 +151,6 @@ uninstall() {
     echo "The server stays listed in Sentinel as not reporting until you remove it there."
 }
 [ "$UNINSTALL" = 1 ] && { uninstall; exit 0; }
-
-fetch_url() {
-    if have curl; then
-        curl -fsSL -o "$2" "$1"
-    elif have wget; then
-        wget -qO "$2" "$1"
-    elif [ "$os" = freebsd ] && have fetch; then
-        fetch -qo "$2" "$1"
-    elif [ "$os" = openbsd ] || [ "$os" = netbsd ]; then
-        ftp -V -o "$2" "$1"
-    else
-        die "curl or wget is required"
-    fi
-}
 
 sha256_of() {
     if have sha256sum; then

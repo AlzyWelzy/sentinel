@@ -30,9 +30,7 @@ router = APIRouter(prefix="/v1")
 def install_command(key: str, tags: list[str] | None = None) -> str:
     """Linux and BSD (FreeBSD/OpenBSD/NetBSD)."""
     extra = f" --tags {','.join(tags)}" if tags else ""
-    return (
-        f"curl -fsSL {settings.PUBLIC_DOWNLOAD_URL}/install.sh | sudo sh -s -- --key {key}{extra}"
-    )
+    return f"curl -fsSL {settings.PUBLIC_DOWNLOAD_URL}/install.sh | sh -s -- --key {key}{extra}"
 
 
 def install_command_windows(key: str, tags: list[str] | None = None) -> str:
@@ -63,9 +61,12 @@ def cloud_init(key: str, tags: list[str] | None = None) -> str:
     return (
         "#!/bin/sh\n"
         "# Installs the Sentinel monitoring agent at first boot.\n"
+        f"url={settings.PUBLIC_DOWNLOAD_URL}/install.sh\n"
+        "# Minimal images may have only one of curl and wget.\n"
         "for i in $(seq 1 30); do\n"
-        f"  curl -fsSL {settings.PUBLIC_DOWNLOAD_URL}/install.sh -o /tmp/sentinel-install.sh"
-        " && break\n"
+        "  if command -v curl >/dev/null; then\n"
+        '    curl -fsSL "$url" -o /tmp/sentinel-install.sh && break\n'
+        '  else wget -qO /tmp/sentinel-install.sh "$url" && break; fi\n'
         "  sleep 10\n"
         "done\n"
         f"sh /tmp/sentinel-install.sh --key {key}{extra}\n"

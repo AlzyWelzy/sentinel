@@ -14,17 +14,17 @@ export default function Help() {
 
       <h2>1. Add a server</h2>
       <p>
-        Open <b>Add server</b> and create an install key. Run the command it shows on the server, as
-        root:
+        Open <b>Add server</b> and create an install key. Run the command it shows on the server. As root it installs
+        directly; as another user it asks for sudo (or doas):
       </p>
       <pre>
-        curl -fsSL https://get.sentinel.rajpoot.app/install.sh | sudo sh -s -- --key pg_… --tags
+        curl -fsSL https://get.sentinel.rajpoot.app/install.sh | sh -s -- --key pg_… --tags
         web,production
       </pre>
       <ul>
         <li>
           FreeBSD without curl: <code>fetch -qo - … | sh -s -- …</code>. OpenBSD:{" "}
-          <code>ftp -o - … | doas sh -s -- …</code>.
+          <code>ftp -o - … | sh -s -- …</code>.
         </li>
         <li>
           Windows (Server 2016+, 10+): run the PowerShell command from the page in an elevated
@@ -117,7 +117,7 @@ export default function Help() {
         <b>bounced</b> was refused by its mail server: check the address and verify it again.
       </p>
       <h3>Remove the agent</h3>
-      <pre>curl -fsSL https://get.sentinel.rajpoot.app/install.sh | sudo sh -s -- --uninstall</pre>
+      <pre>curl -fsSL https://get.sentinel.rajpoot.app/install.sh | sh -s -- --uninstall</pre>
       <p>
         On Windows, run the install command with <code>-Uninstall</code>. The server stays listed
         (as not reporting) until you remove it on its page.
