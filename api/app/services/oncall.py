@@ -21,13 +21,28 @@ class Shift:
     override: bool = False
 
 
-def _turn(start_at: datetime, shift_hours: int, n: int, at: datetime) -> tuple[int, datetime]:
-    """Whose turn it is at `at` (index) and when that shift began."""
-    length = timedelta(hours=shift_hours)
-    if at < start_at:
-        return 0, start_at
-    k = int((at - start_at) // length)
-    return k % n, start_at + k * length
+def _boundary(schedule, k: int) -> datetime:
+    """When shift k begins. Shifts of whole days keep their local start time
+    across daylight-saving changes (a 09:00 handoff stays at 09:00); other
+    lengths are exact hours."""
+    if schedule.shift_hours % 24 == 0:
+        local = schedule.start_at.astimezone(zone(getattr(schedule, "timezone", None)))
+        # Aware arithmetic is wall-clock: the offset is worked out afresh.
+        return (local + timedelta(days=k * schedule.shift_hours // 24)).astimezone(UTC)
+    return schedule.start_at + k * timedelta(hours=schedule.shift_hours)
+
+
+def _turn(schedule, n: int, at: datetime) -> tuple[int, int, datetime]:
+    """Whose turn it is at `at` (index), the shift's number, and its start."""
+    if at < schedule.start_at:
+        return 0, 0, schedule.start_at
+    k = int((at - schedule.start_at) // timedelta(hours=schedule.shift_hours))
+    # A daylight-saving change moves whole-day boundaries by up to an hour.
+    while _boundary(schedule, k + 1) <= at:
+        k += 1
+    while k > 0 and _boundary(schedule, k) > at:
+        k -= 1
+    return k % n, k, _boundary(schedule, k)
 
 
 def current(schedule, overrides: list, at: datetime) -> dict | None:
@@ -37,7 +52,7 @@ def current(schedule, overrides: list, at: datetime) -> dict | None:
     responders = schedule.responders or []
     if not responders:
         return None
-    i, _ = _turn(schedule.start_at, schedule.shift_hours, len(responders), at)
+    i, _, _ = _turn(schedule, len(responders), at)
     return responders[i]
 
 
@@ -46,12 +61,11 @@ def shifts(schedule, overrides: list, start: datetime, end: datetime) -> list[Sh
     responders = schedule.responders or []
     out: list[Shift] = []
     if responders:
-        length = timedelta(hours=schedule.shift_hours)
-        i, at = _turn(schedule.start_at, schedule.shift_hours, len(responders), start)
+        i, k, at = _turn(schedule, len(responders), start)
         while at < end:
-            out.append(Shift(max(at, start), min(at + length, end), responders[i]))
-            at += length
-            i = (i + 1) % len(responders)
+            nxt = _boundary(schedule, k + 1)
+            out.append(Shift(max(at, start), min(nxt, end), responders[i]))
+            at, k, i = nxt, k + 1, (i + 1) % len(responders)
     for o in sorted(overrides, key=lambda o: o.starts_at):
         if o.ends_at <= start or o.starts_at >= end:
             continue

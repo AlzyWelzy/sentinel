@@ -22,6 +22,7 @@ type schedule struct {
 	ID         string
 	StartAt    time.Time
 	ShiftHours int
+	Location   *time.Location // the schedule's time zone; nil means UTC
 	Responders []responder
 	Overrides  []override // newest first
 }
@@ -46,7 +47,28 @@ func (s schedule) onCall(t time.Time) (responder, bool) {
 		return s.Responders[0], true
 	}
 	k := int(t.Sub(s.StartAt) / (time.Duration(s.ShiftHours) * time.Hour))
+	// A daylight-saving change moves whole-day boundaries by up to an hour.
+	for !s.boundary(k + 1).After(t) {
+		k++
+	}
+	for k > 0 && s.boundary(k).After(t) {
+		k--
+	}
 	return s.Responders[k%len(s.Responders)], true
+}
+
+// boundary is when shift k begins. Shifts of whole days keep their local
+// start time across daylight-saving changes (a 09:00 handoff stays at
+// 09:00); other lengths are exact hours.
+func (s schedule) boundary(k int) time.Time {
+	if s.ShiftHours%24 == 0 {
+		loc := s.Location
+		if loc == nil {
+			loc = time.UTC
+		}
+		return s.StartAt.In(loc).AddDate(0, 0, k*s.ShiftHours/24)
+	}
+	return s.StartAt.Add(time.Duration(k*s.ShiftHours) * time.Hour)
 }
 
 // loadSchedules reads a tenant's schedules (and live overrides) by id.
@@ -55,7 +77,7 @@ func loadSchedules(ctx context.Context, tx pgx.Tx, tenantID string, ids []string
 		return nil, nil
 	}
 	rows, err := tx.Query(ctx, `
-		SELECT id, start_at, shift_hours, responders FROM oncall_schedules
+		SELECT id, start_at, shift_hours, responders, timezone FROM oncall_schedules
 		 WHERE tenant_id = $1 AND id = ANY ($2::uuid[])`, tenantID, ids)
 	if err != nil {
 		return nil, err
@@ -65,9 +87,13 @@ func loadSchedules(ctx context.Context, tx pgx.Tx, tenantID string, ids []string
 	for rows.Next() {
 		var s schedule
 		var raw []byte
-		if err := rows.Scan(&s.ID, &s.StartAt, &s.ShiftHours, &raw); err != nil {
+		var tz string
+		if err := rows.Scan(&s.ID, &s.StartAt, &s.ShiftHours, &raw, &tz); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		if loc, err := time.LoadLocation(tz); err == nil {
+			s.Location = loc
 		}
 		_ = json.Unmarshal(raw, &s.Responders)
 		byID[s.ID] = &s

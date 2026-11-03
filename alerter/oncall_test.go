@@ -58,3 +58,37 @@ func TestQuietUntil(t *testing.T) {
 		t.Fatal("no quiet hours: send now")
 	}
 }
+
+// A daily 09:00 London handoff stays at 09:00 local when the clocks change
+// (25 Oct 2026 back, 29 Mar 2027 forward); a 12-hour rotation stays exact.
+func TestOnCallDailyHandoffKeepsLocalTime(t *testing.T) {
+	london, _ := time.LoadLocation("Europe/London")
+	s := schedule{
+		StartAt: time.Date(2026, 10, 20, 9, 0, 0, 0, london), ShiftHours: 24, Location: london,
+		Responders: []responder{{Name: "a"}, {Name: "b"}},
+	}
+	for _, d := range []int{26, 27, 28} { // after the change: 09:00 GMT, not 08:00 or 10:00
+		before := time.Date(2026, 10, d, 8, 59, 0, 0, london)
+		after := time.Date(2026, 10, d, 9, 1, 0, 0, london)
+		rb, _ := s.onCall(before)
+		ra, _ := s.onCall(after)
+		if rb.Name == ra.Name {
+			t.Errorf("no handoff at 09:00 on %d Oct: %s both sides", d, ra.Name)
+		}
+	}
+	spring := schedule{
+		StartAt: time.Date(2027, 3, 26, 9, 0, 0, 0, london), ShiftHours: 24, Location: london,
+		Responders: []responder{{Name: "a"}, {Name: "b"}},
+	}
+	rb, _ := spring.onCall(time.Date(2027, 3, 30, 8, 59, 0, 0, london))
+	ra, _ := spring.onCall(time.Date(2027, 3, 30, 9, 1, 0, 0, london))
+	if rb.Name == ra.Name {
+		t.Error("no handoff at 09:00 after the spring change")
+	}
+	half := schedule{StartAt: time.Date(2026, 10, 24, 9, 0, 0, 0, london), ShiftHours: 12, Location: london,
+		Responders: []responder{{Name: "a"}, {Name: "b"}}}
+	r, _ := half.onCall(time.Date(2026, 10, 24, 9, 0, 0, 0, london).Add(36*time.Hour + time.Minute))
+	if r.Name != "b" {
+		t.Errorf("12-hour rotation: %s after three shifts", r.Name)
+	}
+}
