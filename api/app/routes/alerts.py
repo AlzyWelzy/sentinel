@@ -203,6 +203,10 @@ class RuleIn(BaseModel):
                 raise ValueError("custom rules need operator and threshold")
             if len(self.labels) > 5 or any(not LABEL_KEY_RE.match(k2) for k2 in self.labels):
                 raise ValueError("at most 5 label filters, with names like queue or status_code")
+            if any(len(v) > 200 or any(ord(c) < 32 for c in v) for v in self.labels.values()):
+                raise ValueError(
+                    "label values are up to 200 characters, without control characters"
+                )
             self.target = self.target.removeprefix("sentinel_custom_")
             self.metric = None
         elif k in ("process_down", "service_down"):

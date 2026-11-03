@@ -301,6 +301,17 @@ async def tick() -> None:
                 log.info("queued %d monthly report(s)", n)
         except Exception:
             log.exception("monthly reports failed")
+    # Normally added when the dashboard first opens; this catches accounts used
+    # only through the API or Terraform, or whose first attempt failed, so no
+    # organisation is left without a "not reporting" rule.
+    try:
+        from app.routes.alerts import ensure_recommended_everywhere
+
+        n = await ensure_recommended_everywhere()
+        if n:
+            log.info("added %d recommended rule(s)", n)
+    except Exception:
+        log.exception("recommended rules failed")
     try:
         n = await send_digests(now)
         if n:

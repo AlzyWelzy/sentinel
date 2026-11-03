@@ -292,3 +292,45 @@ async def test_blank_names_and_nul_characters_are_refused(client, alice):
     # Postgres can't store NUL: the request is refused, not failed.
     r = await alice.request("PATCH", "/auth/me", json={"name": "bad\x00name"})
     assert r.status_code == 422
+
+
+async def test_jobs_add_recommended_rules_to_organisations_that_never_opened_the_dashboard(alice):
+    # An account used only through the API never calls /v1/me, which is where
+    # the rules are normally added; the jobs pass must still give it them.
+    from app.routes.alerts import ensure_recommended_everywhere
+
+    r = await alice.request("POST", "/v1/organisations", json={"name": "API only"})
+    tid = r.json()["tenant_id"]
+    h = {"X-Sentinel-Account": tid}
+    for rule in (await alice.request("GET", "/v1/alert-rules", headers=h)).json():
+        await alice.request("DELETE", f"/v1/alert-rules/{rule['id']}", headers=h)
+    async with ServiceSession() as db, db.begin():
+        await db.execute(
+            text("UPDATE tenants SET recommended_rules_at = NULL WHERE id = :t"), {"t": tid}
+        )
+    await ensure_recommended_everywhere()
+    async with ServiceSession() as db:
+        kinds = set(
+            await db.scalars(text("SELECT kind FROM alert_rules WHERE tenant_id = :t"), {"t": tid})
+        )
+    assert "host_down" in kinds
+
+
+async def test_nan_and_infinity_are_refused_everywhere(alice):
+    # Python's json accepts them; a NaN threshold would be saved and never fire.
+    body = '{"name": "r", "kind": "metric", "metric": "cpu", "operator": ">", "threshold": %s}'
+    for bad in ["NaN", "Infinity", "-Infinity", "1e999"]:
+        r = await alice.request(
+            "POST",
+            "/v1/alert-rules",
+            content=body % bad,
+            headers={"Content-Type": "application/json"},
+        )
+        assert r.status_code == 422, (bad, r.text)
+    r = await alice.request(
+        "POST",
+        "/v1/alert-rules",
+        content=body % "90.5",
+        headers={"Content-Type": "application/json"},
+    )
+    assert r.status_code == 201, r.text

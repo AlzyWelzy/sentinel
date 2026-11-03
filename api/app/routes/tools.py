@@ -214,6 +214,14 @@ class DoctorOut(BaseModel):
     findings: list[Finding]
 
 
+def _version(v: str) -> tuple[int, ...]:
+    """ "0.9.10" > "0.9.9"; anything that isn't numbers sorts first."""
+    try:
+        return tuple(int(p) for p in v.split("-")[0].split("."))
+    except ValueError:
+        return ()
+
+
 @router.get("/hosts/{host_id}/doctor")
 async def doctor(host_id: uuid.UUID, t: Tenant) -> DoctorOut:
     """Why a server's data might be missing or wrong: reporting, version,
@@ -257,31 +265,55 @@ async def doctor(host_id: uuid.UUID, t: Tenant) -> DoctorOut:
             Finding(level="ok", title="Reporting", detail="Data arrived within the last minute.")
         )
 
+    ahead = await heartbeats.clock_ahead(host.id)
+    if ahead:
+        mins = max(1, round(ahead / 60))
+        dropped = ahead > 600
+        out.append(
+            Finding(
+                level="problem" if dropped else "warning",
+                title=f"Clock {mins} minute{'s' if mins != 1 else ''} fast",
+                detail=(
+                    "Samples stamped more than 10 minutes ahead are discarded, so this server's "
+                    "charts stay empty."
+                    if dropped
+                    else "Its samples are stamped in the future, so charts and alerts run early."
+                ),
+                fix="Turn on time sync: timedatectl set-ntp true (Windows: w32tm /resync).",
+            )
+        )
+
     plan = await rollout.current(t.db)
     pin = await t.db.scalar(select(TenantRow.agent_version_pin).where(TenantRow.id == t.tenant_id))
     offered = rollout.version_for(plan, host.id, pin)
-    if (
-        host.agent_version
-        and offered not in ("", "latest", "dev")
-        and host.agent_version != offered
-    ):
-        out.append(
-            Finding(
-                level="warning",
-                title=f"Agent {host.agent_version}, {offered} offered",
-                detail=(
-                    "Agents update themselves within the hour. One that stays behind can't reach "
-                    "the download URL, or runs in a container without the self-updating image."
-                ),
-                fix="On the server, as root: sentinel-agent update",
+    running = host.agent_version
+    if running and offered not in ("", "latest", "dev") and running != offered:
+        if _version(running) > _version(offered):
+            out.append(
+                Finding(
+                    level="ok",
+                    title=f"Agent {running}, newer than {offered}",
+                    detail=(
+                        f"It moves to {offered} at its next hourly update, as a rollback or "
+                        "pin asks."
+                    ),
+                )
             )
-        )
+        else:
+            out.append(
+                Finding(
+                    level="warning",
+                    title=f"Agent {running}, {offered} offered",
+                    detail=(
+                        "Agents update themselves within the hour. One that stays behind can't "
+                        "reach the download URL, or runs in a container without the "
+                        "self-updating image."
+                    ),
+                    fix="On the server, as root: sentinel-agent update",
+                )
+            )
     else:
-        out.append(
-            Finding(
-                level="ok", title=f"Agent {host.agent_version or 'unknown'}", detail="Up to date."
-            )
-        )
+        out.append(Finding(level="ok", title=f"Agent {running or 'unknown'}", detail="Up to date."))
 
     try:
         series = await metrics.query_range(
@@ -294,8 +326,8 @@ async def doctor(host_id: uuid.UUID, t: Tenant) -> DoctorOut:
                     title="Reporting, but no metrics stored",
                     detail="Heartbeats arrive but no samples were stored in the last 15 minutes.",
                     fix=(
-                        "Look for 'metrics write failed' in the agent's log; the clock may be far "
-                        "off."
+                        "The server's clock may be far off: turn on time sync "
+                        "(timedatectl set-ntp true)."
                     ),
                 )
             )

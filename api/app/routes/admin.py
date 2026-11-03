@@ -181,7 +181,7 @@ async def list_tenants(
         query = query.where(host_count > 0)
     rows = (
         await db.execute(
-            query.order_by(open_count.desc(), host_count.desc(), Tenant.created_at)
+            query.order_by(open_count.desc(), host_count.desc(), Tenant.created_at.desc())
             .limit(limit)
             .offset(offset)
         )

@@ -7,6 +7,7 @@ VictoriaMetrics add that label to every series selector in the query. So even
 a wrong host id can't reach another tenant's series.
 """
 
+import math
 import time
 import uuid
 from dataclasses import dataclass
@@ -163,6 +164,17 @@ def _source(query: str, start: int, end: int, step: int) -> tuple[str, str, int]
     return settings.VICTORIAMETRICS_URL, query, step
 
 
+def _finite_points(values: list) -> list[list]:
+    """VictoriaMetrics returns +Inf/-Inf for a ratio over zero; JSON can't
+    carry them (the response would fail), so those points become gaps."""
+    out = []
+    for ts, v in values:
+        f = float(v)
+        if math.isfinite(f):
+            out.append([int(ts), f])
+    return out
+
+
 async def query_range(
     tenant_id: uuid.UUID, host_id: uuid.UUID, metric: str, start: int, end: int, step: int
 ) -> list[dict]:
@@ -193,7 +205,7 @@ async def query_range(
         series.append(
             {
                 "labels": {k: labels[k] for k in definition.legend if k in labels},
-                "points": [[int(ts), float(v)] for ts, v in result["values"]],
+                "points": _finite_points(result["values"]),
             }
         )
     return series
@@ -220,7 +232,11 @@ async def query_latest(
             response.raise_for_status()
     except httpx.HTTPError as exc:
         raise MetricsUnavailable(str(exc)) from exc
-    return [(r["metric"], float(r["value"][1])) for r in response.json()["data"]["result"]]
+    return [
+        (r["metric"], float(r["value"][1]))
+        for r in response.json()["data"]["result"]
+        if math.isfinite(float(r["value"][1]))
+    ]
 
 
 async def delete_host_series(tenant_id: uuid.UUID, host_id: uuid.UUID) -> None:
@@ -262,7 +278,8 @@ async def _instant(params: dict[str, str]) -> list[tuple[dict[str, str], float]]
     out = []
     for r in response.json()["data"]["result"]:
         try:
-            out.append((r["metric"], float(r["value"][1])))
+            if math.isfinite(v := float(r["value"][1])):
+                out.append((r["metric"], v))
         except (TypeError, ValueError):
             continue
     return out
@@ -301,7 +318,7 @@ async def query_series(
     return [
         {
             "labels": labels(r["metric"]),
-            "points": [[int(ts), float(v)] for ts, v in r["values"]],
+            "points": _finite_points(r["values"]),
         }
         for r in response.json()["data"]["result"]
     ]
@@ -334,7 +351,7 @@ async def query_compare(
     return [
         {
             "host_id": r["metric"].get("host_id", ""),
-            "points": [[int(ts), float(v)] for ts, v in r["values"]],
+            "points": _finite_points(r["values"]),
         }
         for r in response.json()["data"]["result"]
     ]

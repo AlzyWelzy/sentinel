@@ -29,3 +29,9 @@ async def forget_host_tokens(token_hashes: list[str]) -> None:
     """Drop ingest's cached token lookups so a revoke or suspend takes effect now."""
     if token_hashes:
         await redis.delete(*[HOST_TOKEN_CACHE_KEY.format(token_hash=t) for t in token_hashes])
+
+
+async def clock_ahead(host_id: uuid.UUID) -> int | None:
+    """Seconds the host's clock runs fast, when over a minute (ingest/cache.go)."""
+    v = await redis.get(f"pg:clock_ahead:{host_id}")
+    return int(v) if v else None

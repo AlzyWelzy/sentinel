@@ -33,9 +33,11 @@ from app.routes import (
     tools,
     v1,
 )
+from app.strictjson import FiniteJSON
 
 app = FastAPI(title="Sentinel API", version="0.9.0", root_path=settings.API_ROOT_PATH)
 
+app.add_middleware(FiniteJSON)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
