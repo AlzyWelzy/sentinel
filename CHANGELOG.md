@@ -25,8 +25,31 @@ Edge cases found by probing the running stack before going live.
   (audited, ends their sessions). Before, a lost phone locked the account
   for good.
 
+- **LVM storage as disks** (agent): volume groups and thin pools have no
+  filesystem, so Proxmox SAN and local-lvm storage was invisible. They're
+  reported under `lvm:<vg>` and `lvm:<vg>/<pool>`, in disk lists and disk
+  alerts. A group holding mounted or swap volumes (a standard LVM install)
+  isn't reported as full, an inactive pool isn't reported as empty, and
+  older lvm2 releases work. Set up by `enable-hardware`, and on existing
+  servers by the hourly check. A recommended rule warns when a thin pool's
+  metadata passes 80% (a full one stops the pool).
+- **New alert email design:** a status band with a plain-English lead, the
+  facts, the detail and big buttons, in Sentinel's colours. Times show in
+  the organisation's timezone (Organisation › Digest timezone) and are the
+  moment of the event, not of a retried send. Escalations say for how long
+  nobody has acknowledged.
+- **Custom-metric alerts say which series fired** (for example
+  `pool=pve/data 91.2`), worst first, like disk and plugin alerts.
+- **End-to-end checks in the repo** (`e2e/`, `make e2e`): the 41-step
+  browser journey, the extras and the API access matrix. They lived in a
+  scratch folder before and were lost once.
+
 ### Fixed
 
+- **Next.js 16.4.6:** 16.4.4 had a moderate cache-leak advisory
+  (GHSA-mfr8-8qww-v76h, GHSA-vc7v-qv4w-wrv8).
+- **Alert email footer** still pointed at "the console", which Sentinel
+  doesn't have.
 - **Docker install command didn't work:** it pulls
   `sentinel-agent:latest`, which releases never published. Releases now tag
   every image `:latest` too, and the agent image with the agent's version
