@@ -1,0 +1,14 @@
+{
+  "name": "sentinel-e2e",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end checks against the dev stack (make up, web on :3000).",
+  "scripts": {
+    "journey": "node journey.mjs",
+    "extras": "node extras.mjs",
+    "api": "cd api && uv run --no-project --with httpx python authz.py"
+  },
+  "dependencies": {
+    "playwright": "1.56.1"
+  }
+}

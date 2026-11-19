@@ -14,3 +14,7 @@ deploy/*.env
 /ingest/ingest
 /alerter/alerter
 /agent/agent
+
+# End-to-end checks
+e2e/node_modules/
+e2e/shots/
