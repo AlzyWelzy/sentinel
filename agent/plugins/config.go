@@ -51,6 +51,7 @@ var collectors = map[string]collectFunc{
 	"script":     collectScript,
 	"smart":      collectSmart,
 	"ipmi":       collectIPMI,
+	"lvm":        collectLVM,
 	"snmp":       collectSNMP,
 }
 

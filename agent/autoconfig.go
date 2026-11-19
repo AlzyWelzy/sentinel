@@ -100,11 +100,18 @@ func maybeAutoconfigure() bool {
 // root about it. Cheap when all is well: it only reads files.
 func repairHardware(dir, svcUser string) bool {
 	pdir := filepath.Join(dir, "plugins.d")
+	// LVM storage arrived after hardware monitoring: set it up once where
+	// there's LVM to report and no lvm.conf yet.
+	lvmNew := false
+	if vgs, lvs, ok := lvmTools(); ok && !fileExists(filepath.Join(pdir, "lvm.conf")) && !tried(dir, "lvm") {
+		markTried(dir, "lvm")
+		lvmNew = lvmHasStorage(vgs, lvs)
+	}
 	want := hardwareCommands(pdir)
-	if want == nil {
+	if want == nil && !lvmNew {
 		return false
 	}
-	ok := true
+	ok := !lvmNew
 	if has("sudo") {
 		rules, _ := os.ReadFile(hardwareSudoers())
 		for _, c := range want {
@@ -144,7 +151,7 @@ func repairHardware(dir, svcUser string) bool {
 // hardwareFiles is the content of everything enable-hardware writes.
 func hardwareFiles(pdir string) string {
 	var b strings.Builder
-	for _, p := range []string{filepath.Join(pdir, "smart.conf"), filepath.Join(pdir, "ipmi.conf"), hardwareSudoers(), dropInFile, hardwareTimerFile, hardwareServiceFile} {
+	for _, p := range []string{filepath.Join(pdir, "smart.conf"), filepath.Join(pdir, "ipmi.conf"), filepath.Join(pdir, "lvm.conf"), hardwareSudoers(), dropInFile, hardwareTimerFile, hardwareServiceFile} {
 		c, _ := os.ReadFile(p)
 		b.WriteString(p + "\x00" + string(c) + "\x00")
 	}
@@ -713,4 +720,26 @@ func detectServices(dir, svcUser string, note func(bool, string)) map[string]boo
 	sort.Strings(list)
 	os.WriteFile(triedFile, []byte(strings.Join(list, "\n")+"\n"), 0o644)
 	return have
+}
+
+// tried and markTried read and add to autoconfigTried outside detectServices.
+func tried(dir, typ string) bool {
+	b, _ := os.ReadFile(filepath.Join(dir, autoconfigTried))
+	for _, t := range strings.Fields(string(b)) {
+		if t == typ {
+			return true
+		}
+	}
+	return false
+}
+
+func markTried(dir, typ string) {
+	if tried(dir, typ) {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(dir, autoconfigTried), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err == nil {
+		fmt.Fprintln(f, typ)
+		f.Close()
+	}
 }

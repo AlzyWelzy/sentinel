@@ -35,7 +35,7 @@ func cmdEnableHardware(args []string) error {
 	}
 	dir := filepath.Join(*configDir, "plugins.d")
 	if *remove {
-		for _, f := range []string{"smart.conf", "ipmi.conf"} {
+		for _, f := range []string{"smart.conf", "ipmi.conf", "lvm.conf"} {
 			os.Remove(filepath.Join(dir, f))
 		}
 		os.Remove(hardwareSudoers())
@@ -100,6 +100,17 @@ func cmdEnableHardware(args []string) error {
 		fmt.Println("ipmitool is installed but there's no BMC (/dev/ipmi0); load the ipmi_devintf module on physical servers.")
 	} else {
 		fmt.Println("ipmitool isn't installed; skipping board sensors (physical servers only).")
+	}
+
+	if vgs, lvs, ok := lvmTools(); ok && lvmHasStorage(vgs, lvs) {
+		commands = append(commands, plugins.VGSArgs(vgs), plugins.LVSArgs(lvs))
+		conf := fmt.Sprintf("# LVM storage (volume groups, thin pools). Written by sentinel-agent enable-hardware.\ntype = lvm\nvgs = %s\nlvs = %s\n", vgs, lvs)
+		if err := os.WriteFile(filepath.Join(dir, "lvm.conf"), []byte(conf), 0o644); err != nil {
+			return err
+		}
+		found = append(found, "LVM storage")
+	} else {
+		os.Remove(filepath.Join(dir, "lvm.conf"))
 	}
 
 	if len(commands) == 0 {
@@ -338,7 +349,7 @@ func cmdHardwareCache(args []string) error {
 // plugin files will run; nil when there are none.
 func hardwareCommands(pdir string) [][]string {
 	var out [][]string
-	for _, name := range []string{"smart.conf", "ipmi.conf"} {
+	for _, name := range []string{"smart.conf", "ipmi.conf", "lvm.conf"} {
 		f, err := os.Open(filepath.Join(pdir, name))
 		if err != nil {
 			continue
@@ -363,6 +374,8 @@ func hardwareCommands(pdir string) [][]string {
 				tool = "/usr/bin/ipmitool"
 			}
 			out = append(out, plugins.IPMIArgs(tool))
+		case "lvm":
+			out = append(out, plugins.VGSArgs(orDefault(kv["vgs"], "/usr/sbin/vgs")), plugins.LVSArgs(orDefault(kv["lvs"], "/usr/sbin/lvs")))
 		}
 	}
 	return out
@@ -372,4 +385,18 @@ func hardwareCommands(pdir string) [][]string {
 func ipmiReads(ipmitool string) bool {
 	r := plugins.Collect(context.Background(), []plugins.Config{{Name: "probe", Type: "ipmi", Settings: map[string]string{"ipmitool": ipmitool}}})
 	return r[0].Status.OK
+}
+
+// lvmTools finds vgs and lvs.
+func lvmTools() (vgs, lvs string, ok bool) {
+	vgs, a := findTool("vgs")
+	lvs, b := findTool("lvs")
+	return vgs, lvs, a && b
+}
+
+// lvmHasStorage reports whether LVM has storage the disk collector doesn't
+// already cover (run as root): every result carries sentinel_plugin_up.
+func lvmHasStorage(vgs, lvs string) bool {
+	r := plugins.Collect(context.Background(), []plugins.Config{{Name: "probe", Type: "lvm", Settings: map[string]string{"vgs": vgs, "lvs": lvs}}})
+	return r[0].Status.OK && len(r[0].Samples) > 1
 }
