@@ -14,8 +14,8 @@ export default function Help() {
 
       <h2>1. Add a server</h2>
       <p>
-        Open <b>Add server</b> and create an install key. Run the command it shows on the server. As root it installs
-        directly; as another user it asks for sudo (or doas):
+        Open <b>Add server</b> and create an install key. Run the command it shows on the server. As
+        root it installs directly; as another user it asks for sudo (or doas):
       </p>
       <pre>
         curl -fsSL https://get.sentinel.rajpoot.app/install.sh | sh -s -- --key pg_… --tags

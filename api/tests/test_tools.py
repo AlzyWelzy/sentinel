@@ -61,6 +61,13 @@ async def test_doctor(alice: User):
         await db.execute(
             text("UPDATE hosts SET agent_version = '0.0.9' WHERE id = :h"), {"h": host}
         )
+        # Other tests move the rollout; this one needs 0.0.9 to be behind.
+        await db.execute(
+            text(
+                "UPDATE agent_rollout SET stable_version = '1.0.0', candidate_version = NULL, "
+                "candidate_percent = 0"
+            )
+        )
     r = await alice.request("GET", f"/v1/hosts/{host}/doctor")
     assert r.status_code == 200, r.text
     d = r.json()
