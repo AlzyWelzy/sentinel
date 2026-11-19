@@ -39,6 +39,7 @@ type rule struct {
 	Description       string
 	Check             *checkInfo // kind check: the check, if it still exists
 	LogsAccount       int64      // the tenant's VictoriaLogs AccountID (kind logs)
+	Timezone          string     // the tenant's, for times in messages
 }
 
 type checkInfo struct {
@@ -101,7 +102,8 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 		       r.labels, coalesce(r.description, ''),
 		       c.id, coalesce(c.name, ''), coalesce(c.type, ''), coalesce(c.params->>'mode', ''),
 		       coalesce(c.on_probes, false), c.host_id, c.tag,
-		       coalesce(c.min_failing, 1), coalesce(c.created_at, now()), t.logs_account_id
+		       coalesce(c.min_failing, 1), coalesce(c.created_at, now()), t.logs_account_id,
+		       coalesce(t.digest_timezone, 'UTC')
 		  FROM alert_rules r
 		  JOIN tenants t ON t.id = r.tenant_id
 		  LEFT JOIN checks c ON r.kind = 'check' AND c.id::text = r.target
@@ -120,7 +122,7 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 			&r.Aggregation, &r.WindowSeconds, &r.RecoveryThreshold, &r.Severity, &r.ActionName,
 			&r.Labels, &r.Description,
 			&checkID, &c.Name, &c.Type, &c.Mode, &c.OnProbes, &c.HostID, &c.Tag, &c.MinFailing, &c.CreatedAt,
-			&r.LogsAccount)
+			&r.LogsAccount, &r.Timezone)
 		if checkID != nil {
 			c.ID = *checkID
 			r.Check = &c
@@ -553,6 +555,7 @@ type escalation struct {
 	ChannelIDs  []string
 	ScheduleIDs []string
 	Severity    string
+	Timezone    string
 }
 
 // dueEscalations finds incidents in this partition whose next step's delay
@@ -563,7 +566,8 @@ func (s *store) dueEscalations(ctx context.Context, partition, partitions int) (
 		SELECT i.id, i.tenant_id, i.host_id, i.summary, i.rule_name, i.hostname, i.value,
 		       i.opened_at, i.escalation_level,
 		       (SELECT count(*) FROM alert_escalation_steps a WHERE a.rule_id = i.rule_id),
-		       st.channel_ids::text[], st.schedule_ids::text[], i.severity
+		       st.channel_ids::text[], st.schedule_ids::text[], i.severity,
+		       coalesce(t.digest_timezone, 'UTC')
 		  FROM incidents i
 		  JOIN tenants t ON t.id = i.tenant_id AND t.status = 'active'
 		  JOIN alert_rules r ON r.id = i.rule_id AND r.tenant_id = i.tenant_id AND r.enabled
@@ -579,7 +583,7 @@ func (s *store) dueEscalations(ctx context.Context, partition, partitions int) (
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (escalation, error) {
 		var e escalation
 		err := row.Scan(&e.IncidentID, &e.TenantID, &e.HostID, &e.Summary, &e.RuleName, &e.Hostname,
-			&e.Value, &e.OpenedAt, &e.Level, &e.Steps, &e.ChannelIDs, &e.ScheduleIDs, &e.Severity)
+			&e.Value, &e.OpenedAt, &e.Level, &e.Steps, &e.ChannelIDs, &e.ScheduleIDs, &e.Severity, &e.Timezone)
 		return e, err
 	})
 }

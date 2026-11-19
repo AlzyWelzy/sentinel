@@ -162,6 +162,9 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 			if act == actionOpen && (r.Metric == "disk" || r.Metric == "inodes") && (r.Kind == "metric" || r.Kind == "forecast") {
 				o.Detail = e.mountDetail(ctx, r, h)
 			}
+			if act == actionOpen && r.Kind == "custom" {
+				o.Detail = e.customDetail(ctx, r, h)
+			}
 		}
 		msg := func(kind, incidentID string) message { return e.message(r, h, o, kind, incidentID) }
 		quiet := suppressed && act == actionResolve
@@ -357,6 +360,25 @@ func (e *evaluator) queryVector(ctx context.Context, tenantID, query string) (ma
 
 // queryVectorBy is queryVector keyed by another label.
 func (e *evaluator) queryVectorBy(ctx context.Context, tenantID, query, label string) (map[string]float64, error) {
+	series, err := e.querySeries(ctx, tenantID, query)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]float64{}
+	for _, s := range series {
+		out[s.labels[label]] = s.value
+	}
+	return out, nil
+}
+
+type seriesValue struct {
+	labels map[string]string
+	value  float64
+}
+
+// querySeries runs an instant query in the tenant's data, keeping every
+// label; NaN and infinite values are left out.
+func (e *evaluator) querySeries(ctx context.Context, tenantID, query string) ([]seriesValue, error) {
 	params := url.Values{"query": {query}, "extra_label": {"tenant_id=" + tenantID}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.vmURL+"/api/v1/query?"+params.Encode(), nil)
 	if err != nil {
@@ -382,14 +404,71 @@ func (e *evaluator) queryVectorBy(ctx context.Context, tenantID, query, label st
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return nil, err
 	}
-	out := map[string]float64{}
+	var out []seriesValue
 	for _, res := range body.Data.Result {
 		s, _ := res.Value[1].(string)
 		if v, err := strconv.ParseFloat(s, 64); err == nil && !math.IsNaN(v) && !math.IsInf(v, 0) {
-			out[res.Metric[label]] = v
+			out = append(out, seriesValue{res.Metric, v})
 		}
 	}
 	return out, nil
+}
+
+// customDetail names the series of a custom metric that breach the rule
+// on this server (a plugin can report several: one per pool, queue or
+// table), worst first: "pool=pve/data 91.2; pool=san/vm 85".
+func (e *evaluator) customDetail(ctx context.Context, r rule, h host) string {
+	scoped := r
+	scoped.HostID = &h.ID
+	scoped.Aggregation, scoped.WindowSeconds = "last", 0
+	name := "sentinel_custom_" + strings.TrimPrefix(r.Target, "sentinel_custom_")
+	q, err := ruleQuery(scoped)
+	if err != nil {
+		return ""
+	}
+	// The rule's selector, without the per-server max: one value per series.
+	i := strings.Index(q, name)
+	j := strings.Index(q[i:], "}")
+	if i < 0 || j < 0 {
+		return ""
+	}
+	series, err := e.querySeries(ctx, r.TenantID, "last_over_time("+q[i:i+j+1]+"[5m])")
+	if err != nil {
+		return ""
+	}
+	var hit []seriesValue
+	for _, s := range series {
+		if breached(r.Operator, s.value, r.Threshold) {
+			hit = append(hit, s)
+		}
+	}
+	sort.Slice(hit, func(a, b int) bool {
+		if r.Operator == "<" {
+			return hit[a].value < hit[b].value
+		}
+		return hit[a].value > hit[b].value
+	})
+	if len(hit) > 5 {
+		hit = hit[:5]
+	}
+	parts := make([]string, 0, len(hit))
+	for _, s := range hit {
+		var labels []string
+		for k, v := range s.labels {
+			switch k {
+			case "__name__", "host_id", "tenant_id", "hostname", "plugin":
+				continue
+			}
+			labels = append(labels, k+"="+v)
+		}
+		sort.Strings(labels)
+		p := strconv.FormatFloat(s.value, 'g', 4, 64)
+		if len(labels) > 0 {
+			p = strings.Join(labels, " ") + " " + p
+		}
+		parts = append(parts, p)
+	}
+	return strings.Join(parts, "; ")
 }
 
 // mountDetail names the mounts a disk or inode alert is about: the ones
@@ -553,7 +632,8 @@ func (e *evaluator) message(r rule, h host, o observation, kind, incidentID stri
 	if r.Description != "" && !resolved {
 		text += "\n" + r.Description + "\n"
 	}
-	text += fmt.Sprintf("Time: %s\n", time.Now().UTC().Format(time.RFC1123))
+	now := time.Now()
+	text += fmt.Sprintf("Time: %s\n", localTime(now, r.Timezone))
 	text += e.links(incidentID, !resolved)
 	return message{
 		Subject: fmt.Sprintf("[Sentinel] %s: %s", state, subject),
@@ -574,6 +654,8 @@ func (e *evaluator) message(r rule, h host, o observation, kind, incidentID stri
 			"kind":        r.Kind,
 			"target":      r.Target,
 			"url":         dashboardLink(e.baseURL, incidentID),
+			"at":          now.UTC().Format(time.RFC3339),
+			"timezone":    r.Timezone,
 		},
 	}
 }
@@ -726,7 +808,7 @@ func (e *evaluator) escalationMessage(esc escalation, now time.Time) message {
 	open := now.Sub(esc.OpenedAt).Round(time.Minute)
 	text := fmt.Sprintf("ESCALATED: %s\n\nNobody has acknowledged this alert for %s.\n"+
 		"Host: %s\nRule: %s\nOpened: %s\nEscalation step %d of %d\n",
-		esc.Summary, open, esc.Hostname, esc.RuleName, esc.OpenedAt.UTC().Format(time.RFC1123), esc.Level+1, esc.Steps)
+		esc.Summary, open, esc.Hostname, esc.RuleName, localTime(esc.OpenedAt, esc.Timezone), esc.Level+1, esc.Steps)
 	text += e.links(esc.IncidentID, true)
 	return message{
 		Subject: fmt.Sprintf("[Sentinel] ESCALATED: %s (unacknowledged %s)", esc.Summary, open),
@@ -738,6 +820,10 @@ func (e *evaluator) escalationMessage(esc escalation, now time.Time) message {
 			"rule_name":   esc.RuleName,
 			"hostname":    esc.Hostname,
 			"step":        esc.Level + 1,
+			"opened_at":   esc.OpenedAt.UTC().Format(time.RFC3339),
+			"at":          now.UTC().Format(time.RFC3339),
+			"timezone":    esc.Timezone,
+			"unacked_for": open.String(),
 		},
 	}
 }

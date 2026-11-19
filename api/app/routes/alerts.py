@@ -641,6 +641,16 @@ RECOMMENDED: list[dict] = [
         "severity": "warning",
     },
     {
+        # A thin pool whose metadata fills stops working (Proxmox local-lvm);
+        # only servers with the LVM plugin report it.
+        "name": "LVM thin pool metadata above 80%",
+        "kind": "custom",
+        "target": "lvm_metadata_percent",
+        "operator": ">",
+        "threshold": 80,
+        "duration_seconds": 300,
+    },
+    {
         "name": "CPU steal above 20%",
         "kind": "metric",
         "metric": "steal",
