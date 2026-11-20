@@ -229,6 +229,12 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.saveDiscoveries(r.Context(), id, req.Batches)
+	if hasTraps(req) {
+		if _, err := s.store.saveTraps(r.Context(), id, req.Batches); err != nil {
+			// The rest of the push is stored; 503 would replay it all.
+			s.log.Warn("traps not stored", "err", err, "host_id", id.HostID)
+		}
+	}
 	if req.Inventory != nil {
 		if err := s.store.saveInventory(r.Context(), id, req.Inventory); err != nil {
 			s.log.Warn("inventory not stored", "err", err, "host_id", id.HostID)

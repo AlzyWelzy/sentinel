@@ -717,6 +717,11 @@ func (a *agent) hostMeta(ctx context.Context) *proto.HostMeta {
 		m := collector.Meta(ctx)
 		a.meta, a.metaAt = &m, time.Now()
 	}
+	if a.net != nil {
+		m := *a.meta
+		m.TrapPort = a.net.traps.Port()
+		return &m
+	}
 	return a.meta
 }
 

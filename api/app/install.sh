@@ -3,6 +3,9 @@
 #   curl -fsSL __DOWNLOAD_URL__/install.sh | sh -s -- --key <install key> [--tags web,production]
 #   (FreeBSD without curl: fetch -qo - ... | sh -s -- ...; OpenBSD: ftp -o - ... | sh -s -- ...)
 #   ... | sh -s -- --uninstall [--keep-config]   removes the agent again
+#   --traps lets the agent receive SNMP traps on UDP 162 (systemd and OpenRC:
+#   the service gets only CAP_NET_BIND_SERVICE); without it, traps arrive on
+#   1162. The choice is kept when the script runs again; --no-traps undoes it.
 # As root it runs directly; otherwise it re-runs itself through sudo or doas.
 #
 # Served by the Sentinel API with the URLs below filled in from its config.
@@ -33,6 +36,7 @@ LOGS=1
 AUTO=1
 UNINSTALL=0
 KEEP_CONFIG=0
+TRAPS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --key) [ $# -ge 2 ] || die "--key needs a value"; KEY="$2"; shift 2 ;;
@@ -43,11 +47,13 @@ while [ $# -gt 0 ]; do
         --no-autoconfig) AUTO=0; shift ;;
         --uninstall) UNINSTALL=1; shift ;;
         --keep-config) KEEP_CONFIG=1; shift ;;
+        --traps) TRAPS=1; shift ;;
+        --no-traps) TRAPS=0; shift ;;
         *) die "unknown option: $1" ;;
     esac
 done
 [ -n "$KEY" ] || [ "$UNINSTALL" = 1 ] ||
-    die "usage: install.sh --key <install key> [--tags a,b] [--no-logs] [--no-autoconfig] | --uninstall [--keep-config]"
+    die "usage: install.sh --key <install key> [--tags a,b] [--no-logs] [--no-autoconfig] [--traps] | --uninstall [--keep-config]"
 
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case "$os" in
@@ -242,7 +248,14 @@ SENTINEL_README
 }
 
 install_systemd() {
-    cat >/etc/systemd/system/$SERVICE.service <<EOF
+    unit=/etc/systemd/system/$SERVICE.service
+    # Keep an earlier --traps unless told otherwise.
+    if [ -z "$TRAPS" ] && grep -q CAP_NET_BIND_SERVICE "$unit" 2>/dev/null; then TRAPS=1; fi
+    caps=""
+    [ "$TRAPS" = 1 ] && caps="# SNMP traps on UDP 162 (install.sh --traps): this one capability only.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE"
+    cat >"$unit" <<EOF
 [Unit]
 Description=Sentinel monitoring agent
 After=network-online.target
@@ -257,6 +270,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=$STATE_DIR
+$caps
 
 [Install]
 WantedBy=multi-user.target
@@ -316,6 +330,9 @@ EOF
 }
 
 install_openrc() {
+    if [ -z "$TRAPS" ] && grep -q cap_net_bind_service /etc/init.d/$SERVICE 2>/dev/null; then TRAPS=1; fi
+    caps=""
+    [ "$TRAPS" = 1 ] && caps='capabilities="^cap_net_bind_service"'
     cat >/etc/init.d/$SERVICE <<EOF
 #!/sbin/openrc-run
 description="Sentinel monitoring agent"
@@ -324,6 +341,7 @@ command_args="run --state-dir $STATE_DIR"
 command_user="$SERVICE_USER"
 command_background=true
 pidfile="/run/$SERVICE.pid"
+$caps
 depend() { need net; }
 EOF
     chmod 0755 /etc/init.d/$SERVICE
@@ -469,3 +487,10 @@ case "$os" in
 esac
 
 echo "Sentinel agent installed and running."
+if [ "$TRAPS" = 1 ]; then
+    case "$os" in
+        freebsd | openbsd | netbsd)
+            echo "SNMP traps: on $os the agent can't bind UDP 162 unprivileged; point devices at UDP 1162." ;;
+        *) echo "SNMP traps: received on UDP 162 (open it in this server's firewall for your devices)." ;;
+    esac
+fi

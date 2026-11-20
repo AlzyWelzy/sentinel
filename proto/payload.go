@@ -255,6 +255,18 @@ type Batch struct {
 	Network []NetworkPoll `json:"network,omitempty"`
 	// Progress of network discoveries.
 	Discoveries []DiscoveryResult `json:"discoveries,omitempty"`
+	// SNMP traps received from the devices this agent polls.
+	Traps []Trap `json:"traps,omitempty"`
+}
+
+// Trap is one SNMP trap or inform. The community or v3 credentials it came
+// with were checked by the agent and are never sent on.
+type Trap struct {
+	TimeMs   int64             `json:"ts"`
+	Source   string            `json:"source"`  // the sender's IP address
+	Version  string            `json:"version"` // 1, 2c, 3
+	OID      string            `json:"oid"`     // snmpTrapOID (v1 traps converted per RFC 3584)
+	Varbinds map[string]string `json:"varbinds,omitempty"`
 }
 
 // NetworkPoll is what one poll of a device found besides its samples.
@@ -330,6 +342,9 @@ type HostMeta struct {
 	MACs        []string `json:"macs,omitempty"`
 	CPUCores    int      `json:"cpu_cores,omitempty"`
 	MemoryBytes uint64   `json:"memory_bytes,omitempty"`
+	// TrapPort is the UDP port the agent receives SNMP traps on (162, or
+	// 1162 without the right to bind it); 0 when it isn't listening.
+	TrapPort int `json:"trap_port,omitempty"`
 }
 
 // LogsRequest carries new log lines from the files and journal the server's

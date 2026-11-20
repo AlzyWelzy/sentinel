@@ -36,6 +36,101 @@ import {
 } from "@/lib/network";
 import { unwrap } from "@/lib/queries";
 
+type Effect = { label: string; tone: "bad" | "ok" | "idle" };
+const RECORDED: Effect = { label: "Recorded", tone: "idle" };
+const EFFECT: Record<string, Effect> = {
+  open: { label: "Opens alert", tone: "bad" },
+  clear: { label: "Clears alert", tone: "ok" },
+};
+
+/** SNMP traps from this device: what each one did, newest first. */
+function TrapEvents({
+  id,
+  poller,
+  port,
+}: {
+  id: string;
+  poller: string | null | undefined;
+  port: number | null | undefined;
+}) {
+  const traps = useQuery({
+    queryKey: ["network", "traps", id],
+    refetchInterval: 30_000,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/network/traps", {
+          params: { query: { device_id: id, limit: 100 } },
+        }),
+      ),
+  });
+  const rows = traps.data ?? [];
+  return (
+    <Card title={`Events (SNMP traps) · ${rows.length}`} pad={false}>
+      {traps.isLoading ? (
+        <Loading />
+      ) : rows.length ? (
+        <Table>
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Event</th>
+              <th>Effect</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((t) => {
+              const effect = EFFECT[t.action] ?? RECORDED;
+              const detail = Object.entries(t.labels)
+                .map(([k, v]) => `${k} ${v}`)
+                .join(", ");
+              return (
+                <tr key={t.id}>
+                  <td className="whitespace-nowrap text-ink-2" title={dateTime(t.last_at)}>
+                    {ago(t.last_at)}
+                  </td>
+                  <td className="max-w-[32rem]">
+                    <p className="font-medium [overflow-wrap:anywhere]">
+                      {t.title}
+                      {t.repeats > 0 && (
+                        <span className="ml-2 font-mono text-xs text-ink-3">×{t.repeats + 1}</span>
+                      )}
+                    </p>
+                    {detail && (
+                      <p className="font-mono text-xs [overflow-wrap:anywhere] text-ink-3">
+                        {detail}
+                      </p>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <Badge tone={effect.tone}>{effect.label}</Badge>
+                    {t.rule_name && <p className="mt-1 text-xs text-ink-3">{t.rule_name}</p>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
+      ) : (
+        <p className="p-5 text-sm text-ink-2">
+          {port && poller ? (
+            <>
+              No traps yet. Point the device&apos;s SNMP traps at <b>{poller}</b>, UDP <b>{port}</b>
+              , with the same community or SNMPv3 user it&apos;s polled with. Traps with other
+              credentials are dropped.
+            </>
+          ) : (
+            <>
+              The poller isn&apos;t receiving traps. Reinstall its agent with{" "}
+              <code className="font-mono">--traps</code> to receive them on UDP 162, or update it:
+              without that permission it listens on 1162.
+            </>
+          )}
+        </p>
+      )}
+    </Card>
+  );
+}
+
 function Traffic({ id, interfaces }: { id: string; interfaces: Device["interfaces"] }) {
   const [range, setRange] = useState(() => presetRange("6h"));
   const [ifname, setIfname] = useState("");
@@ -578,6 +673,12 @@ function SNMPDetail({
               ["Object ID", d.system.object_id],
               ...Object.entries(d.inventory).map(([k, v]) => [k.replaceAll("_", " "), v]),
               ["Polled by", d.poller_hostname],
+              [
+                "Traps to",
+                d.poller_hostname && d.poller_trap_port
+                  ? `${d.poller_hostname}, UDP ${d.poller_trap_port}`
+                  : null,
+              ],
               ["Credential", d.credential_name],
               [
                 "Last poll",
@@ -635,6 +736,7 @@ function SNMPDetail({
           )}
         </Card>
       </div>
+      <TrapEvents id={d.host.id} poller={d.poller_hostname} port={d.poller_trap_port} />
     </>
   );
 }

@@ -1,7 +1,9 @@
 """Network devices: credentials, adding devices, pollers, topology."""
 
 import json
+import re
 import uuid
+from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -223,6 +225,35 @@ SHARED_CONDITION_KEYS = [
     "sensor_above_warning_threshold",
     "sophos_disk_almost_full",
     "sophos_memory_high",
+    "trap_ap_down",
+    "trap_auth_failure",
+    "trap_bgp_down",
+    "trap_bypass_mode",
+    "trap_conserve_mode",
+    "trap_cpu_high",
+    "trap_dhcp",
+    "trap_fan_failure",
+    "trap_faz_disconnected",
+    "trap_fortiswitch_down",
+    "trap_ha_failover",
+    "trap_ha_heartbeat",
+    "trap_ha_member_down",
+    "trap_inspection_bypassed",
+    "trap_ip_conflict",
+    "trap_ip_pool",
+    "trap_ips_attack",
+    "trap_lb_real_server_down",
+    "trap_link_down",
+    "trap_log_disk_low",
+    "trap_memory_low",
+    "trap_ospf_down",
+    "trap_power_supply",
+    "trap_restart",
+    "trap_security_level",
+    "trap_temperature_high",
+    "trap_virus",
+    "trap_voltage",
+    "trap_vpn_tunnel_down",
     "vpn_tunnel_down",
 ]
 
@@ -231,6 +262,19 @@ def test_condition_catalog_matches_the_alerter():
     from app.services.netconditions import CONDITIONS
 
     assert sorted(CONDITIONS) == SHARED_CONDITION_KEYS
+
+
+def test_trap_conditions_match_the_go_catalog():
+    """Names, severities and which are recommended, as in netmon/traps."""
+    from app.services.netconditions import TRAPS
+
+    go = (Path(__file__).resolve().parents[2] / "netmon" / "traps" / "catalog.go").read_text()
+    rules = {}
+    for m in re.finditer(
+        r'\{Key: "(trap_\w+)", Name: "([^"]+)", Severity: "(\w+)"(.*?)Help:', go, re.S
+    ):
+        rules[m.group(1)] = (m.group(2), m.group(3), "Off: true" not in m.group(4))
+    assert {c.key: (c.name, c.severity, c.recommended) for c in TRAPS} == rules
 
 
 async def test_network_rules_arrive_with_the_first_device(alice: User):
@@ -246,7 +290,8 @@ async def test_network_rules_arrive_with_the_first_device(alice: User):
     rules = (await alice.request("GET", "/v1/alert-rules")).json()
     names = network_rules(rules)
     assert "Interface down" in names and "Interface utilisation above 90%" in names
-    assert "VPN tunnel down" in names and "Proxmox storage above 90%" in names and len(names) == 26
+    assert "VPN tunnel down" in names and "Proxmox storage above 90%" in names and len(names) == 50
+    assert "VPN tunnel down (trap)" in names and "IPS attack detected" not in names
     # Deleting one sticks: the next device doesn't bring it back.
     down = next(r for r in rules if r["name"] == "Interface down")
     assert (await alice.request("DELETE", f"/v1/alert-rules/{down['id']}")).status_code == 204
@@ -627,3 +672,50 @@ async def test_a_server_depends_on_the_one_switch_it_is_cabled_to(alice: User):
         )
     await topology_everywhere()
     assert await upstream(web) == (None, False)
+
+
+async def test_traps_are_listed_per_device_and_stay_in_the_organisation(alice: User, bob: User):
+    cred = (await alice.request("POST", "/v1/network/credentials", json=V2)).json()
+    tenant = await alice.tenant_id()
+    poller = await insert_host(tenant, "poller")
+    dev = (
+        await alice.request(
+            "POST",
+            "/v1/network/devices",
+            json={
+                "credential_id": cred["id"],
+                "poller_host_id": str(poller),
+                "addresses": ["10.9.0.1"],
+            },
+        )
+    ).json()["created"][0]["id"]
+    async with ServiceSession() as db, db.begin():
+        for host, action, rule, title in (
+            (dev, "open", "trap_vpn_tunnel_down", "VPN tunnel is down"),
+            (dev, "event", None, "IPS package updated"),
+            (None, "event", None, "Trap 1.2.3"),  # a sender that isn't a device
+        ):
+            await db.execute(
+                text(
+                    "INSERT INTO network_traps (tenant_id, host_id, poller_host_id, source, oid,"
+                    " name, title, action, rule, labels, received_at, last_at)"
+                    " VALUES (:t, :h, :p, '10.9.0.1', '1.2', 'x', :title, :a, :r,"
+                    ' \'{"tunnel": "to-branch"}\', now(), now())'
+                ),
+                {"t": tenant, "h": host, "p": poller, "title": title, "a": action, "r": rule},
+            )
+        await db.execute(text("UPDATE hosts SET trap_port = 1162 WHERE id = :p"), {"p": poller})
+
+    everything = (await alice.request("GET", "/v1/network/traps")).json()
+    assert len(everything) == 3 and {t["hostname"] for t in everything} == {None, "10.9.0.1"}
+    mine = (await alice.request("GET", f"/v1/network/traps?device_id={dev}")).json()
+    assert len(mine) == 2
+    alerting = (await alice.request("GET", "/v1/network/traps?alerting=true")).json()
+    assert [t["rule_name"] for t in alerting] == ["VPN tunnel down (trap)"]
+    assert alerting[0]["labels"] == {"tunnel": "to-branch"}
+    assert (await bob.request("GET", "/v1/network/traps")).json() == []
+
+    device = (await alice.request("GET", f"/v1/network/devices/{dev}")).json()
+    assert device["poller_trap_port"] == 1162
+    pollers = (await alice.request("GET", "/v1/network/pollers")).json()
+    assert [p["trap_port"] for p in pollers if p["hostname"] == "poller"] == [1162]

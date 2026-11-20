@@ -14,9 +14,14 @@ var sharedConditionKeys = []string{
 	"bgp_peer_flapped", "bgp_peer_not_established", "device_rebooted", "fortigate_cpu_high", "fortigate_memory_high",
 	"ha_out_of_sync", "hardware_sensor_alarm", "interface_down", "interface_errors", "interface_utilisation",
 	"lag_member_down", "optic_receive_power_low", "ospf_neighbour_not_full", "proxmox_guest_stopped", "proxmox_node_cpu",
-	"proxmox_node_memory", "proxmox_node_offline", "proxmox_quorum_lost", "proxmox_storage_full", "sd_wan_latency_high", "sd_wan_link_dead",
-	"sd_wan_packet_loss", "sensor_above_critical_threshold", "sensor_above_warning_threshold", "sophos_disk_almost_full",
-	"sophos_memory_high", "vpn_tunnel_down",
+	"proxmox_node_memory", "proxmox_node_offline", "proxmox_quorum_lost", "proxmox_storage_full", "sd_wan_latency_high",
+	"sd_wan_link_dead", "sd_wan_packet_loss", "sensor_above_critical_threshold", "sensor_above_warning_threshold",
+	"sophos_disk_almost_full", "sophos_memory_high", "trap_ap_down", "trap_auth_failure", "trap_bgp_down",
+	"trap_bypass_mode", "trap_conserve_mode", "trap_cpu_high", "trap_dhcp", "trap_fan_failure", "trap_faz_disconnected",
+	"trap_fortiswitch_down", "trap_ha_failover", "trap_ha_heartbeat", "trap_ha_member_down", "trap_inspection_bypassed",
+	"trap_ip_conflict", "trap_ip_pool", "trap_ips_attack", "trap_lb_real_server_down", "trap_link_down",
+	"trap_log_disk_low", "trap_memory_low", "trap_ospf_down", "trap_power_supply", "trap_restart", "trap_security_level",
+	"trap_temperature_high", "trap_virus", "trap_voltage", "trap_vpn_tunnel_down", "vpn_tunnel_down",
 }
 
 func TestNetworkCatalogMatchesTheAPI(t *testing.T) {

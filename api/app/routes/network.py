@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
-from app.models import Host, NetworkInterface, NetworkLink, SNMPCredential
+from app.models import Host, NetworkInterface, NetworkLink, NetworkTrap, SNMPCredential
 from app.routes.v1 import HostOut, _get_host, _hosts_out
 from app.services import devicesecrets, heartbeats, metrics
 from app.tenancy import Tenant, TenantContext
@@ -296,6 +296,7 @@ class PollerOut(BaseModel):
     os: str | None
     agent_version: str | None
     devices: int
+    trap_port: int | None  # UDP port it receives traps on; None: not listening
 
 
 @router.get("/pollers")
@@ -326,6 +327,7 @@ async def list_pollers(t: Tenant) -> list[PollerOut]:
             os=h.os,
             agent_version=h.agent_version,
             devices=counts.get(h.id, 0),
+            trap_port=h.trap_port,
         )
         for h in hosts
     ]
@@ -604,6 +606,7 @@ class DeviceOut(BaseModel):
     credential_id: uuid.UUID | None
     credential_name: str | None
     poller_hostname: str | None
+    poller_trap_port: int | None
     interfaces: list[InterfaceOut]
     links: list[LinkOut]
 
@@ -713,6 +716,11 @@ async def get_device(device_id: uuid.UUID, t: Tenant) -> DeviceOut:
         credential_id=h.snmp_credential_id,
         credential_name=cred,
         poller_hostname=names.get(h.poller_host_id) if h.poller_host_id else None,
+        poller_trap_port=(
+            await t.db.scalar(select(Host.trap_port).where(Host.id == h.poller_host_id))
+            if h.poller_host_id
+            else None
+        ),
         interfaces=interfaces,
         links=[
             LinkOut(
@@ -1055,6 +1063,72 @@ async def list_conditions(t: Tenant) -> list[ConditionOut]:
             key=c.key, name=c.name, unit=c.unit, default=c.default, about=c.about, vendor=c.vendor
         )
         for c in CONDITIONS.values()
+    ]
+
+
+# ── SNMP traps ───────────────────────────────────────────────────────────────
+
+
+class TrapOut(BaseModel):
+    id: int
+    host_id: uuid.UUID | None
+    hostname: str | None  # the device; None for a sender that isn't one
+    source: str
+    version: str
+    name: str
+    title: str
+    action: str  # event, open, clear
+    rule: str | None
+    rule_name: str | None
+    severity: str
+    labels: dict[str, str]
+    repeats: int
+    received_at: datetime
+    last_at: datetime
+
+
+@router.get("/traps")
+async def list_traps(
+    t: Tenant,
+    device_id: uuid.UUID | None = None,
+    alerting: Annotated[bool, Query(description="only traps that open or close an alert")] = False,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> list[TrapOut]:
+    """Recent traps (30 days), newest first: for one device, or all of them,
+    including senders that aren't devices (recorded, never alerting)."""
+    from app.services.netconditions import CONDITIONS
+
+    q = (
+        select(NetworkTrap, Host.hostname)
+        .outerjoin(Host, Host.id == NetworkTrap.host_id)
+        .where(NetworkTrap.tenant_id == t.tenant_id)
+        .order_by(NetworkTrap.last_at.desc(), NetworkTrap.id.desc())
+        .limit(limit)
+    )
+    if device_id is not None:
+        q = q.where(NetworkTrap.host_id == device_id)
+    if alerting:
+        q = q.where(NetworkTrap.action != "event")
+    rows = (await t.db.execute(q)).all()
+    return [
+        TrapOut(
+            id=tr.id,
+            host_id=tr.host_id,
+            hostname=hostname,
+            source=tr.source,
+            version=tr.version,
+            name=tr.name,
+            title=tr.title,
+            action=tr.action,
+            rule=tr.rule,
+            rule_name=CONDITIONS[tr.rule].name if tr.rule in CONDITIONS else None,
+            severity=tr.severity,
+            labels={str(k): str(v) for k, v in (tr.labels or {}).items()},
+            repeats=tr.repeats,
+            received_at=tr.received_at,
+            last_at=tr.last_at,
+        )
+        for tr, hostname in rows
     ]
 
 

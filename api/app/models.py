@@ -110,6 +110,7 @@ class Host(TenantScoped):
     )
     ip_addresses: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
     macs: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    trap_port: Mapped[int | None] = mapped_column(Integer)  # where this agent receives traps
     public_ip: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     notes_updated_at: Mapped[datetime | None]
@@ -492,6 +493,34 @@ class NetworkInterface(TenantScoped):
     oper_status: Mapped[int | None]
     billing_tag: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class NetworkTrap(TenantScoped):
+    """An SNMP trap a poller received, classified by ingest (netmon/traps)."""
+
+    __tablename__ = "network_traps"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    host_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("hosts.id", ondelete="CASCADE")
+    )
+    poller_host_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("hosts.id", ondelete="SET NULL")
+    )
+    source: Mapped[str] = mapped_column(Text)
+    version: Mapped[str] = mapped_column(Text, default="")
+    oid: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
+    action: Mapped[str] = mapped_column(Text)
+    rule: Mapped[str | None] = mapped_column(Text)
+    identity: Mapped[str] = mapped_column(Text, default="")
+    severity: Mapped[str] = mapped_column(Text, default="info")
+    labels: Mapped[dict] = mapped_column(JSONB, default=dict)
+    varbinds: Mapped[dict] = mapped_column(JSONB, default=dict)
+    repeats: Mapped[int] = mapped_column(Integer, default=0)
+    received_at: Mapped[datetime] = mapped_column()
+    last_at: Mapped[datetime] = mapped_column()
 
 
 class NetworkLink(TenantScoped):

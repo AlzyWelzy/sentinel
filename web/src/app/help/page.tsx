@@ -91,6 +91,13 @@ export default function Help() {
           added with your first device. Give customer ports a billing tag to see their
           95th-percentile bandwidth.
         </li>
+        <li>
+          <b>SNMP traps</b> tell you about VPN tunnels, HA failovers, power supplies and BGP
+          sessions the moment they change. Point the device&apos;s traps at the server that polls
+          it, with the same community or SNMPv3 user it&apos;s polled with: UDP 162 if the agent was
+          installed with <code>--traps</code>, otherwise UDP 1162. The device page shows the port
+          and every trap that arrives.
+        </li>
       </ul>
 
       <h2>5. Work as a team</h2>

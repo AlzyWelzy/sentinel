@@ -1113,6 +1113,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/network/traps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Traps
+         * @description Recent traps (30 days), newest first: for one device, or all of them,
+         *     including senders that aren't devices (recorded, never alerting).
+         */
+        get: operations["list_traps_v1_network_traps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/network/bandwidth/tags": {
         parameters: {
             query?: never;
@@ -4212,6 +4233,8 @@ export interface components {
             credential_name: string | null;
             /** Poller Hostname */
             poller_hostname: string | null;
+            /** Poller Trap Port */
+            poller_trap_port: number | null;
             /** Interfaces */
             interfaces: components["schemas"]["InterfaceOut"][];
             /** Links */
@@ -5538,6 +5561,8 @@ export interface components {
             agent_version: string | null;
             /** Devices */
             devices: number;
+            /** Trap Port */
+            trap_port: number | null;
         };
         /** ProbeIn */
         ProbeIn: {
@@ -6823,6 +6848,47 @@ export interface components {
             series: {
                 [key: string]: unknown;
             }[];
+        };
+        /** TrapOut */
+        TrapOut: {
+            /** Id */
+            id: number;
+            /** Host Id */
+            host_id: string | null;
+            /** Hostname */
+            hostname: string | null;
+            /** Source */
+            source: string;
+            /** Version */
+            version: string;
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Action */
+            action: string;
+            /** Rule */
+            rule: string | null;
+            /** Rule Name */
+            rule_name: string | null;
+            /** Severity */
+            severity: string;
+            /** Labels */
+            labels: {
+                [key: string]: string;
+            };
+            /** Repeats */
+            repeats: number;
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+            /**
+             * Last At
+             * Format: date-time
+             */
+            last_at: string;
         };
         /** UpdateIn */
         UpdateIn: {
@@ -9130,6 +9196,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConditionOut"][];
+                };
+            };
+        };
+    };
+    list_traps_v1_network_traps_get: {
+        parameters: {
+            query?: {
+                device_id?: string | null;
+                /** @description only traps that open or close an alert */
+                alerting?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrapOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -190,6 +190,10 @@ async def cleanup(now: datetime) -> None:
             text("DELETE FROM audit_events WHERE created_at < :t"),
             {"t": now - timedelta(days=400)},
         )
+        await db.execute(
+            text("DELETE FROM network_traps WHERE last_at < :t"),
+            {"t": now - timedelta(days=30)},
+        )
 
 
 def digest_due(t: Tenant, now: datetime) -> bool:

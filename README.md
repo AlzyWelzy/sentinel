@@ -288,6 +288,19 @@ site polls it (its *poller*) and reports for it, through its own spool.
   node CPU/memory and full storage. They arrive, with sensible timings,
   when the first device is added. A silent device is "unreachable", with
   the poller's reason (timeout, wrong community, refused token).
+- **SNMP traps:** the poller receives traps (v1, v2c, v3 and informs) from
+  the devices it polls, accepting only their own community or v3 user. They
+  ride the agent's spool like metrics. UDP 162 needs `install.sh --traps`
+  (systemd and OpenRC grant the service CAP_NET_BIND_SERVICE only);
+  otherwise the agent listens on 1162 (`SENTINEL_TRAP_PORT` picks another,
+  0 turns traps off). A catalog (`netmon/traps`) maps FortiGate events
+  (VPN tunnel, HA, power, fans, conserve mode, IPS, AP and FortiSwitch
+  down…) and the standard ones (BGP, OSPF, link, restart) to 29 network
+  conditions: paired traps open and close an alert, one-off traps clear
+  after a while without a repeat, and the alert's detail names every open
+  tunnel or peer. Every trap shows on the device's Events (30 days); a
+  flood is one row with a count, and a sender that isn't a device never
+  alerts.
 - **Bandwidth:** tag ports with a customer or service (*billing tag*);
   Network › Bandwidth gives the 95th percentile of 5-minute rates (ports
   summed per sample, missing samples skipped, coverage shown), per month in

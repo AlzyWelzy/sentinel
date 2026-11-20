@@ -3071,6 +3071,90 @@
     ]
    }
   },
+  "/v1/network/traps": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "List Traps",
+    "description": "Recent traps (30 days), newest first: for one device, or all of them,\nincluding senders that aren't devices (recorded, never alerting).",
+    "operationId": "list_traps_v1_network_traps_get",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "device_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "uuid"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Device Id"
+      }
+     },
+     {
+      "name": "alerting",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "description": "only traps that open or close an alert",
+       "default": false,
+       "title": "Alerting"
+      },
+      "description": "only traps that open or close an alert"
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 500,
+       "minimum": 1,
+       "default": 100,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/TrapOut"
+         },
+         "title": "Response List Traps V1 Network Traps Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/v1/network/bandwidth/tags": {
    "get": {
     "tags": [
@@ -13871,6 +13955,17 @@
       ],
       "title": "Poller Hostname"
      },
+     "poller_trap_port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Poller Trap Port"
+     },
      "interfaces": {
       "items": {
        "$ref": "#/components/schemas/InterfaceOut"
@@ -13899,6 +13994,7 @@
      "credential_id",
      "credential_name",
      "poller_hostname",
+     "poller_trap_port",
      "interfaces",
      "links"
     ],
@@ -17995,6 +18091,17 @@
      "devices": {
       "type": "integer",
       "title": "Devices"
+     },
+     "trap_port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Trap Port"
      }
     },
     "type": "object",
@@ -18004,7 +18111,8 @@
      "online",
      "os",
      "agent_version",
-     "devices"
+     "devices",
+     "trap_port"
     ],
     "title": "PollerOut"
    },
@@ -21703,6 +21811,123 @@
      "series"
     ],
     "title": "TrafficOut"
+   },
+   "TrapOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "host_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Host Id"
+     },
+     "hostname": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Hostname"
+     },
+     "source": {
+      "type": "string",
+      "title": "Source"
+     },
+     "version": {
+      "type": "string",
+      "title": "Version"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "action": {
+      "type": "string",
+      "title": "Action"
+     },
+     "rule": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rule"
+     },
+     "rule_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rule Name"
+     },
+     "severity": {
+      "type": "string",
+      "title": "Severity"
+     },
+     "labels": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object",
+      "title": "Labels"
+     },
+     "repeats": {
+      "type": "integer",
+      "title": "Repeats"
+     },
+     "received_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Received At"
+     },
+     "last_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Last At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "host_id",
+     "hostname",
+     "source",
+     "version",
+     "name",
+     "title",
+     "action",
+     "rule",
+     "rule_name",
+     "severity",
+     "labels",
+     "repeats",
+     "received_at",
+     "last_at"
+    ],
+    "title": "TrapOut"
    },
    "UpdateIn": {
     "properties": {

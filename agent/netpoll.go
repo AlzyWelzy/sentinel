@@ -46,6 +46,8 @@ type netPoller struct {
 	log  *slog.Logger
 	sem  chan struct{}
 
+	traps *trapReceiver // SNMP traps from the polled devices
+
 	mu         sync.Mutex
 	running    map[string]*netDevice
 	discovered map[string]bool // discoveries started (each runs once)
@@ -72,12 +74,14 @@ func newNetPoller(sink func(proto.Batch), log *slog.Logger) (*netPoller, error) 
 		}
 		sink(b) // the poll's state rides with the last part
 	}
-	return &netPoller{reg: reg, sink: split, log: log, sem: make(chan struct{}, netConcurrency), running: map[string]*netDevice{}}, nil
+	return &netPoller{reg: reg, sink: split, log: log, sem: make(chan struct{}, netConcurrency), running: map[string]*netDevice{},
+		traps: newTrapReceiver(sink, log)}, nil
 }
 
 // set starts polling new devices, stops removed ones and restarts changed
 // ones (address, credential or pinned profile).
 func (n *netPoller) set(ctx context.Context, devices []proto.NetworkDevice) {
+	n.traps.set(ctx, devices)
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	want := map[string]bool{}

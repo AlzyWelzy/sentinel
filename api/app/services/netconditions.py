@@ -22,6 +22,7 @@ class Condition:
     vendor: str = ""
     severity: str = "warning"
     duration_seconds: int = 120
+    recommended: bool = True  # added with an organisation's first device
 
 
 BUILTIN = [
@@ -105,6 +106,276 @@ BUILTIN = [
     ),
 ]
 
+# SNMP trap conditions (netmon/traps/catalog.go): a device's trap opens the
+# alert and its clearing trap (or time, for one-off traps) closes it. Keep in
+# step with the Go list.
+TRAPS = [
+    Condition(
+        "trap_vpn_tunnel_down",
+        "VPN tunnel down (trap)",
+        about='FortiGate "VPN tunnel is down"; closes on "VPN tunnel is up".',
+        vendor="SNMP trap",
+        severity="critical",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_ha_member_down",
+        "HA cluster member down",
+        about='FortiGate "HA cluster member down"; closes on "HA cluster member up".',
+        vendor="SNMP trap",
+        severity="critical",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_ha_failover",
+        "HA failover",
+        about='FortiGate "HA cluster status change": the primary unit changed.',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_ha_heartbeat",
+        "HA heartbeat failure",
+        about='FortiGate "HA heartbeat interface failure".',
+        vendor="SNMP trap",
+        severity="critical",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_ap_down",
+        "Wireless AP down",
+        about='FortiGate "AP is down"; closes on "AP is up".',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_fortiswitch_down",
+        "FortiSwitch down",
+        about='FortiGate "FortiSwitch controller session is down"; closes on "… is up".',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_bgp_down",
+        "BGP session down (trap)",
+        about="BGP4-MIB bgpBackwardTransition; closes on bgpEstablished.",
+        vendor="SNMP trap",
+        severity="critical",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_ospf_down",
+        "OSPF neighbour down (trap)",
+        about="OSPF-MIB neighbour state change (normal and virtual);"
+        " closes when the neighbour is Full again.",
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_lb_real_server_down",
+        "Load balancer real server down",
+        about='FortiGate "Load balance real-server is down" (FortiOS sends no "up" trap).',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_power_supply",
+        "Power supply failure",
+        about="FortiGate power-supply event; closes when the unit reports the supply restored.",
+        vendor="SNMP trap",
+        severity="critical",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_fan_failure",
+        "Fan failure",
+        about="FortiGate fan failure.",
+        vendor="SNMP trap",
+        severity="critical",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_temperature_high",
+        "Temperature too high",
+        about='FortiGate "snmp-event::temperature-high".',
+        vendor="SNMP trap",
+        severity="critical",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_voltage",
+        "Voltage out of range",
+        about='FortiGate "snmp-event::voltage-alert".',
+        vendor="SNMP trap",
+        severity="critical",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_bypass_mode",
+        "Interface bypass mode",
+        about="FortiGate bypass mode (traffic isn't inspected); closes when it leaves bypass mode.",
+        vendor="SNMP trap",
+        severity="critical",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_cpu_high",
+        "CPU usage too high (trap)",
+        about='FortiGate "CPU usage too high" and "Per CPU usage is high".',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_memory_low",
+        "Memory low (trap)",
+        about='FortiGate "Available memory is low".',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_log_disk_low",
+        "Log disk space low",
+        about='FortiGate "Available log space is low".',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_conserve_mode",
+        "Conserve mode",
+        about='FortiGate "AV system enters conserve mode" (memory exhausted).',
+        vendor="SNMP trap",
+        severity="critical",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_inspection_bypassed",
+        "Inspection bypassed",
+        about='FortiGate "AV bypass happens" and "IPS network buffer is full" (fail-open).',
+        vendor="SNMP trap",
+        severity="critical",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_faz_disconnected",
+        "FortiAnalyzer disconnected",
+        about='FortiGate "Disconnected from FortiAnalyzer".',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_dhcp",
+        "DHCP problem",
+        about='FortiGate "DHCP addresses at limit" (also IP conflicts and NAKs).',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_ip_pool",
+        "IP pool usage high",
+        about='FortiGate "About IP pool usage"; closes on its clear trap.',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_ip_conflict",
+        "IP address conflict",
+        about='FortiGate "snmp-event::interface" (IP conflict).',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_restart",
+        "Device restarted (trap)",
+        about="coldStart / warmStart. Polling also notices reboots.",
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=True,
+    ),
+    Condition(
+        "trap_auth_failure",
+        "SNMP authentication failure",
+        about="authenticationFailure. Often scanners; not recommended by default.",
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=False,
+    ),
+    Condition(
+        "trap_link_down",
+        "Interface down (trap)",
+        about='linkDown, closes on linkUp. The polled "Interface down" condition'
+        " covers this without alarms from unused ports.",
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=False,
+    ),
+    Condition(
+        "trap_ips_attack",
+        "IPS attack detected",
+        about='FortiGate "IPS detected an attack / an anomaly". Very frequent on'
+        " busy firewalls; always recorded as events.",
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=False,
+    ),
+    Condition(
+        "trap_virus",
+        "Virus detected",
+        about='FortiGate "AV detected virus". Always recorded as events.',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=False,
+    ),
+    Condition(
+        "trap_security_level",
+        "Security level changed",
+        about='FortiGate "snmp-event::security_level_change".',
+        vendor="SNMP trap",
+        severity="warning",
+        duration_seconds=0,
+        recommended=False,
+    ),
+]
+
 
 def _seconds(value: str | None, default: int = 120) -> int:
     m = re.fullmatch(r"(\d+)([smh])", (value or "").strip())
@@ -128,7 +399,7 @@ def _profiles_dir() -> Path:
 
 
 def load() -> dict[str, Condition]:
-    out = {c.key: c for c in BUILTIN}
+    out = {c.key: c for c in BUILTIN + TRAPS}
     # Concrete profiles in name order, as the alerter does; mixin alerts
     # (_routing) count once.
     raw = {}
@@ -204,7 +475,9 @@ def starter_rules() -> list[dict]:
                     "threshold": c.default,
                 }
             )
-        elif c.vendor:  # the profiles' own alerts: only fire on that vendor's gear
+        elif (
+            c.vendor and c.recommended
+        ):  # profile alerts and traps: only fire on gear that has them
             rules.append(
                 {
                     "name": c.name,

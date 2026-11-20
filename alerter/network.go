@@ -15,9 +15,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/AlzyWelzy/sentinel/netmon/profile"
 	"github.com/AlzyWelzy/sentinel/netmon/profiles"
+	"github.com/AlzyWelzy/sentinel/netmon/traps"
 )
 
 type netCondition struct {
@@ -26,6 +28,9 @@ type netCondition struct {
 	Expr  string // %[1]g is the rule's threshold, when Unit isn't ""
 	Unit  string // the threshold's unit; "" means it takes none
 	About string // what the series' labels name, for the detail line
+	// Trap: driven by SNMP traps (network_traps), not metrics.
+	Trap        bool
+	ClearsAfter time.Duration
 }
 
 var builtinNetConditions = []netCondition{
@@ -90,6 +95,9 @@ func networkConditions() map[string]netCondition {
 		for _, c := range builtinNetConditions {
 			netCatalog[c.Key] = c
 		}
+		for _, r := range traps.Rules {
+			netCatalog[r.Key] = netCondition{Key: r.Key, Name: r.Name, Trap: true, ClearsAfter: r.ClearsAfter}
+		}
 		reg, err := profile.Load(profiles.FS)
 		if err != nil {
 			return
@@ -113,6 +121,9 @@ func networkExpr(r rule) (string, netCondition, error) {
 	if !ok {
 		return "", c, fmt.Errorf("unknown network condition %q", r.Target)
 	}
+	if c.Trap {
+		return "", c, nil
+	}
 	if c.Unit != "" {
 		return fmt.Sprintf(c.Expr, r.Threshold), c, nil
 	}
@@ -122,9 +133,12 @@ func networkExpr(r rule) (string, netCondition, error) {
 // networkObservations evaluates a network rule for the devices it covers.
 // Servers in its scope (an "all servers" rule) are left without data.
 func (e *evaluator) networkObservations(ctx context.Context, r rule, hosts []host) (map[string]observation, error) {
-	expr, _, err := networkExpr(r)
+	expr, c, err := networkExpr(r)
 	if err != nil {
 		return nil, err
+	}
+	if c.Trap {
+		return e.trapObservations(ctx, r, c, hosts)
 	}
 	series, err := e.querySeries(ctx, r.TenantID, expr)
 	if err != nil {
@@ -151,9 +165,12 @@ func (e *evaluator) networkObservations(ctx context.Context, r rule, hosts []hos
 // networkDetail names what a network alert is about on this device: the
 // ports, peers, tunnels or sensors whose series matched, five at most.
 func (e *evaluator) networkDetail(ctx context.Context, r rule, h host) string {
-	expr, _, err := networkExpr(r)
+	expr, c, err := networkExpr(r)
 	if err != nil {
 		return ""
+	}
+	if c.Trap {
+		return e.trapDetail(ctx, r, c, h)
 	}
 	series, err := e.querySeries(ctx, r.TenantID, expr)
 	if err != nil {
@@ -179,6 +196,81 @@ func (e *evaluator) networkDetail(ctx context.Context, r rule, h host) string {
 		}
 		parts = append(parts, p)
 	}
+	sort.Strings(parts)
+	more := ""
+	if len(parts) > 5 {
+		more = fmt.Sprintf(" (and %d more)", len(parts)-5)
+		parts = parts[:5]
+	}
+	return strings.Join(parts, "; ") + more
+}
+
+// openTraps are a device's open trap identities for one rule: the latest
+// trap per identity is an "open" one, and (for traps that clear themselves)
+// it came within ClearsAfter. Traps older than 30 days are gone.
+func (e *evaluator) openTraps(ctx context.Context, r rule, c netCondition, hostIDs []string) (map[string][]string, error) {
+	rows, err := e.store.pool.Query(ctx, `
+		SELECT host_id::text, identity, labels, action, last_at
+		  FROM (SELECT DISTINCT ON (host_id, identity) host_id, identity, labels, action, last_at
+		          FROM network_traps
+		         WHERE tenant_id = $1 AND rule = $2 AND host_id = ANY ($3::uuid[])
+		         ORDER BY host_id, identity, last_at DESC, id DESC) latest
+		 WHERE action = 'open'`, r.TenantID, c.Key, hostIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	now := time.Now()
+	for rows.Next() {
+		var host, identity string
+		var labels map[string]string
+		var action string
+		var at time.Time
+		if err := rows.Scan(&host, &identity, &labels, &action, &at); err != nil {
+			return nil, err
+		}
+		if c.ClearsAfter > 0 && now.Sub(at) >= c.ClearsAfter {
+			continue
+		}
+		d := traps.Describe(labels)
+		if d == "" {
+			d = identity
+		}
+		out[host] = append(out[host], d)
+	}
+	return out, rows.Err()
+}
+
+func (e *evaluator) trapObservations(ctx context.Context, r rule, c netCondition, hosts []host) (map[string]observation, error) {
+	var ids []string
+	for _, h := range hosts {
+		if h.Network {
+			ids = append(ids, h.ID)
+		}
+	}
+	out := map[string]observation{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	open, err := e.openTraps(ctx, r, c, ids)
+	if err != nil {
+		return nil, err // never resolve on a failed query
+	}
+	for _, id := range ids {
+		n := len(open[id])
+		out[id] = observation{HasData: true, Breached: n > 0, Value: float64(n)}
+	}
+	return out, nil
+}
+
+// trapDetail names the open tunnels, peers or units, five at most.
+func (e *evaluator) trapDetail(ctx context.Context, r rule, c netCondition, h host) string {
+	open, err := e.openTraps(ctx, r, c, []string{h.ID})
+	if err != nil {
+		return ""
+	}
+	parts := open[h.ID]
 	sort.Strings(parts)
 	more := ""
 	if len(parts) > 5 {

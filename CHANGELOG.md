@@ -21,6 +21,13 @@ probing the running stack before going live. New deployments need
   OSPF, inventory and LLDP neighbours. A Network section lists devices,
   shows each one's traffic, interfaces and neighbours, and manages SNMP
   credentials (encrypted at rest; never shown again).
+- **SNMP traps.** The poller receives v1, v2c and v3 traps and informs
+  from the devices it polls (their own community or user only) and sends
+  them through its spool. FortiGate events and the standard BGP, OSPF,
+  link and restart traps open and close alerts that name the tunnel, peer
+  or unit; everything is listed on the device's Events. `install.sh
+  --traps` lets the agent bind UDP 162 (systemd, OpenRC); otherwise it
+  listens on 1162.
 - **Topology from LLDP.** Mark the core switches and every device's
   upstream is worked out from the cabling, so a failed switch is one
   alert and the devices behind it are affected; a device without an

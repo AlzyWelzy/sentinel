@@ -143,6 +143,7 @@ func (s *store) touchHost(ctx context.Context, hostID, agentVersion, publicIP st
 		       agent_version = $2,
 		       ip_addresses = coalesce($3::text[], h.ip_addresses),
 		       macs = coalesce($9::text[], h.macs),
+		       trap_port = CASE WHEN $10::boolean THEN nullif($11::integer, 0) ELSE h.trap_port END,
 		       public_ip = coalesce(nullif($8::text, ''), h.public_ip),
 		       cpu_cores = coalesce(nullif($4::integer, 0), h.cpu_cores),
 		       memory_bytes = coalesce(nullif($5::bigint, 0), h.memory_bytes),
@@ -157,8 +158,10 @@ func (s *store) touchHost(ctx context.Context, hostID, agentVersion, publicIP st
 		   AND (h.last_seen_at IS NULL
 		        OR h.last_seen_at < now() - interval '1 minute'
 		        OR h.agent_version IS DISTINCT FROM $2
+		        OR ($10::boolean AND h.trap_port IS DISTINCT FROM nullif($11::integer, 0))
 		        OR (nullif($8::text, '') IS NOT NULL AND h.public_ip IS DISTINCT FROM $8::text))`,
-		hostID, agentVersion, ips, m.CPUCores, int64(m.MemoryBytes), m.PlatformVersion, cleanHostname(m.Hostname), publicIP, macs)
+		hostID, agentVersion, ips, m.CPUCores, int64(m.MemoryBytes), m.PlatformVersion, cleanHostname(m.Hostname), publicIP, macs,
+		meta != nil, min(max(m.TrapPort, 0), 65535))
 	if err != nil || len(macs) == 0 || tag.RowsAffected() == 0 {
 		return err
 	}

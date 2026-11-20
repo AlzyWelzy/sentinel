@@ -6,6 +6,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY proto ./proto
+COPY netmon/traps ./netmon/traps
 COPY ingest ./ingest
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/ingest ./ingest
 
