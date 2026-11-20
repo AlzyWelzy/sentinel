@@ -103,6 +103,8 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 		obs, err = e.probeCheckObservations(ctx, r)
 	case r.Kind == "logs":
 		obs, err = e.logObservations(ctx, r, hosts)
+	case r.Kind == "network":
+		obs, err = e.networkObservations(ctx, r, hosts)
 	default:
 		obs, err = e.metricObservations(ctx, r)
 	}
@@ -164,6 +166,9 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 			}
 			if act == actionOpen && r.Kind == "custom" {
 				o.Detail = e.customDetail(ctx, r, h)
+			}
+			if act == actionOpen && r.Kind == "network" {
+				o.Detail = e.networkDetail(ctx, r, h)
 			}
 		}
 		msg := func(kind, incidentID string) message { return e.message(r, h, o, kind, incidentID) }
@@ -251,6 +256,9 @@ func (e *evaluator) probeCheckObservations(ctx context.Context, r rule) (map[str
 // run may already have replaced the current result), or for an uptime
 // check, every failing probe's.
 func (e *evaluator) checkDetail(ctx context.Context, r rule, h host) string {
+	if r.Kind == "host_down" && h.Network {
+		return cut(h.DeviceErr, 500) // what the poller saw: timeout, auth, unreachable
+	}
 	if r.Kind != "check" || r.Check == nil {
 		return ""
 	}
@@ -670,8 +678,13 @@ func describe(r rule, h host, o observation, resolved bool) (subject, condition 
 	}
 	switch r.Kind {
 	case "host_down":
-		condition = fmt.Sprintf("No data for %s", time.Duration(o.Value*float64(time.Second)).Round(time.Second))
+		silent := time.Duration(o.Value * float64(time.Second)).Round(time.Second)
+		condition = fmt.Sprintf("No data for %s", silent)
 		subject = pick(h.Hostname+" is not reporting", h.Hostname+" is reporting again")
+		if h.Network {
+			condition = fmt.Sprintf("No SNMP answer for %s", silent)
+			subject = pick(h.Hostname+" is unreachable", h.Hostname+" is reachable again")
+		}
 	case "process_down":
 		condition = fmt.Sprintf("%s: %d processes running", r.Target, int(o.Value))
 		subject = pick(fmt.Sprintf("Process %s is not running on %s", r.Target, h.Hostname),
@@ -729,6 +742,13 @@ func describe(r rule, h host, o observation, resolved bool) (subject, condition 
 		condition = fmt.Sprintf("%d matching log lines in %s (threshold %g)", int(o.Value), window, r.Threshold)
 		subject = pick(fmt.Sprintf("%s on %s", r.Name, h.Hostname),
 			fmt.Sprintf("%s on %s is quiet again", r.Name, h.Hostname))
+	case "network":
+		_, c, _ := networkExpr(r)
+		condition = c.Name
+		if c.Unit != "" {
+			condition = fmt.Sprintf("%s %.1f %s (threshold %g %s)", c.Name, o.Value, c.Unit, r.Threshold, c.Unit)
+		}
+		subject = pick(fmt.Sprintf("%s on %s", r.Name, h.Hostname), fmt.Sprintf("%s on %s", r.Name, h.Hostname))
 	case "custom":
 		condition = fmt.Sprintf("%s is %g (threshold %s %g)", r.Target, o.Value, r.Operator, r.Threshold)
 		subject = pick(fmt.Sprintf("%s on %s", r.Name, h.Hostname), fmt.Sprintf("%s on %s", r.Name, h.Hostname))

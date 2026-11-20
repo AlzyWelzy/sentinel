@@ -64,6 +64,8 @@ type host struct {
 	DependsOn *string
 	IsCheck   bool
 	Allowed   []string // actions the host's allow-list permits
+	Network   bool     // a device an agent polls over SNMP
+	DeviceErr string   // why its last poll failed
 }
 
 type channel struct {
@@ -133,10 +135,13 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 
 // hosts returns the hosts a rule covers: all of the tenant's, one, or those
 // with the rule's tag. Paused servers are left out: nothing about them is
-// evaluated or opened until they're resumed.
+// evaluated or opened until they're resumed. A network device without an
+// upstream of its own depends on the server that polls it, so a site's
+// poller going down is one alert, not one per device.
 func (s *store) hosts(ctx context.Context, r rule) ([]host, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, hostname, created_at, tags, depends_on_host_id, allowed_actions FROM hosts
+		SELECT id, hostname, created_at, tags, coalesce(depends_on_host_id, poller_host_id),
+		       allowed_actions, kind = 'network', coalesce(device_error, '') FROM hosts
 		 WHERE tenant_id = $1 AND revoked_at IS NULL AND paused_at IS NULL AND ($2::uuid IS NULL OR id = $2)
 		   AND ($3::text IS NULL OR $3 = ANY (tags))`,
 		r.TenantID, r.HostID, r.Tag)
@@ -148,13 +153,14 @@ func (s *store) hosts(ctx context.Context, r rule) ([]host, error) {
 
 func scanHost(row pgx.CollectableRow) (host, error) {
 	var h host
-	err := row.Scan(&h.ID, &h.Hostname, &h.CreatedAt, &h.Tags, &h.DependsOn, &h.Allowed)
+	err := row.Scan(&h.ID, &h.Hostname, &h.CreatedAt, &h.Tags, &h.DependsOn, &h.Allowed, &h.Network, &h.DeviceErr)
 	return h, err
 }
 
 func (s *store) host(ctx context.Context, tenantID, hostID string) (host, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, hostname, created_at, tags, depends_on_host_id, allowed_actions FROM hosts
+		SELECT id, hostname, created_at, tags, coalesce(depends_on_host_id, poller_host_id),
+		       allowed_actions, kind = 'network', coalesce(device_error, '') FROM hosts
 		 WHERE tenant_id = $1 AND id = $2`, tenantID, hostID)
 	if err != nil {
 		return host{}, err
