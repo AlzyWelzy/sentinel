@@ -164,6 +164,7 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - [x] Pulsegrid since the fork (v0.8.28-30): LVM volume groups and thin pools as disks, the clearer alert email (Sentinel's design, the organisation's timezone, the event's own time).
 - [x] SNMP devices (`netmon/`, Beacon's profile engine and recordings) polled by a site agent; devices are hosts with `kind = network`; credentials sealed with `CREDENTIALS_KEY`.
 - [x] LLDP topology with automatic upstreams toward core devices; a device without one depends on its poller.
+- [x] Servers on switch ports: agents report burned-in NIC MACs (`HostMeta.macs`), LLDP neighbours match them, and a server seen on one switch depends on it (not dual-homed servers, nor a poller on its own switch).
 - [x] Network rule kind with a catalog shared by the alerter (`alerter/network.go`) and the API (`services/netconditions.py`); a test on each side checks the keys match.
 - [x] 95th-percentile bandwidth per billing tag; Proxmox VE through its API; discovery of private ranges.
 - [ ] SNMP traps (needs a privileged UDP 162 listener next to the unprivileged agent), flows (sFlow/NetFlow), IPDR: not built. Beacon's console tickets and JWT sign-on don't apply.
@@ -171,14 +172,15 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 ### Verified end to end (dev stack, real containers)
 
 - `deploy/stack.yml` resolves with every variable of `production.env.example` set; Caddy validates the production Caddyfile; actionlint and shellcheck are clean.
-- Migrations run up, down to base and up again; the API suite passes (223 tests); the typed web client matches the API.
+- Migrations run up, down to base and up again; the API suite passes (224 tests); the typed web client matches the API.
 - A browser journey (Playwright, scratch script, not in the repo) through the production web image behind Caddy's production routing: landing and legal pages, sign-up and the emailed link, onboarding, a real agent arriving, every screen, rule edit, preview and test, contacts and quiet hours, on-call, status pages (public, rendered on the server, no hostnames), dashboards, PDF report, API tokens, data export, invitations, roles, an outage with the alert and recovery emails, acknowledge, assign, notes, snooze, deliveries, two-factor, password reset signing other browsers out, superadmin impersonation, account deletion, mobile width and dark mode.
 - `install.sh` and `--uninstall` on Ubuntu 24.04 with systemd as PID 1: user, units, timers, autoconfig, registration, spool drained once ingest was reachable, then nothing left behind.
 - The `installers` workflow passes on Linux, Windows (`install.ps1` and `-Uninstall`), FreeBSD, OpenBSD and NetBSD: install, the service runs, a metrics push arrives, uninstall leaves nothing.
 - The redesigned web app passes the browser journey (41 steps) and the extras (fleet wall, saved views, incident merge).
 - Backups: a real dump restores (`restore-check.sh`), a truncated one is caught, and the nightly loop runs both; `vm-backup.sh` brings back a series deleted after the backup.
 - The end-to-end scripts live in `e2e/` (`make e2e` runs the journey, extras and access matrix; it clears `pg:rl:*` and the journey's `superadmin@example.com` first). Don't run the API tests at the same time: they sign up accounts from the same address and trip the hourly sign-up limit.
-- Network, live (0.10.0): a real agent polled simulated Arista and FortiGate devices (snmpsim serving `netmon/testdata/walks`), a fake Proxmox API over HTTPS, and a discovery scan; the network UI passes in a browser (including cancelling a scan); the access matrix covers the network endpoints. Simulator data must be sorted by OID first (the recordings were taken subtree by subtree).
+- Network, live (0.10.0): a real agent polled simulated Arista and FortiGate devices (snmpsim serving `netmon/testdata/walks`), a fake Proxmox API over HTTPS, and a discovery scan; the network UI passes in a browser (including cancelling a scan); the access matrix covers the network endpoints. Simulator data must be sorted by OID, one record a line: `e2e/api/snmpsim_data.py` prepares it from the recordings.
+- Network, real gear (2026-11-20, a temporary unprivileged poller on `notify` through an SSH tunnel, removed afterwards): a FortiGate and two Arista EOS switches identified, 280 interfaces with rates (both ends of a 40G link agree), LLDP resolved between the switches both ways, and a server NIC's MAC matched to its ToR port with the server's upstream set automatically. Proxmox wasn't tried on real gear: it needs an API token created on a company server.
 
 ### Not verified here
 

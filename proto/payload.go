@@ -325,8 +325,11 @@ type HostMeta struct {
 	Hostname        string   `json:"hostname,omitempty"`
 	PlatformVersion string   `json:"platform_version,omitempty"`
 	IPAddresses     []string `json:"ip_addresses,omitempty"`
-	CPUCores        int      `json:"cpu_cores,omitempty"`
-	MemoryBytes     uint64   `json:"memory_bytes,omitempty"`
+	// Hardware addresses of the real interfaces (lowercase, colon
+	// separated), so a switch's LLDP neighbour can be matched to the server.
+	MACs        []string `json:"macs,omitempty"`
+	CPUCores    int      `json:"cpu_cores,omitempty"`
+	MemoryBytes uint64   `json:"memory_bytes,omitempty"`
 }
 
 // LogsRequest carries new log lines from the files and journal the server's

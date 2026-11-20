@@ -121,8 +121,11 @@ request; over that is 413.
    (ignoring polls older than the last, from a spool replay), replaces the
    interface and neighbour lists on inventory polls, resolves neighbours to
    known hosts, and marks the device seen when SNMP answered.
-5. The jobs service sets automatic upstreams from LLDP toward core devices;
-   the alerter treats a device's poller as its upstream when it has none,
+5. The jobs service sets automatic upstreams from LLDP toward core devices,
+   and makes a server depend on the one switch whose LLDP sees its NIC
+   (agents report their MACs in `HostMeta.macs`; ingest matches them to
+   neighbours as they arrive). Dual-homed servers and loops through a
+   server's own poller get none. The alerter treats a device's poller as its upstream when it has none,
    and evaluates `network` rules as filter expressions (no series means
    healthy).
 6. Discovery: the API records a scan in Redis (`pg:netdisc:*`, 24 h); ingest

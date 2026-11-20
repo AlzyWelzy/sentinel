@@ -552,3 +552,78 @@ async def test_an_organisation_with_devices_exports_and_deletes(alice: User):
                 text("SELECT count(*) FROM snmp_credentials WHERE id = :c"), {"c": cred["id"]}
             )
         assert left == 0
+
+
+async def test_a_server_depends_on_the_one_switch_it_is_cabled_to(alice: User):
+    """LLDP from a server's NIC on a switch port makes the server depend on
+    that switch (so the switch failing is one alert, not one per server);
+    not when it's cabled to two switches, or when the switch's own upstream
+    is the server (its poller); a hand-set dependency stays."""
+    from app.routes.network import topology_everywhere
+
+    tid = await alice.tenant_id()
+    cred = (await alice.request("POST", "/v1/network/credentials", json=V2)).json()
+    poller = await insert_host(tid, "poller")
+    web, db, man = [await insert_host(tid, n) for n in ("web-1", "db-1", "app-1")]
+    created = (
+        await alice.request(
+            "POST",
+            "/v1/network/devices",
+            json={
+                "addresses": ["10.4.0.1", "10.4.0.2"],
+                "credential_id": cred["id"],
+                "poller_host_id": str(poller),
+            },
+        )
+    ).json()["created"]
+    sw_a, sw_b = (uuid.UUID(d["id"]) for d in created)
+    r = await alice.request("PATCH", f"/v1/hosts/{man}", json={"depends_on_host_id": str(sw_b)})
+    assert r.status_code == 200, r.text
+
+    async def cable(switch, port, server):
+        async with ServiceSession() as s, s.begin():
+            await s.execute(
+                text(
+                    "INSERT INTO network_links (tenant_id, host_id, local_port, remote_sys_name,"
+                    " remote_port_id, remote_chassis_id, remote_host_id, seen_at)"
+                    " VALUES (:t, :h, :p, 'NIC', :m, :m, :r, now())"
+                ),
+                {"t": tid, "h": switch, "p": port, "m": f"d4:04:e6:00:00:{port[-1]}0", "r": server},
+            )
+
+    await cable(sw_a, "Ethernet1", web)
+    await cable(sw_a, "Ethernet2", db)
+    await cable(sw_b, "Ethernet2", db)  # dual-homed
+    await cable(sw_a, "Ethernet3", poller)  # A's upstream is this poller
+    await cable(sw_a, "Ethernet4", man)
+    await topology_everywhere()
+
+    async def upstream(h):
+        b = (await alice.request("GET", f"/v1/hosts/{h}")).json()
+        return b["depends_on_host_id"], b["depends_on_auto"]
+
+    assert await upstream(web) == (str(sw_a), True)
+    cabled = (await alice.request("GET", f"/v1/hosts/{db}")).json()["cabled_to"]
+    assert [(c["device_id"], c["port"]) for c in cabled] == sorted(
+        [(str(sw_a), "Ethernet2"), (str(sw_b), "Ethernet2")],
+        key=lambda c: next(d["hostname"] for d in created if d["id"] == c[0]),
+    )
+    assert await upstream(db) == (None, False)
+    assert await upstream(poller) == (None, False)
+    assert await upstream(man) == (str(sw_b), False)
+    # Saving the server's settings sends its upstream back: it stays automatic.
+    r = await alice.request(
+        "PATCH", f"/v1/hosts/{web}", json={"tags": ["web"], "depends_on_host_id": str(sw_a)}
+    )
+    assert (r.json()["depends_on_host_id"], r.json()["depends_on_auto"]) == (str(sw_a), True)
+    # Recabled: the old link ages out and the dependency follows.
+    async with ServiceSession() as s, s.begin():
+        await s.execute(
+            text(
+                "UPDATE network_links SET seen_at = now() - interval '2 days'"
+                " WHERE remote_host_id = :w"
+            ),
+            {"w": web},
+        )
+    await topology_everywhere()
+    assert await upstream(web) == (None, False)

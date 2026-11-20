@@ -84,7 +84,7 @@ export default function Help() {
         <li>
           Mark your core switch(es) with the role <i>Core</i>: upstreams are worked out from LLDP,
           so when a switch fails the devices behind it are shown as affected instead of each
-          alerting.
+          alerting. Servers whose network cards the switch sees over LLDP depend on it too.
         </li>
         <li>
           Network alert rules (interfaces down, busy or with errors, and each vendor&apos;s own) are

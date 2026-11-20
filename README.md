@@ -275,6 +275,12 @@ site polls it (its *poller*) and reports for it, through its own spool.
   (set as its dependency, unless one was set by hand), so a failed switch
   is one alert and the devices behind it are *affected*. A device without
   an upstream depends on its poller. Network › Topology draws it.
+- **Servers on switch ports:** agents report their NICs' hardware
+  addresses, and a server whose NIC a switch sees over LLDP shows where
+  it's cabled (server › Settings) and depends on that switch, so a failed
+  top-of-rack switch is one alert, not one per server. A server cabled to
+  two switches, or one that polls its own switch, gets no automatic
+  upstream; one set by hand is kept.
 - **Alerts:** rule kind `network` with a condition from a catalog
   (`/v1/network/conditions`): interface down (ports that were up in the
   last day), utilisation, errors, LAG member down, reboots, every

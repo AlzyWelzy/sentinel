@@ -111,6 +111,29 @@ func TestInterfaceIPs(t *testing.T) {
 	}
 }
 
+func TestInterfaceMACs(t *testing.T) {
+	ifaces := net.InterfaceStatList{
+		{Name: "lo", HardwareAddr: ""},
+		{Name: "docker0", HardwareAddr: "02:42:ac:11:00:01"},
+		{Name: "eno1", HardwareAddr: "D4:04:E6:45:AD:12"},
+		{Name: "eno2", HardwareAddr: "d4:04:e6:45:ad:12"}, // bond member: the bond's address
+		{Name: "bond0", HardwareAddr: "d4:04:e6:45:ad:12"},
+		{Name: "tun0", HardwareAddr: "00:00:00:00:00:00"},
+		{Name: "ens3", HardwareAddr: "52:54:00:12:34:56"}, // a VM's virtual NIC
+		{Name: "ib0", HardwareAddr: "80:00:02:08:fe:80:00:00:00:00:00:00:00:02:c9:03:00:0d:4a:41:00:00:00:00"},
+	}
+	perm := func(name string) string {
+		if name == "eno2" {
+			return "d4:04:e6:45:ad:13\n"
+		}
+		return ""
+	}
+	got := strings.Join(interfaceMACs(ifaces, perm), ",")
+	if got != "d4:04:e6:45:ad:12,d4:04:e6:45:ad:13" {
+		t.Errorf("got %s", got)
+	}
+}
+
 // A watched process that's running counts its processes; one that isn't
 // reports 0, which is what "process down" alerts need.
 func TestWatchedProcesses(t *testing.T) {

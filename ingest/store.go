@@ -132,15 +132,17 @@ func (s *store) touchHost(ctx context.Context, hostID, agentVersion, publicIP st
 	if meta != nil {
 		m = *meta
 	}
-	var ips []string
+	var ips, macs []string
 	if meta != nil {
 		ips = cleanIPs(m.IPAddresses)
+		macs = cleanMACs(m.MACs)
 	}
-	_, err := s.pool.Exec(ctx, `
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE hosts h SET
 		       last_seen_at = now(),
 		       agent_version = $2,
 		       ip_addresses = coalesce($3::text[], h.ip_addresses),
+		       macs = coalesce($9::text[], h.macs),
 		       public_ip = coalesce(nullif($8::text, ''), h.public_ip),
 		       cpu_cores = coalesce(nullif($4::integer, 0), h.cpu_cores),
 		       memory_bytes = coalesce(nullif($5::bigint, 0), h.memory_bytes),
@@ -156,7 +158,19 @@ func (s *store) touchHost(ctx context.Context, hostID, agentVersion, publicIP st
 		        OR h.last_seen_at < now() - interval '1 minute'
 		        OR h.agent_version IS DISTINCT FROM $2
 		        OR (nullif($8::text, '') IS NOT NULL AND h.public_ip IS DISTINCT FROM $8::text))`,
-		hostID, agentVersion, ips, m.CPUCores, int64(m.MemoryBytes), m.PlatformVersion, cleanHostname(m.Hostname), publicIP)
+		hostID, agentVersion, ips, m.CPUCores, int64(m.MemoryBytes), m.PlatformVersion, cleanHostname(m.Hostname), publicIP, macs)
+	if err != nil || len(macs) == 0 || tag.RowsAffected() == 0 {
+		return err
+	}
+	// A switch already listing one of these as an LLDP neighbour now knows
+	// which server it is (devices re-resolve on their own inventory polls).
+	_, err = s.pool.Exec(ctx, `
+		UPDATE network_links l SET remote_host_id = h.id
+		  FROM hosts h
+		 WHERE h.id = $1 AND l.tenant_id = h.tenant_id AND l.host_id <> h.id
+		   AND l.remote_host_id IS NULL
+		   AND (l.remote_chassis_id = ANY ($2::text[]) OR lower(l.remote_port_id) = ANY ($2::text[]))`,
+		hostID, macs)
 	return err
 }
 

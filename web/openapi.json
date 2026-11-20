@@ -12166,6 +12166,30 @@
     ],
     "title": "BusyHours"
    },
+   "CabledTo": {
+    "properties": {
+     "device_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Device Id"
+     },
+     "device_hostname": {
+      "type": "string",
+      "title": "Device Hostname"
+     },
+     "port": {
+      "type": "string",
+      "title": "Port"
+     }
+    },
+    "type": "object",
+    "required": [
+     "device_id",
+     "device_hostname",
+     "port"
+    ],
+    "title": "CabledTo"
+   },
    "CapacityGroup": {
     "properties": {
      "name": {
@@ -15264,6 +15288,14 @@
       "title": "Depends On Auto",
       "description": "set from LLDP topology",
       "default": false
+     },
+     "cabled_to": {
+      "items": {
+       "$ref": "#/components/schemas/CabledTo"
+      },
+      "type": "array",
+      "title": "Cabled To",
+      "description": "servers: the device ports where LLDP sees this server (last day)"
      }
     },
     "type": "object",
@@ -20663,6 +20695,14 @@
       "title": "Depends On Auto",
       "description": "set from LLDP topology",
       "default": false
+     },
+     "cabled_to": {
+      "items": {
+       "$ref": "#/components/schemas/CabledTo"
+      },
+      "type": "array",
+      "title": "Cabled To",
+      "description": "servers: the device ports where LLDP sees this server (last day)"
      },
      "tenant_id": {
       "type": "string",

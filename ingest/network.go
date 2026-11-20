@@ -242,7 +242,10 @@ func replaceLinks(ctx context.Context, tx pgx.Tx, tenantID, deviceID string, nbs
 		                OR l.remote_mgmt_addr = ANY (h.ip_addresses)))
 		            OR (l.remote_chassis_id <> '' AND EXISTS (
 		                SELECT 1 FROM network_interfaces i
-		                 WHERE i.host_id = h.id AND lower(i.mac) = l.remote_chassis_id)))
+		                 WHERE i.host_id = h.id AND lower(i.mac) = l.remote_chassis_id))
+		            -- a server's NIC announcing itself by its address
+		            OR l.remote_chassis_id = ANY (h.macs)
+		            OR lower(l.remote_port_id) = ANY (h.macs))
 		        ORDER BY (h.kind = 'network') DESC, h.created_at
 		        LIMIT 1)
 		 WHERE l.host_id = $1 AND l.tenant_id = $2`, deviceID, tenantID)

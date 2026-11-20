@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -44,6 +45,21 @@ func cleanIPs(in []string) []string {
 	for _, s := range in {
 		if ip := net.ParseIP(strings.TrimSpace(s)); ip != nil && len(out) < maxIPAddresses {
 			out = append(out, ip.String())
+		}
+	}
+	return out
+}
+
+// cleanMACs keeps burned-in 6-byte hardware addresses (not locally
+// administered ones, which virtual NICs use and clones repeat), lowercase
+// and colon separated as LLDP neighbours are stored. Nil when none, so an older agent that
+// doesn't report them leaves the column alone.
+func cleanMACs(in []string) []string {
+	var out []string
+	for _, s := range in {
+		hw, err := net.ParseMAC(strings.TrimSpace(s))
+		if err == nil && len(hw) == 6 && hw[0]&0x02 == 0 && len(out) < maxIPAddresses && !slices.Contains(out, hw.String()) {
+			out = append(out, hw.String())
 		}
 	}
 	return out

@@ -643,7 +643,11 @@ function HostSettings({
           </Field>
           <Field
             label="Depends on"
-            hint="While that server is silent, this one's alerts are held back."
+            hint={
+              host.depends_on_auto && dependsOn === host.depends_on_host_id
+                ? "Set automatically: the switch this server is cabled to (LLDP). While it's down, this server's alerts are held back. Choosing another keeps yours."
+                : "While that server is silent, this one's alerts are held back."
+            }
           >
             <Select
               value={dependsOn}
@@ -661,6 +665,21 @@ function HostSettings({
                 ))}
             </Select>
           </Field>
+          {(host.cabled_to ?? []).length > 0 && (
+            <div className="text-sm">
+              <p className="text-ink-3">Cabled to</p>
+              <ul className="mt-1 space-y-0.5">
+                {(host.cabled_to ?? []).map((c) => (
+                  <li key={`${c.device_id}-${c.port}`}>
+                    <Link href={`/network/${c.device_id}`} className="font-medium hover:text-brand">
+                      {c.device_hostname}
+                    </Link>{" "}
+                    <span className="font-mono text-xs text-ink-2">{c.port}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <Field label="Notes" hint="For the team: what runs here, who owns it.">
             <textarea
               value={notes}

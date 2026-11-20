@@ -26,6 +26,12 @@ probing the running stack before going live. New deployments need
   alert and the devices behind it are affected; a device without an
   upstream depends on the server that polls it. Network › Topology draws
   it.
+- **Servers on switch ports.** The agent reports its NICs' hardware
+  addresses (including a bonded port's own), so a switch that sees a
+  server's NIC over LLDP shows it on that port, the server's settings say
+  where it's cabled, and the server depends on that switch: a failed
+  top-of-rack switch is one alert. Not for servers cabled to two switches,
+  or a poller on its own switch.
 - **Network alert rules:** interface down (only ports that were up in the
   last day), utilisation, errors, LAG member down, reboots, and each
   vendor profile's alerts (BGP, VPN, SD-WAN, sensors, optics, HA). They

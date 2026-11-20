@@ -7,6 +7,7 @@
 package collector
 
 import (
+	"bytes"
 	"context"
 	"math"
 	stdnet "net"
@@ -427,8 +428,48 @@ func Meta(ctx context.Context) proto.HostMeta {
 	}
 	if ifaces, err := net.InterfacesWithContext(ctx); err == nil {
 		m.IPAddresses = interfaceIPs(ifaces)
+		m.MACs = interfaceMACs(ifaces, bondPermMAC)
 	}
 	return m
+}
+
+// interfaceMACs lists the burned-in hardware addresses of real interfaces,
+// once each. A bonded port shows the bond's address; the address it was
+// made with (which is what its NIC announces over LLDP) comes from perm.
+// Locally administered addresses (virtual NICs, KVM's 52:54:00, clones)
+// are left out: no switch sees them over LLDP, and they repeat across
+// machines.
+func interfaceMACs(ifaces net.InterfaceStatList, perm func(name string) string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(s string) {
+		hw, err := stdnet.ParseMAC(strings.TrimSpace(s))
+		if err != nil || len(hw) != 6 || hw[0]&0x02 != 0 || bytes.Equal(hw, make([]byte, 6)) || seen[hw.String()] {
+			return
+		}
+		seen[hw.String()] = true
+		out = append(out, hw.String())
+	}
+	for _, iface := range ifaces {
+		if virtualInterface(iface.Name) {
+			continue
+		}
+		add(iface.HardwareAddr)
+		add(perm(iface.Name))
+	}
+	return out[:min(len(out), maxIPs)]
+}
+
+// bondPermMAC is a Linux bond member's own hardware address ("" elsewhere).
+func bondPermMAC(name string) string {
+	if strings.ContainsAny(name, "/.") {
+		return ""
+	}
+	b, err := os.ReadFile("/sys/class/net/" + name + "/bonding_slave/perm_hwaddr")
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // interfaceIPs returns global unicast addresses (IPv4 first) on interfaces

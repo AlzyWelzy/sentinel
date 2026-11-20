@@ -928,14 +928,29 @@ def compute_parents(
     return parents
 
 
+def server_parents(
+    servers: set[uuid.UUID], devices: set[uuid.UUID], links: list[tuple[uuid.UUID, uuid.UUID]]
+) -> dict[uuid.UUID, uuid.UUID]:
+    """A server seen (by LLDP, from its NIC) on exactly one device depends on
+    it. One cabled to two switches stays up when either fails, so it gets
+    none."""
+    seen: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for dev, remote in links:
+        if dev in devices and remote in servers:
+            seen.setdefault(remote, set()).add(dev)
+    return {s: next(iter(ds)) for s, ds in seen.items() if len(ds) == 1}
+
+
 async def apply_topology(db, tenant_id: uuid.UUID) -> int:
     """Sets automatic upstreams from LLDP for one organisation (a session
-    scoped to it). Hand-set dependencies are left alone. Returns changes."""
+    scoped to it): devices toward a core device (when one is marked), and
+    servers to the switch they're cabled to. Hand-set dependencies are left
+    alone. Returns changes."""
     hosts = list(
         await db.scalars(select(Host).where(Host.tenant_id == tenant_id, Host.revoked_at.is_(None)))
     )
     devices = {h.id: h.network_role for h in hosts if h.kind == "network"}
-    if not any(r == "core" for r in devices.values()):
+    if not devices:
         return 0
     stale = datetime.now(UTC) - timedelta(days=1)
     links = [
@@ -949,21 +964,57 @@ async def apply_topology(db, tenant_id: uuid.UUID) -> int:
         )
         if ln.remote_host_id
     ]
-    parents = compute_parents(devices, links)
+    has_core = any(r == "core" for r in devices.values())
+    want: dict[uuid.UUID, uuid.UUID | None] = {}
+    if has_core:
+        parents = compute_parents(devices, links)
+        want.update({d: parents.get(d) for d in devices})
+    servers = {h.id for h in hosts if h.kind == "server"}
+    want.update({s: None for s in servers})
+    want.update(server_parents(servers, set(devices), links))
+    by_id = {h.id: h for h in hosts}
+
+    def upstream(h: Host) -> uuid.UUID | None:
+        if h.depends_on_host_id and not h.depends_on_auto:
+            return h.depends_on_host_id
+        if h.id in want:
+            return want[h.id] or h.poller_host_id
+        return h.depends_on_host_id or h.poller_host_id
+
+    def loops(start: uuid.UUID, target: uuid.UUID) -> bool:
+        """Whether following upstreams from start reaches target."""
+        cur: uuid.UUID | None = start
+        visited: set[uuid.UUID] = set()
+        while cur is not None and cur in by_id and cur not in visited:
+            if cur == target:
+                return True
+            visited.add(cur)
+            cur = upstream(by_id[cur])
+        return False
+
+    # A server never depends on a switch whose own upstream leads back to it
+    # (its poller, typically): the two would hide each other's outage.
+    # Dropping one can settle another's chain, so repeat until nothing moves.
+    settled = False
+    while not settled:
+        settled = True
+        for s in sorted(servers, key=str):
+            if (sw := want.get(s)) and loops(sw, s):
+                want[s] = None
+                settled = False
     changed = 0
     for h in hosts:
-        if h.kind != "network" or (h.depends_on_host_id and not h.depends_on_auto):
+        if h.id not in want or (h.depends_on_host_id and not h.depends_on_auto):
             continue
-        want = parents.get(h.id)
-        if want != h.depends_on_host_id:
-            h.depends_on_host_id, h.depends_on_auto = want, want is not None
+        if want[h.id] != h.depends_on_host_id:
+            h.depends_on_host_id, h.depends_on_auto = want[h.id], want[h.id] is not None
             changed += 1
     await db.flush()
     return changed
 
 
 async def topology_everywhere() -> int:
-    """apply_topology for every organisation with a core device (jobs)."""
+    """apply_topology for every organisation with network devices (jobs)."""
     from sqlalchemy import text
 
     from app.db import AppSession, ServiceSession
@@ -973,7 +1024,7 @@ async def topology_everywhere() -> int:
             await sdb.scalars(
                 text(
                     "SELECT DISTINCT h.tenant_id FROM hosts h JOIN tenants t ON t.id = h.tenant_id "
-                    "WHERE h.kind = 'network' AND h.network_role = 'core' AND t.status = 'active'"
+                    "WHERE h.kind = 'network' AND t.status = 'active'"
                 )
             )
         )

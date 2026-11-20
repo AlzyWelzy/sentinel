@@ -3,9 +3,10 @@
 Needs the dev stack (make up), snmpsim serving netmon/testdata/walks on
 127.0.0.1:1161 (community = the recording's name), and the agent binary:
 
+    python snmpsim_data.py /tmp/snmpsim   # the recordings, sorted, one record a line
     uvx --python 3.12 --from snmpsim-lextudio snmpsim-command-responder \\
-        --data-dir=<dir with arista-eos.snmpwalk, fortigate.snmpwalk> \\
-        --agent-udpv4-endpoint=127.0.0.1:1161
+        --data-dir=/tmp/snmpsim \\
+        --agent-udpv4-endpoint=127.0.0.1:1161 --agent-udpv4-endpoint=127.0.0.1:1162
     go build -o /tmp/sentinel-agent ./agent
     AGENT=/tmp/sentinel-agent uv run --no-project --with httpx python network_live.py
 """

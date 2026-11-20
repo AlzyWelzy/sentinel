@@ -7,7 +7,7 @@ safety net, not an excuse to leave the filter out.
 
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
@@ -16,7 +16,15 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import AgentKey, AlertRule, AlertState, Host, Incident, MaintenanceWindow
+from app.models import (
+    AgentKey,
+    AlertRule,
+    AlertState,
+    Host,
+    Incident,
+    MaintenanceWindow,
+    NetworkLink,
+)
 from app.models import Tenant as TenantRow
 from app.services import heartbeats, metrics
 from app.services.maintenance import in_maintenance
@@ -187,6 +195,12 @@ async def revoke_agent_key(key_id: uuid.UUID, t: Tenant) -> None:
 # ── Hosts ────────────────────────────────────────────────────────────────────
 
 
+class CabledTo(BaseModel):
+    device_id: uuid.UUID
+    device_hostname: str
+    port: str
+
+
 class HostOut(BaseModel):
     id: uuid.UUID
     hostname: str
@@ -222,6 +236,10 @@ class HostOut(BaseModel):
         default=None, description="network devices: why the last poll failed"
     )
     depends_on_auto: bool = Field(default=False, description="set from LLDP topology")
+    cabled_to: list[CabledTo] = Field(
+        default_factory=list,
+        description="servers: the device ports where LLDP sees this server (last day)",
+    )
 
 
 def _host_out(h: Host, last_seen: int | None, maintenance: bool = False) -> HostOut:
@@ -275,7 +293,34 @@ async def _hosts_out(t: TenantContext, hosts: list[Host]) -> list[HostOut]:
     seen = await heartbeats.last_seen([h.id for h in hosts])
     windows = await _windows(t)
     now = datetime.now(UTC)
-    return [_host_out(h, seen[h.id], in_maintenance(windows, h, now)) for h in hosts]
+    out = [_host_out(h, seen[h.id], in_maintenance(windows, h, now)) for h in hosts]
+    servers = [h.id for h in hosts if h.kind != "network"]
+    if servers:
+        rows = await t.db.execute(
+            select(
+                NetworkLink.remote_host_id,
+                NetworkLink.host_id,
+                Host.hostname,
+                NetworkLink.local_port,
+            )
+            .join(Host, Host.id == NetworkLink.host_id)
+            .where(
+                NetworkLink.tenant_id == t.tenant_id,
+                NetworkLink.remote_host_id.in_(servers),
+                NetworkLink.seen_at > now - timedelta(days=1),
+            )
+            .order_by(Host.hostname, NetworkLink.local_port)
+        )
+        by_host: dict[uuid.UUID, list[CabledTo]] = {}
+        for server, dev, name, port in rows:
+            if server is None:
+                continue
+            ports = by_host.setdefault(server, [])
+            if not any(c.device_id == dev and c.port == port for c in ports):
+                ports.append(CabledTo(device_id=dev, device_hostname=name, port=port))
+        for o in out:
+            o.cabled_to = by_host.get(o.id, [])
+    return out
 
 
 async def _get_host(t: TenantContext, host_id: uuid.UUID) -> Host:
@@ -327,10 +372,11 @@ async def update_host(host_id: uuid.UUID, body: HostPatch, t: Tenant) -> HostOut
     host = await _get_host(t, host_id)
     if body.tags is not None:
         host.tags = body.tags
-    # Set by hand: topology leaves it alone from now on.
+    # Set by hand: topology leaves it alone from now on. The form sends the
+    # current upstream back with every save; that keeps it automatic.
     if body.clear_depends_on:
         host.depends_on_host_id, host.depends_on_auto = None, False
-    elif body.depends_on_host_id is not None:
+    elif body.depends_on_host_id is not None and body.depends_on_host_id != host.depends_on_host_id:
         await _check_dependency(t, host, body.depends_on_host_id)
         host.depends_on_host_id, host.depends_on_auto = body.depends_on_host_id, False
     if body.notes is not None:

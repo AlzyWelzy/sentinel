@@ -3693,6 +3693,18 @@ export interface components {
             /** Busiest */
             busiest: string | null;
         };
+        /** CabledTo */
+        CabledTo: {
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Device Hostname */
+            device_hostname: string;
+            /** Port */
+            port: string;
+        };
         /** CapacityGroup */
         CapacityGroup: {
             /** Name */
@@ -4663,6 +4675,11 @@ export interface components {
              * @default false
              */
             depends_on_auto: boolean;
+            /**
+             * Cabled To
+             * @description servers: the device ports where LLDP sees this server (last day)
+             */
+            cabled_to?: components["schemas"]["CabledTo"][];
         };
         /** HostPatch */
         HostPatch: {
@@ -6456,6 +6473,11 @@ export interface components {
              * @default false
              */
             depends_on_auto: boolean;
+            /**
+             * Cabled To
+             * @description servers: the device ports where LLDP sees this server (last day)
+             */
+            cabled_to?: components["schemas"]["CabledTo"][];
             /**
              * Tenant Id
              * Format: uuid
