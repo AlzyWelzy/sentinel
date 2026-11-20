@@ -20,15 +20,24 @@ Check the result by eye: `grep -h STRING walks/*.walk | sort -u | less`.
 
 import hashlib
 import ipaddress
+import os
 import re
 import sys
 from pathlib import Path
 
 SECRET = b"sentinel-walks"
 
-# Words that identify the network's owner wherever they appear.
-TOKENS = [
-]
+# Words that identify the network's owner or its customers, one per line, in
+# a file that is never committed (it would name them): anonymise.words next to
+# this script, or the path in $ANONYMISE_WORDS.
+_WORDS = Path(
+    os.environ.get("ANONYMISE_WORDS", Path(__file__).with_name("anonymise.words"))
+)
+TOKENS = (
+    [w.strip().lower() for w in _WORDS.read_text().splitlines() if w.strip()]
+    if _WORDS.exists()
+    else []
+)
 
 # Columns whose text is free-form and always replaced (prefixes, no index).
 FREE_TEXT = [
@@ -265,6 +274,8 @@ def anonymise(lines: list[str], mp: Mapper, ips: set[str], macs: set[str]) -> li
 
 
 def main(paths: list[str]) -> None:
+    if not TOKENS:
+        sys.exit(f"no words to replace: write them to {_WORDS} (one per line)")
     files = {p: Path(p).read_text(errors="replace").splitlines() for p in paths}
     ips: set[str] = set()
     macs: set[str] = set()
