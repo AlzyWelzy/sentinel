@@ -56,12 +56,23 @@ type netDevice struct {
 	cancel context.CancelFunc
 }
 
+// netMaxSamplesPerBatch keeps one device's poll under ingest's per-request
+// limit (100k samples): a big chassis is spooled as several batches.
+const netMaxSamplesPerBatch = 40_000
+
 func newNetPoller(sink func(proto.Batch), log *slog.Logger) (*netPoller, error) {
 	reg, err := profile.Load(profiles.FS)
 	if err != nil {
 		return nil, err
 	}
-	return &netPoller{reg: reg, sink: sink, log: log, sem: make(chan struct{}, netConcurrency), running: map[string]*netDevice{}}, nil
+	split := func(b proto.Batch) {
+		for len(b.Samples) > netMaxSamplesPerBatch {
+			sink(proto.Batch{TimestampMs: b.TimestampMs, Samples: b.Samples[:netMaxSamplesPerBatch]})
+			b.Samples = b.Samples[netMaxSamplesPerBatch:]
+		}
+		sink(b) // the poll's state rides with the last part
+	}
+	return &netPoller{reg: reg, sink: split, log: log, sem: make(chan struct{}, netConcurrency), running: map[string]*netDevice{}}, nil
 }
 
 // set starts polling new devices, stops removed ones and restarts changed

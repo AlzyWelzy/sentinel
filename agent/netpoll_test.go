@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/collect"
+	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
 )
 
 func TestNetSamplesAreNamedAndLabelledForTheDevice(t *testing.T) {
@@ -26,5 +27,23 @@ func TestNetSamplesAreNamedAndLabelledForTheDevice(t *testing.T) {
 	}
 	if in[0].Labels["device_id"] != "" {
 		t.Fatal("the collector's labels were modified in place")
+	}
+}
+
+func TestBigPollsAreSplit(t *testing.T) {
+	var got []proto.Batch
+	n, err := newNetPoller(func(b proto.Batch) { got = append(got, b) }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := proto.Batch{TimestampMs: 1, Samples: make([]proto.Sample, 2*netMaxSamplesPerBatch+5), Network: []proto.NetworkPoll{{DeviceID: "d"}}}
+	n.sink(b)
+	if len(got) != 3 || len(got[2].Samples) != 5 || len(got[2].Network) != 1 || len(got[0].Network) != 0 {
+		t.Fatalf("%d batches", len(got))
+	}
+	for _, g := range got {
+		if g.TimestampMs != 1 || len(g.Samples) > netMaxSamplesPerBatch {
+			t.Fatal("split batch wrong")
+		}
 	}
 }
