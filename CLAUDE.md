@@ -171,14 +171,14 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 ### Verified end to end (dev stack, real containers)
 
 - `deploy/stack.yml` resolves with every variable of `production.env.example` set; Caddy validates the production Caddyfile; actionlint and shellcheck are clean.
-- Migrations run up, down to base and up again; the API suite passes (197 tests); the typed web client matches the API.
+- Migrations run up, down to base and up again; the API suite passes (223 tests); the typed web client matches the API.
 - A browser journey (Playwright, scratch script, not in the repo) through the production web image behind Caddy's production routing: landing and legal pages, sign-up and the emailed link, onboarding, a real agent arriving, every screen, rule edit, preview and test, contacts and quiet hours, on-call, status pages (public, rendered on the server, no hostnames), dashboards, PDF report, API tokens, data export, invitations, roles, an outage with the alert and recovery emails, acknowledge, assign, notes, snooze, deliveries, two-factor, password reset signing other browsers out, superadmin impersonation, account deletion, mobile width and dark mode.
 - `install.sh` and `--uninstall` on Ubuntu 24.04 with systemd as PID 1: user, units, timers, autoconfig, registration, spool drained once ingest was reachable, then nothing left behind.
 - The `installers` workflow passes on Linux, Windows (`install.ps1` and `-Uninstall`), FreeBSD, OpenBSD and NetBSD: install, the service runs, a metrics push arrives, uninstall leaves nothing.
 - The redesigned web app passes the browser journey (41 steps) and the extras (fleet wall, saved views, incident merge).
 - Backups: a real dump restores (`restore-check.sh`), a truncated one is caught, and the nightly loop runs both; `vm-backup.sh` brings back a series deleted after the backup.
 - The end-to-end scripts live in `e2e/` (`make e2e` runs the journey, extras and access matrix; it clears `pg:rl:*` and the journey's `superadmin@example.com` first). Don't run the API tests at the same time: they sign up accounts from the same address and trip the hourly sign-up limit.
-- Network, live (0.10.0): a real agent polled simulated Arista and FortiGate devices (snmpsim serving `netmon/testdata/walks`), a fake Proxmox API over HTTPS, and a discovery scan; the network UI passes in a browser; the access matrix covers the network endpoints. Simulator data must be sorted by OID first (the recordings were taken subtree by subtree).
+- Network, live (0.10.0): a real agent polled simulated Arista and FortiGate devices (snmpsim serving `netmon/testdata/walks`), a fake Proxmox API over HTTPS, and a discovery scan; the network UI passes in a browser (including cancelling a scan); the access matrix covers the network endpoints. Simulator data must be sorted by OID first (the recordings were taken subtree by subtree).
 
 ### Not verified here
 
@@ -189,6 +189,7 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 
 - **Keep test scripts in the repo.** The browser journey once lived in a scratch folder and was lost when it was cleaned up.
 - **The disk fills during image builds** and Docker Desktop then stops answering; `docker builder prune -af` and the Go/npm caches free several GB.
+- **CI can stop for billing:** when GitHub Actions refuses jobs ("recent account payments have failed"), every job fails in seconds with no logs. Run the CI steps locally (`make lint`, `go test -race ./...`, `uv run pytest`, `npm run build`) and hold the tag: the release workflow can't build images either.
 - **Fixtures from real devices** (`netmon/testdata/walks`) carry the company network's names and serials: the repo must stay private.
 
 ## Lessons from the production fleet
