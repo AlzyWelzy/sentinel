@@ -123,7 +123,7 @@ async def summary_csv(
     for h in s.hosts:
         w.writerow(
             [
-                "server",
+                h.kind,
                 csv_text(h.hostname),
                 h.availability,
                 h.incidents,

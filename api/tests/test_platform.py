@@ -438,7 +438,7 @@ async def test_reports(alice: User):
     assert {h["hostname"] for h in s["hosts"]} == {"web-1", "web-2"}
     assert s["incidents_total"] == 1
     csv = (await alice.request("GET", "/v1/reports/summary.csv")).text
-    assert csv.startswith("type,name,availability_percent") and "web-1" in csv
+    assert csv.startswith("type,name,availability_percent") and "\nserver,web-1," in csv
     got = (await alice.request("GET", "/v1/reports/settings")).json()
     assert got["monthly_report"] is True and got["digest"] == "weekly"
     await alice.request("PUT", "/v1/reports/settings", json={"monthly_report": False})

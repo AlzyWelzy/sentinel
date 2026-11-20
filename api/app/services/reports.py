@@ -32,6 +32,7 @@ class HostReport:
     memory_max: float | None = None
     disk_max: float | None = None
     disk_full_in_days: float | None = None
+    kind: str = "server"
 
 
 @dataclass
@@ -191,6 +192,7 @@ async def build_summary(
             HostReport(
                 host_id=hid,
                 hostname=h.hostname,
+                kind="device" if h.kind == "network" else "server",
                 availability=r(availability, 3),
                 incidents=per_host.get(h.id, 0),
                 cpu_avg=r(metrics.get("cpu_avg", {}).get(hid)),
