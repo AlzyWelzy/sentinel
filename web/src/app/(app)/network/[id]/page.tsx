@@ -93,6 +93,90 @@ function Traffic({ id, interfaces }: { id: string; interfaces: Device["interface
   );
 }
 
+function Proxmox({ id }: { id: string }) {
+  const pve = useQuery({
+    queryKey: ["network", "proxmox", id],
+    refetchInterval: 60_000,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/network/devices/{device_id}/proxmox", {
+          params: { path: { device_id: id } },
+        }),
+      ),
+  });
+  if (pve.isLoading) return <Loading />;
+  if (pve.error) return <p className="text-sm text-bad">{errorText(pve.error)}</p>;
+  const r = pve.data!;
+  const pct = (used?: number | null, size?: number | null) =>
+    used != null && size ? Math.round((1000 * used) / size) / 10 : null;
+  const groups: { title: string; types: string[] }[] = [
+    { title: "Nodes", types: ["node"] },
+    { title: "Guests", types: ["qemu", "lxc"] },
+    { title: "Storage", types: ["storage"] },
+  ];
+  return (
+    <div className="space-y-6">
+      {r.quorate === false && <Notice tone="bad">The cluster has lost quorum.</Notice>}
+      {groups.map((g) => {
+        const rows = r.resources.filter((x) => g.types.includes(x.type));
+        if (!rows.length) return null;
+        return (
+          <Card key={g.title} title={`${g.title} · ${rows.length}`} pad={false}>
+            <Table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Node</th>
+                  {g.title !== "Storage" && <th>CPU</th>}
+                  {g.title !== "Storage" && <th>Memory</th>}
+                  <th>{g.title === "Storage" ? "Used" : "Disk"}</th>
+                  {g.title !== "Storage" && <th>Uptime</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((x) => {
+                  const mem = pct(x.memory_used, x.memory_size);
+                  const disk = pct(x.disk_used, x.disk_size);
+                  return (
+                    <tr key={`${x.type}-${x.node}-${x.vmid ?? x.name}`}>
+                      <td>
+                        <span className="inline-flex items-center gap-2">
+                          <Dot tone={x.up ? "ok" : x.type === "node" ? "bad" : "idle"} />
+                          <span className="font-medium">{x.name}</span>
+                          {x.vmid != null && <span className="text-xs text-ink-3">{x.vmid}</span>}
+                          {x.shared && <Badge>shared</Badge>}
+                        </span>
+                      </td>
+                      <td className="text-ink-2">{x.node}</td>
+                      {g.title !== "Storage" && (
+                        <td className="tabular">{x.cpu_pct != null ? `${x.cpu_pct}%` : "—"}</td>
+                      )}
+                      {g.title !== "Storage" && (
+                        <td className="min-w-[8rem]">
+                          {mem != null ? <Meter value={mem} /> : "—"}
+                        </td>
+                      )}
+                      <td className="min-w-[8rem]">
+                        {disk != null ? <Meter value={disk} /> : "—"}
+                      </td>
+                      {g.title !== "Storage" && (
+                        <td className="text-ink-2">
+                          {x.uptime_seconds ? duration(x.uptime_seconds) : x.up ? "—" : "stopped"}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </Card>
+        );
+      })}
+      {!r.resources.length && <p className="text-sm text-ink-3">Nothing polled yet.</p>}
+    </div>
+  );
+}
+
 function BillingTag({ id, ifindex, value }: { id: string; ifindex: number; value: string | null }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -339,6 +423,51 @@ export default function DevicePage() {
           <Notice tone={h.online ? "warn" : "bad"}>{h.device_error}</Notice>
         </div>
       )}
+      {d.profile === "proxmox" ? (
+        <div className="mb-6">
+          <Proxmox id={id} />
+        </div>
+      ) : (
+        <SNMPDetail
+          d={d}
+          id={id}
+          filter={filter}
+          setFilter={setFilter}
+          shown={shown}
+          up={up}
+          downAdmin={downAdmin}
+          busiest={busiest}
+          errors={errors}
+        />
+      )}
+      <Settings key={`${d.credential_id}-${h.poller_host_id}-${h.hostname}`} d={d} />
+    </>
+  );
+}
+
+function SNMPDetail({
+  d,
+  id,
+  filter,
+  setFilter,
+  shown,
+  up,
+  downAdmin,
+  busiest,
+  errors,
+}: {
+  d: Device;
+  id: string;
+  filter: "all" | "up" | "down";
+  setFilter: (f: "all" | "up" | "down") => void;
+  shown: Device["interfaces"];
+  up: number;
+  downAdmin: number;
+  busiest: number;
+  errors: number;
+}) {
+  return (
+    <>
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Stat label="Interfaces up" value={`${up} / ${d.interfaces.length}`} />
         <Stat label="Down (enabled)" value={String(downAdmin)} />
@@ -506,7 +635,6 @@ export default function DevicePage() {
           )}
         </Card>
       </div>
-      <Settings key={`${d.credential_id}-${h.poller_host_id}-${h.hostname}`} d={d} />
     </>
   );
 }

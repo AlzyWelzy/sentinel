@@ -1153,6 +1153,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/network/devices/{device_id}/proxmox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Proxmox Resources
+         * @description Nodes, guests and storage of a Proxmox VE cluster, as last polled.
+         */
+        get: operations["proxmox_resources_v1_network_devices__device_id__proxmox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/channels": {
         parameters: {
             query?: never;
@@ -3919,6 +3939,20 @@ export interface components {
             priv_password?: string | null;
             /** Context */
             context?: string | null;
+            /**
+             * Token User
+             * @description e.g. monitoring@pve
+             */
+            token_user?: string | null;
+            /** Token Name */
+            token_name?: string | null;
+            /** Token Value */
+            token_value?: string | null;
+            /**
+             * Insecure Tls
+             * @description accept Proxmox's self-signed certificate
+             */
+            insecure_tls?: boolean | null;
             /** Name */
             name: string;
             /**
@@ -3926,7 +3960,7 @@ export interface components {
              * @default 2c
              * @enum {string}
              */
-            version: "1" | "2c" | "3";
+            version: "1" | "2c" | "3" | "proxmox";
         };
         /** CredentialOut */
         CredentialOut: {
@@ -3953,6 +3987,20 @@ export interface components {
             priv_set: boolean;
             /** Context */
             context: string | null;
+            /** Token User */
+            token_user?: string | null;
+            /** Token Name */
+            token_name?: string | null;
+            /**
+             * Token Set
+             * @default false
+             */
+            token_set: boolean;
+            /**
+             * Insecure Tls
+             * @default false
+             */
+            insecure_tls: boolean;
             /** Devices */
             devices: number;
             /**
@@ -3977,10 +4025,24 @@ export interface components {
             priv_password?: string | null;
             /** Context */
             context?: string | null;
+            /**
+             * Token User
+             * @description e.g. monitoring@pve
+             */
+            token_user?: string | null;
+            /** Token Name */
+            token_name?: string | null;
+            /** Token Value */
+            token_value?: string | null;
+            /**
+             * Insecure Tls
+             * @description accept Proxmox's self-signed certificate
+             */
+            insecure_tls?: boolean | null;
             /** Name */
             name?: string | null;
             /** Version */
-            version?: ("1" | "2c" | "3") | null;
+            version?: ("1" | "2c" | "3" | "proxmox") | null;
         };
         /** CustomMetricOut */
         CustomMetricOut: {
@@ -5146,6 +5208,50 @@ export interface components {
             hosts_online: number;
             /** Open Incidents */
             open_incidents: number;
+        };
+        /** PVEOut */
+        PVEOut: {
+            /** Cluster */
+            cluster: string | null;
+            /** Quorate */
+            quorate: boolean | null;
+            /** Resources */
+            resources: components["schemas"]["PVEResource"][];
+        };
+        /** PVEResource */
+        PVEResource: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "node" | "qemu" | "lxc" | "storage";
+            /** Node */
+            node: string;
+            /** Name */
+            name: string;
+            /** Vmid */
+            vmid?: number | null;
+            /** Up */
+            up: boolean;
+            /** Cpu Pct */
+            cpu_pct?: number | null;
+            /** Cpus */
+            cpus?: number | null;
+            /** Memory Used */
+            memory_used?: number | null;
+            /** Memory Size */
+            memory_size?: number | null;
+            /** Disk Used */
+            disk_used?: number | null;
+            /** Disk Size */
+            disk_size?: number | null;
+            /** Uptime Seconds */
+            uptime_seconds?: number | null;
+            /**
+             * Shared
+             * @default false
+             */
+            shared: boolean;
         };
         /** PageIn */
         PageIn: {
@@ -8902,6 +9008,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BandwidthOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    proxmox_resources_v1_network_devices__device_id__proxmox_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PVEOut"];
                 };
             };
             /** @description Validation Error */

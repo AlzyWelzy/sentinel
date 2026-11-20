@@ -209,6 +209,12 @@ SHARED_CONDITION_KEYS = [
     "lag_member_down",
     "optic_receive_power_low",
     "ospf_neighbour_not_full",
+    "proxmox_guest_stopped",
+    "proxmox_node_cpu",
+    "proxmox_node_memory",
+    "proxmox_node_offline",
+    "proxmox_quorum_lost",
+    "proxmox_storage_full",
     "sd_wan_latency_high",
     "sd_wan_link_dead",
     "sd_wan_packet_loss",
@@ -239,7 +245,7 @@ async def test_network_rules_arrive_with_the_first_device(alice: User):
     rules = (await alice.request("GET", "/v1/alert-rules")).json()
     names = network_rules(rules)
     assert "Interface down" in names and "Interface utilisation above 90%" in names
-    assert "VPN tunnel down" in names and len(names) == 20
+    assert "VPN tunnel down" in names and "Proxmox storage above 90%" in names and len(names) == 26
     # Deleting one sticks: the next device doesn't bring it back.
     down = next(r for r in rules if r["name"] == "Interface down")
     assert (await alice.request("DELETE", f"/v1/alert-rules/{down['id']}")).status_code == 204
@@ -342,3 +348,45 @@ async def test_bandwidth_needs_tagged_ports(alice: User):
         "PATCH", f"/v1/network/devices/{dev['id']}/interfaces/7", json={"billing_tag": ""}
     )
     assert r.json()["billing_tag"] is None
+
+
+async def test_proxmox_tokens_are_credentials_too(alice: User):
+    body = {
+        "name": "pve",
+        "version": "proxmox",
+        "token_user": "monitoring@pve",
+        "token_name": "sentinel",
+        "token_value": "aaaa-bbbb-secret",
+        "insecure_tls": True,
+    }
+    r = await alice.request("POST", "/v1/network/credentials", json=body)
+    assert r.status_code == 201, r.text
+    c = r.json()
+    assert c["token_set"] and c["insecure_tls"] and c["token_user"] == "monitoring@pve"
+    assert "aaaa-bbbb" not in r.text
+    for bad in ({"token_user": "monitoring"}, {"token_name": "a!b"}, {"token_value": ""}):
+        r = await alice.request(
+            "POST", "/v1/network/credentials", json={**body, "name": "x", **bad}
+        )
+        assert r.status_code == 422, bad
+    # Turning the self-signed allowance off keeps the token.
+    r = await alice.request(
+        "PATCH", f"/v1/network/credentials/{c['id']}", json={"insecure_tls": False}
+    )
+    assert r.status_code == 200 and not r.json()["insecure_tls"] and r.json()["token_set"]
+    poller = await insert_host(await alice.tenant_id(), "site")
+    r = await alice.request(
+        "POST",
+        "/v1/network/devices",
+        json={
+            "addresses": ["10.0.11.100:8006"],
+            "credential_id": c["id"],
+            "poller_host_id": str(poller),
+        },
+    )
+    dev = r.json()["created"][0]
+    assert dev["address"] == "10.0.11.100:8006"
+    r = await alice.request("GET", f"/v1/network/devices/{dev['id']}/proxmox")
+    assert r.status_code in (200, 503)
+    if r.status_code == 200:
+        assert r.json()["resources"] == []

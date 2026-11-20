@@ -52,6 +52,57 @@ BUILTIN = [
         "lag_member_down", "LAG member down", about="A port-channel runs degraded on fewer links"
     ),
     Condition("device_rebooted", "Device rebooted", about="Uptime under 10 minutes"),
+    Condition(
+        "proxmox_node_offline",
+        "Proxmox node offline",
+        about="A node of the cluster is offline",
+        vendor="Proxmox",
+        severity="critical",
+    ),
+    Condition(
+        "proxmox_quorum_lost",
+        "Proxmox cluster lost quorum",
+        vendor="Proxmox",
+        severity="critical",
+        duration_seconds=60,
+    ),
+    Condition(
+        "proxmox_guest_stopped",
+        "Proxmox guest stopped",
+        about="A VM or container that was running in the last day stopped",
+        vendor="Proxmox",
+        duration_seconds=300,
+    ),
+    Condition(
+        "proxmox_node_memory",
+        "Proxmox node memory",
+        "%",
+        95,
+        1,
+        100,
+        vendor="Proxmox",
+        duration_seconds=600,
+    ),
+    Condition(
+        "proxmox_node_cpu",
+        "Proxmox node CPU",
+        "%",
+        90,
+        1,
+        100,
+        vendor="Proxmox",
+        duration_seconds=900,
+    ),
+    Condition(
+        "proxmox_storage_full",
+        "Proxmox storage",
+        "%",
+        90,
+        1,
+        100,
+        vendor="Proxmox",
+        duration_seconds=600,
+    ),
 ]
 
 
@@ -142,7 +193,18 @@ def starter_rules() -> list[dict]:
             }
         )
     for c in CONDITIONS.values():
-        if c.vendor:  # the profiles' own alerts: only fire on that vendor's gear
+        if c.vendor and c.unit:  # Proxmox thresholds
+            rules.append(
+                {
+                    "name": f"{c.name} above {c.default:g}%",
+                    "kind": "network",
+                    "target": c.key,
+                    "severity": c.severity,
+                    "duration_seconds": c.duration_seconds,
+                    "threshold": c.default,
+                }
+            )
+        elif c.vendor:  # the profiles' own alerts: only fire on that vendor's gear
             rules.append(
                 {
                     "name": c.name,

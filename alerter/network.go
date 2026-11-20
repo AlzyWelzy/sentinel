@@ -44,6 +44,22 @@ var builtinNetConditions = []netCondition{
 			* on(host_id, ifname) group_left(lag) sentinel_net_lag_member_info`},
 	{Key: "device_rebooted", Name: "Device rebooted", About: "",
 		Expr: `sentinel_net_device_uptime_seconds < 600`},
+
+	// Proxmox VE clusters.
+	{Key: "proxmox_node_offline", Name: "Proxmox node offline",
+		Expr: `sentinel_net_pve_up{type="node"} == 0`},
+	{Key: "proxmox_quorum_lost", Name: "Proxmox cluster lost quorum",
+		Expr: `sentinel_net_pve_cluster_quorate == 0`},
+	{Key: "proxmox_guest_stopped", Name: "Proxmox guest stopped",
+		// Only guests that were running in the last day: ones kept off never alert.
+		Expr: `sentinel_net_pve_up{type=~"qemu|lxc"} == 0
+			and on(host_id, vmid) max_over_time(sentinel_net_pve_up{type=~"qemu|lxc"}[1d] offset 5m) == 1`},
+	{Key: "proxmox_node_memory", Name: "Proxmox node memory", Unit: "%",
+		Expr: `sentinel_net_pve_memory_used_bytes{type="node"} / sentinel_net_pve_memory_size_bytes{type="node"} * 100 > %[1]g`},
+	{Key: "proxmox_node_cpu", Name: "Proxmox node CPU", Unit: "%",
+		Expr: `sentinel_net_pve_cpu_ratio{type="node"} * 100 > %[1]g`},
+	{Key: "proxmox_storage_full", Name: "Proxmox storage", Unit: "%",
+		Expr: `max by (host_id, storage) (sentinel_net_pve_disk_used_bytes{type="storage"} / sentinel_net_pve_disk_size_bytes{type="storage"} * 100) > %[1]g`},
 }
 
 var (

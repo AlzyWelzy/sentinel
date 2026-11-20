@@ -78,6 +78,13 @@ class _CredentialSecrets(BaseModel):
     priv_protocol: str | None = None
     priv_password: str | None = Field(default=None, max_length=255)
     context: str | None = Field(default=None, max_length=255)
+    # Proxmox VE API token (version 'proxmox').
+    token_user: str | None = Field(default=None, max_length=255, description="e.g. monitoring@pve")
+    token_name: str | None = Field(default=None, max_length=255)
+    token_value: str | None = Field(default=None, max_length=255)
+    insecure_tls: bool | None = Field(
+        default=None, description="accept Proxmox's self-signed certificate"
+    )
 
     @field_validator("auth_protocol", "priv_protocol")
     @classmethod
@@ -87,12 +94,12 @@ class _CredentialSecrets(BaseModel):
 
 class CredentialIn(_CredentialSecrets):
     name: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
-    version: Literal["1", "2c", "3"] = "2c"
+    version: Literal["1", "2c", "3", "proxmox"] = "2c"
 
 
 class CredentialPatch(_CredentialSecrets):
     name: Annotated[str, Trimmed, Field(min_length=1, max_length=100)] | None = None
-    version: Literal["1", "2c", "3"] | None = None
+    version: Literal["1", "2c", "3", "proxmox"] | None = None
 
 
 class CredentialOut(BaseModel):
@@ -106,12 +113,33 @@ class CredentialOut(BaseModel):
     priv_protocol: str | None
     priv_set: bool
     context: str | None
+    token_user: str | None = None
+    token_name: str | None = None
+    token_set: bool = False
+    insecure_tls: bool = False
     devices: int
     created_at: datetime
 
 
 def _check_secret(version: str, s: dict) -> dict:
     """Keep what the version uses and check it's complete."""
+    if version == "proxmox":
+        user, name, value = s.get("token_user"), s.get("token_name"), s.get("token_value")
+        if not (user and name and value):
+            raise HTTPException(
+                422,
+                "A Proxmox API token needs the user (e.g. monitoring@pve), token name and secret",
+            )
+        if "@" not in user or any(c in user + name for c in "!= \t\r\n"):
+            raise HTTPException(
+                422, "The token user looks like name@realm, and neither has '!', '=' or spaces"
+            )
+        return {
+            "token_user": user,
+            "token_name": name,
+            "token_value": value,
+            "insecure_tls": bool(s.get("insecure_tls")),
+        }
     if version in ("1", "2c"):
         if not s.get("community"):
             raise HTTPException(422, "SNMP v1 and v2c need a community")
@@ -152,6 +180,10 @@ def _credential_out(c: SNMPCredential, devices: int) -> CredentialOut:
         priv_protocol=s.get("priv_protocol"),
         priv_set=bool(s.get("priv_password")),
         context=s.get("context"),
+        token_user=s.get("token_user"),
+        token_name=s.get("token_name"),
+        token_set=bool(s.get("token_value")),
+        insecure_tls=bool(s.get("insecure_tls")),
         devices=devices,
         created_at=c.created_at,
     )
@@ -231,6 +263,8 @@ async def update_credential(
         **current,
         **{k: v for k, v in body.model_dump(exclude={"name", "version"}).items() if v},
     }
+    if body.insecure_tls is not None:  # False is a choice too
+        merged["insecure_tls"] = body.insecure_tls
     c.secret = _seal(_check_secret(version, merged))
     c.version = version
     if body.name:
@@ -1148,4 +1182,94 @@ async def bandwidth(
         "missing samples skipped; billable = the higher of inbound and outbound",
         series_in=series["in"],
         series_out=series["out"],
+    )
+
+
+# ── Proxmox VE ───────────────────────────────────────────────────────────────
+
+
+class PVEResource(BaseModel):
+    type: Literal["node", "qemu", "lxc", "storage"]
+    node: str
+    name: str
+    vmid: int | None = None
+    up: bool
+    cpu_pct: float | None = None
+    cpus: float | None = None
+    memory_used: float | None = None
+    memory_size: float | None = None
+    disk_used: float | None = None
+    disk_size: float | None = None
+    uptime_seconds: float | None = None
+    shared: bool = False
+
+
+class PVEOut(BaseModel):
+    cluster: str | None
+    quorate: bool | None
+    resources: list[PVEResource]
+
+
+@router.get("/devices/{device_id}/proxmox")
+async def proxmox_resources(device_id: uuid.UUID, t: Tenant) -> PVEOut:
+    """Nodes, guests and storage of a Proxmox VE cluster, as last polled."""
+    h = await _get_device(t, device_id)
+    sel = f'host_id="{h.id}"'
+    names = (
+        "up",
+        "cpu_ratio",
+        "cpus",
+        "memory_used_bytes",
+        "memory_size_bytes",
+        "disk_used_bytes",
+        "disk_size_bytes",
+        "uptime_seconds",
+    )
+    found: dict[tuple, dict] = {}
+    try:
+        for n in names:
+            for labels, v in await metrics.query_instant(
+                t.tenant_id, f"last_over_time(sentinel_net_pve_{n}{{{sel}}}[5m])"
+            ):
+                key = (
+                    labels.get("type"),
+                    labels.get("node"),
+                    labels.get("vmid"),
+                    labels.get("storage"),
+                )
+                r = found.setdefault(key, {"labels": labels})
+                r[n] = v
+        quorum = await metrics.query_instant(
+            t.tenant_id, f"last_over_time(sentinel_net_pve_cluster_quorate{{{sel}}}[5m])"
+        )
+    except metrics.MetricsUnavailable:
+        raise HTTPException(503, "Metrics are unavailable right now") from None
+    out = []
+    for (typ, node, vmid, storage), r in found.items():
+        if typ not in ("node", "qemu", "lxc", "storage") or "up" not in r:
+            continue
+        lab = r["labels"]
+        out.append(
+            PVEResource(
+                type=typ,
+                node=node or "",
+                name=lab.get("name") or storage or node or "",
+                vmid=int(vmid) if vmid and vmid.isdigit() else None,
+                up=r["up"] == 1,
+                cpu_pct=round(r["cpu_ratio"] * 100, 1) if "cpu_ratio" in r else None,
+                cpus=r.get("cpus"),
+                memory_used=r.get("memory_used_bytes"),
+                memory_size=r.get("memory_size_bytes"),
+                disk_used=r.get("disk_used_bytes"),
+                disk_size=r.get("disk_size_bytes"),
+                uptime_seconds=r.get("uptime_seconds"),
+                shared=lab.get("shared") == "1",
+            )
+        )
+    order = {"node": 0, "qemu": 1, "lxc": 2, "storage": 3}
+    out.sort(key=lambda r: (order[r.type], r.node, r.vmid or 0, r.name))
+    return PVEOut(
+        cluster=quorum[0][0].get("cluster") if quorum else None,
+        quorate=quorum[0][1] == 1 if quorum else None,
+        resources=out,
     )

@@ -81,7 +81,11 @@ func (n *netPoller) set(ctx context.Context, devices []proto.NetworkDevice) {
 		}
 		dctx, cancel := context.WithCancel(ctx)
 		n.running[d.ID] = &netDevice{hash: h, cancel: cancel}
-		go n.run(dctx, d)
+		if d.Credential.Version == "proxmox" {
+			go n.runProxmox(dctx, d)
+		} else {
+			go n.run(dctx, d)
+		}
 	}
 	for id, cur := range n.running {
 		if !want[id] {

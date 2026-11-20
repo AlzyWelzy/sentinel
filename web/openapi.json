@@ -3202,6 +3202,55 @@
     }
    }
   },
+  "/v1/network/devices/{device_id}/proxmox": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Proxmox Resources",
+    "description": "Nodes, guests and storage of a Proxmox VE cluster, as last polled.",
+    "operationId": "proxmox_resources_v1_network_devices__device_id__proxmox_get",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "device_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Device Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PVEOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/v1/channels": {
    "get": {
     "summary": "List Channels",
@@ -12894,6 +12943,55 @@
       ],
       "title": "Context"
      },
+     "token_user": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Token User",
+      "description": "e.g. monitoring@pve"
+     },
+     "token_name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Token Name"
+     },
+     "token_value": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Token Value"
+     },
+     "insecure_tls": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Insecure Tls",
+      "description": "accept Proxmox's self-signed certificate"
+     },
      "name": {
       "type": "string",
       "maxLength": 100,
@@ -12905,7 +13003,8 @@
       "enum": [
        "1",
        "2c",
-       "3"
+       "3",
+       "proxmox"
       ],
       "title": "Version",
       "default": "2c"
@@ -12987,6 +13086,38 @@
        }
       ],
       "title": "Context"
+     },
+     "token_user": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Token User"
+     },
+     "token_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Token Name"
+     },
+     "token_set": {
+      "type": "boolean",
+      "title": "Token Set",
+      "default": false
+     },
+     "insecure_tls": {
+      "type": "boolean",
+      "title": "Insecure Tls",
+      "default": false
      },
      "devices": {
       "type": "integer",
@@ -13099,6 +13230,55 @@
       ],
       "title": "Context"
      },
+     "token_user": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Token User",
+      "description": "e.g. monitoring@pve"
+     },
+     "token_name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Token Name"
+     },
+     "token_value": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Token Value"
+     },
+     "insecure_tls": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Insecure Tls",
+      "description": "accept Proxmox's self-signed certificate"
+     },
      "name": {
       "anyOf": [
        {
@@ -13119,7 +13299,8 @@
         "enum": [
          "1",
          "2c",
-         "3"
+         "3",
+         "proxmox"
         ]
        },
        {
@@ -16877,6 +17058,173 @@
      "open_incidents"
     ],
     "title": "Overview"
+   },
+   "PVEOut": {
+    "properties": {
+     "cluster": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cluster"
+     },
+     "quorate": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Quorate"
+     },
+     "resources": {
+      "items": {
+       "$ref": "#/components/schemas/PVEResource"
+      },
+      "type": "array",
+      "title": "Resources"
+     }
+    },
+    "type": "object",
+    "required": [
+     "cluster",
+     "quorate",
+     "resources"
+    ],
+    "title": "PVEOut"
+   },
+   "PVEResource": {
+    "properties": {
+     "type": {
+      "type": "string",
+      "enum": [
+       "node",
+       "qemu",
+       "lxc",
+       "storage"
+      ],
+      "title": "Type"
+     },
+     "node": {
+      "type": "string",
+      "title": "Node"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "vmid": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vmid"
+     },
+     "up": {
+      "type": "boolean",
+      "title": "Up"
+     },
+     "cpu_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cpu Pct"
+     },
+     "cpus": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cpus"
+     },
+     "memory_used": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Memory Used"
+     },
+     "memory_size": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Memory Size"
+     },
+     "disk_used": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Disk Used"
+     },
+     "disk_size": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Disk Size"
+     },
+     "uptime_seconds": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Uptime Seconds"
+     },
+     "shared": {
+      "type": "boolean",
+      "title": "Shared",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "type",
+     "node",
+     "name",
+     "up"
+    ],
+    "title": "PVEResource"
    },
    "PageIn": {
     "properties": {

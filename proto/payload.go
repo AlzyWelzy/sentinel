@@ -64,9 +64,10 @@ type NetworkDevice struct {
 	Credential SNMPCredential `json:"credential"`
 }
 
-// SNMPCredential is a v1/v2c community or a v3 user.
+// SNMPCredential is a v1/v2c community, a v3 user, or (Version "proxmox")
+// a Proxmox VE API token.
 type SNMPCredential struct {
-	Version      string `json:"version"` // 1, 2c, 3
+	Version      string `json:"version"` // 1, 2c, 3, proxmox
 	Community    string `json:"community,omitempty"`
 	Username     string `json:"username,omitempty"`
 	AuthProtocol string `json:"auth_protocol,omitempty"`
@@ -74,6 +75,11 @@ type SNMPCredential struct {
 	PrivProtocol string `json:"priv_protocol,omitempty"`
 	PrivPassword string `json:"priv_password,omitempty"`
 	Context      string `json:"context,omitempty"`
+	// Proxmox VE: PVEAPIToken=<TokenUser>!<TokenName>=<TokenValue>.
+	TokenUser   string `json:"token_user,omitempty"`
+	TokenName   string `json:"token_name,omitempty"`
+	TokenValue  string `json:"token_value,omitempty"`
+	InsecureTLS bool   `json:"insecure_tls,omitempty"` // Proxmox's default self-signed certificate
 }
 
 // Check is one resource or uptime check.

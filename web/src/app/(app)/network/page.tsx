@@ -114,7 +114,7 @@ function AddDevices({ onDone }: { onDone: () => void }) {
       <div className="md:col-span-2">
         <Field
           label="Addresses"
-          hint="IP addresses or hostnames, one per line or separated by commas; add :port for a port other than 161. Up to 256 at once."
+          hint="IP addresses or hostnames, one per line or separated by commas; add :port for a port other than 161 (Proxmox: 8006, the default with a Proxmox credential). Up to 256 at once."
         >
           <textarea
             required
@@ -130,7 +130,7 @@ function AddDevices({ onDone }: { onDone: () => void }) {
         <Select value={credential} onChange={(e) => setCredential(e.target.value)}>
           {creds.data.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name} (v{c.version})
+              {c.name} ({c.version === "proxmox" ? "Proxmox" : `v${c.version}`})
             </option>
           ))}
         </Select>

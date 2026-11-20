@@ -33,6 +33,10 @@ function CredentialForm({ edit, onDone }: { edit?: Credential; onDone: () => voi
   const [authPassword, setAuthPassword] = useState("");
   const [privProtocol, setPrivProtocol] = useState(edit?.priv_protocol ?? "aes");
   const [privPassword, setPrivPassword] = useState("");
+  const [tokenUser, setTokenUser] = useState(edit?.token_user ?? "");
+  const [tokenName, setTokenName] = useState(edit?.token_name ?? "");
+  const [tokenValue, setTokenValue] = useState("");
+  const [insecure, setInsecure] = useState(edit?.insecure_tls ?? true);
   const [level, setLevel] = useState(
     edit
       ? edit.priv_protocol
@@ -44,8 +48,12 @@ function CredentialForm({ edit, onDone }: { edit?: Credential; onDone: () => voi
   );
   const body = {
     name,
-    version: version as "1" | "2c" | "3",
-    community: version === "3" ? null : community || null,
+    version: version as "1" | "2c" | "3" | "proxmox",
+    community: version === "3" || version === "proxmox" ? null : community || null,
+    token_user: version === "proxmox" ? tokenUser : null,
+    token_name: version === "proxmox" ? tokenName : null,
+    token_value: version === "proxmox" ? tokenValue || null : null,
+    insecure_tls: version === "proxmox" ? insecure : null,
     username: version === "3" ? username : null,
     auth_protocol: version === "3" && level !== "noAuthNoPriv" ? authProtocol : null,
     auth_password: version === "3" && level !== "noAuthNoPriv" ? authPassword || null : null,
@@ -84,9 +92,52 @@ function CredentialForm({ edit, onDone }: { edit?: Credential; onDone: () => voi
           <option value="2c">v2c (community)</option>
           <option value="3">v3 (user, authentication, encryption)</option>
           <option value="1">v1 (old devices only)</option>
+          <option value="proxmox">Proxmox VE API token</option>
         </Select>
       </Field>
-      {version !== "3" ? (
+      {version === "proxmox" ? (
+        <>
+          <Field
+            label="Token user"
+            hint="Datacenter › Permissions › API Tokens; the PVEAuditor role is enough."
+          >
+            <Input
+              value={tokenUser}
+              onChange={(e) => setTokenUser(e.target.value)}
+              placeholder="monitoring@pve"
+              required
+              maxLength={255}
+            />
+          </Field>
+          <Field label="Token name">
+            <Input
+              value={tokenName}
+              onChange={(e) => setTokenName(e.target.value)}
+              placeholder="sentinel"
+              required
+              maxLength={255}
+            />
+          </Field>
+          <Field label="Token secret" hint={keep ?? "Stored encrypted; never shown again."}>
+            <Input
+              type="password"
+              autoComplete="off"
+              value={tokenValue}
+              onChange={(e) => setTokenValue(e.target.value)}
+              required={!edit?.token_set}
+              maxLength={255}
+            />
+          </Field>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={insecure}
+              onChange={(e) => setInsecure(e.target.checked)}
+            />
+            Accept a self-signed certificate (Proxmox&apos;s default)
+          </label>
+        </>
+      ) : version !== "3" ? (
         <Field label="Community" hint={keep ?? "Read-only. Stored encrypted; never shown again."}>
           <Input
             type="password"
@@ -240,14 +291,16 @@ export default function CredentialsPage() {
               <tr key={c.id}>
                 <td className="font-medium">{c.name}</td>
                 <td>
-                  <Badge>v{c.version}</Badge>
+                  <Badge>{c.version === "proxmox" ? "Proxmox" : `v${c.version}`}</Badge>
                 </td>
                 <td className="text-ink-2">
-                  {c.version === "3"
-                    ? `${c.username} · ${c.auth_protocol ? c.auth_protocol.toUpperCase() : "no auth"}${c.priv_protocol ? ` + ${c.priv_protocol.toUpperCase()}` : ""}`
-                    : c.community_set
-                      ? "community set"
-                      : "no community"}
+                  {c.version === "proxmox"
+                    ? `${c.token_user}!${c.token_name}${c.insecure_tls ? " · self-signed OK" : ""}`
+                    : c.version === "3"
+                      ? `${c.username} · ${c.auth_protocol ? c.auth_protocol.toUpperCase() : "no auth"}${c.priv_protocol ? ` + ${c.priv_protocol.toUpperCase()}` : ""}`
+                      : c.community_set
+                        ? "community set"
+                        : "no community"}
                 </td>
                 <td className="tabular">{c.devices}</td>
                 <td className="text-right whitespace-nowrap">
