@@ -4,7 +4,9 @@ import Link from "next/link";
 
 import { SeverityBadge, StatusBadge, STATUS_LABEL, STATUS_TONE } from "@/components/status";
 import {
+  Breaker,
   Card,
+  cx,
   Empty,
   ErrorState,
   LinkButton,
@@ -20,6 +22,33 @@ import { useIncidents, useOverview } from "@/lib/queries";
 import { orgName, useMe } from "@/lib/session";
 
 const ORDER = ["critical", "down", "warning", "up", "maintenance", "paused"] as const;
+const PANEL_MAX = 40;
+
+function breakerState(status: string): "on" | "tripped" | "off" | "warn" {
+  if (status === "critical" || status === "down") return "tripped";
+  if (status === "warning") return "warn";
+  if (status === "paused" || status === "maintenance" || status === "unknown") return "off";
+  return "on";
+}
+
+type Row = {
+  online: boolean;
+  last_seen?: number | null;
+  cpu?: number | null;
+  memory?: number | null;
+  disk?: number | null;
+};
+
+/** The directory card's typed line when no incident names the problem. */
+function fallbackReason(s: Row): string {
+  if (!s.online)
+    return s.last_seen ? `No data since ${ago(s.last_seen)}` : "Waiting for first data";
+  const part = (label: string, v?: number | null) =>
+    v == null ? null : `${label} ${v.toFixed(0)}%`;
+  return [part("cpu", s.cpu), part("mem", s.memory), part("disk", s.disk)]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 function avg(values: (number | null | undefined)[]): number | null {
   const v = values.filter((x): x is number => typeof x === "number");
@@ -60,6 +89,16 @@ export default function OverviewPage() {
   const live = servers.filter((s) => s.online);
   const counts = o.counts as Record<string, number>;
   const open = incidents.data ?? [];
+  // Circuit numbers follow the fleet's own order so a server keeps its number;
+  // the panel then lists tripped circuits first.
+  const numbered = [...servers]
+    .sort((a, b) => a.hostname.localeCompare(b.hostname))
+    .map((s, i) => ({ s, n: i + 1 }));
+  const panel = numbered.sort(
+    (a, b) => ORDER.indexOf(a.s.status as never) - ORDER.indexOf(b.s.status as never),
+  );
+  const reasons = new Map<string, string>();
+  for (const i of open) if (!reasons.has(i.hostname)) reasons.set(i.hostname, i.summary);
 
   return (
     <>
@@ -148,50 +187,67 @@ export default function OverviewPage() {
         </Card>
       </div>
 
-      <Card title="Servers needing attention" className="mt-6" pad={false}>
-        <Table>
-          <thead>
-            <tr>
-              <th>Server</th>
-              <th>Status</th>
-              <th>CPU</th>
-              <th>Memory</th>
-              <th>Disk</th>
-              <th className="text-right">Last seen</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...servers]
-              .sort((a, b) => ORDER.indexOf(a.status as never) - ORDER.indexOf(b.status as never))
-              .slice(0, 10)
-              .map((s) => (
-                <tr key={s.id}>
-                  <td>
-                    <Link
-                      href={s.kind === "network" ? `/network/${s.id}` : `/servers/${s.id}`}
-                      title={s.hostname}
-                      className="block max-w-[18rem] truncate font-medium hover:text-brand"
-                    >
-                      {s.hostname}
-                    </Link>
-                  </td>
-                  <td>
-                    <StatusBadge status={s.status} />
-                  </td>
-                  <td>
-                    <Meter value={s.cpu} />
-                  </td>
-                  <td>
-                    <Meter value={s.memory} />
-                  </td>
-                  <td>
-                    <Meter value={s.disk} />
-                  </td>
-                  <td className="text-right text-ink-3">{ago(s.last_seen)}</td>
-                </tr>
-              ))}
-          </tbody>
-        </Table>
+      <Card
+        title={`Panel · ${servers.length} ${servers.length === 1 ? "circuit" : "circuits"}`}
+        className="mt-6"
+        pad={false}
+        actions={
+          <Link href="/servers" className="text-sm text-brand hover:underline">
+            All servers
+          </Link>
+        }
+      >
+        <ol className="grid md:grid-cols-2">
+          {panel.slice(0, PANEL_MAX).map(({ s, n }) => {
+            const state = breakerState(s.status);
+            const reason = reasons.get(s.hostname) ?? fallbackReason(s);
+            return (
+              <li
+                key={s.id}
+                className={cx(
+                  "flex min-w-0 items-center gap-3 border-b border-line px-4 py-2.5 md:odd:border-r",
+                  state === "tripped" && "bg-bad/[0.07]",
+                )}
+              >
+                <span className="w-7 shrink-0 text-right font-mono text-xs text-ink-3 tabular">
+                  {String(n).padStart(2, "0")}
+                </span>
+                <Breaker state={state} />
+                <div className="min-w-0 flex-1">
+                  <Link
+                    href={s.kind === "network" ? `/network/${s.id}` : `/servers/${s.id}`}
+                    title={s.hostname}
+                    className="block truncate font-medium hover:text-brand"
+                  >
+                    {s.hostname}
+                  </Link>
+                  <p
+                    className={cx(
+                      "truncate font-mono text-xs",
+                      state === "tripped"
+                        ? "text-bad"
+                        : state === "warn"
+                          ? "text-warn"
+                          : "text-ink-3",
+                    )}
+                    title={reason}
+                  >
+                    {reason}
+                  </p>
+                </div>
+                <StatusBadge status={s.status} />
+              </li>
+            );
+          })}
+        </ol>
+        {panel.length > PANEL_MAX && (
+          <p className="px-4 py-3 text-sm text-ink-2">
+            Showing the {PANEL_MAX} that need you most.{" "}
+            <Link href="/servers" className="text-brand hover:underline">
+              See all {panel.length}
+            </Link>
+          </p>
+        )}
       </Card>
     </>
   );

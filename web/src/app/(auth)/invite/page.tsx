@@ -65,7 +65,7 @@ function Invite() {
         <div className="space-y-2">
           <Link
             href={`/login?next=${encodeURIComponent(here)}`}
-            className="flex h-9 items-center justify-center rounded-[10px] bg-gradient-brand text-sm font-medium text-white shadow-glow"
+            className="flex h-9 items-center justify-center rounded-[3px] plate tracking-[0.07em]"
           >
             Sign in to accept
           </Link>

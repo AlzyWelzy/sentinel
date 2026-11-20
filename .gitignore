@@ -18,3 +18,4 @@ deploy/*.env
 # End-to-end checks
 e2e/node_modules/
 e2e/shots/
+.impeccable/questions/

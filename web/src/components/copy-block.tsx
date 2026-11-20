@@ -6,11 +6,11 @@ import { useState } from "react";
 export function CopyBlock({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="overflow-hidden rounded-xl bg-[#0b0d16] shadow-card ring-1 ring-black/5 dark:ring-white/10">
-      <div className="flex items-center gap-1.5 border-b border-white/5 px-3 py-2">
-        <span className="size-2 rounded-full bg-white/15" />
-        <span className="size-2 rounded-full bg-white/15" />
-        <span className="size-2 rounded-full bg-white/15" />
+    <div className="overflow-hidden rounded-[3px] bg-plate text-plate-ink">
+      <div className="flex items-center gap-1.5 border-b border-plate-ink/15 px-3 py-1.5">
+        <span className="font-plate text-[12px] font-semibold tracking-[0.12em] uppercase opacity-60">
+          Command
+        </span>
         <button
           type="button"
           onClick={async () => {
@@ -18,14 +18,12 @@ export function CopyBlock({ text }: { text: string }) {
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           }}
-          className="ml-auto rounded-md px-2 py-0.5 text-xs font-medium text-[#a5aac0] transition hover:bg-white/10 hover:text-white"
+          className="ml-auto rounded-[2px] border border-plate-ink/30 px-2 py-0.5 text-xs font-medium transition-[transform,background-color] duration-150 hover:bg-plate-ink/10 active:scale-[0.97]"
         >
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <pre className="overflow-x-auto p-4 font-mono text-xs leading-relaxed text-[#d7dbf0]">
-        {text}
-      </pre>
+      <pre className="overflow-x-auto p-4 font-mono text-xs leading-relaxed ">{text}</pre>
     </div>
   );
 }

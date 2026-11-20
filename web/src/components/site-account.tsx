@@ -11,7 +11,7 @@ export function SiteAccountLink() {
     return (
       <Link
         href="/overview"
-        className="rounded-[10px] bg-gradient-brand px-3.5 py-1.5 font-medium text-white shadow-glow transition hover:brightness-110"
+        className="plate rounded-[3px] px-3.5 py-1.5 text-[15px] transition-transform duration-150 active:scale-[0.97]"
       >
         Open dashboard
       </Link>
@@ -23,7 +23,7 @@ export function SiteAccountLink() {
       </Link>
       <Link
         href="/signup"
-        className="rounded-[10px] bg-gradient-brand px-3.5 py-1.5 font-medium text-white shadow-glow transition hover:brightness-110"
+        className="plate rounded-[3px] px-3.5 py-1.5 text-[15px] transition-transform duration-150 active:scale-[0.97]"
       >
         Start monitoring
       </Link>

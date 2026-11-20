@@ -5,15 +5,15 @@ import { Icon, Logo } from "@/components/icons";
 export default function NotFound() {
   return (
     <main className="relative grid min-h-screen place-items-center overflow-hidden px-4">
-      <div className="bg-grid mask-fade pointer-events-none absolute inset-0" />
-      <div className="pointer-events-none absolute top-[-160px] left-1/2 h-[420px] w-[720px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--brand)_20%,transparent),transparent)]" />
-      <div className="relative animate-rise text-center">
+      <div className="relative text-center">
         <Link href="/" className="inline-flex items-center gap-2.5">
           <Logo className="size-8" />
-          <span className="text-lg font-semibold tracking-tight">Sentinel</span>
+          <span className="font-plate text-2xl font-bold tracking-[0.12em] uppercase">
+            Sentinel
+          </span>
         </Link>
-        <p className="mt-12 font-mono text-sm text-brand">404</p>
-        <h1 className="mt-2 text-4xl font-semibold tracking-[-0.03em]">
+        <p className="mt-12 font-mono text-sm text-bad">404 · circuit not found</p>
+        <h1 className="mt-2 font-plate text-5xl leading-none font-bold uppercase">
           This page isn&apos;t here
         </h1>
         <p className="mx-auto mt-3 max-w-sm text-ink-2">
@@ -22,7 +22,7 @@ export default function NotFound() {
         <div className="mt-8 flex justify-center gap-3">
           <Link
             href="/overview"
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-brand px-5 text-sm font-medium text-white shadow-glow transition hover:brightness-110"
+            className="plate h-10 gap-2 px-5 text-[15px] transition-transform duration-150 active:scale-[0.97]"
           >
             Open dashboard
             <Icon name="arrow" />

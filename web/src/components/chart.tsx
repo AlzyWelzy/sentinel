@@ -8,16 +8,17 @@ import { bytes } from "@/lib/format";
 
 export type SeriesIn = { labels: Record<string, string>; points: [number, number][] };
 
-// A palette that reads on both themes.
+// Cable colours: distinct from each other and from the severity ramp, and
+// readable on both the light and the charcoal panel.
 const COLORS = [
-  "#8b70ff",
-  "#22d3ee",
-  "#f59e0b",
-  "#f472b6",
-  "#34d399",
-  "#60a5fa",
-  "#c084fc",
-  "#fb7185",
+  "#3b7dd8",
+  "#c46a2b",
+  "#2a9d8f",
+  "#9b5cc0",
+  "#7d9a2f",
+  "#cf4f7f",
+  "#7a8590",
+  "#c9a227",
 ];
 
 function seriesName(labels: Record<string, string>, fallback: string): string {

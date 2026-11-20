@@ -79,32 +79,25 @@ export function Icon({
  * CSS, not an SVG <linearGradient>, whose id would clash between copies (the
  * hidden sidebar's would win and the visible one would render blank). */
 export function Logo({ className = "size-6" }: { className?: string }) {
+  // A breaker in its slot: the handle up means the circuit is energized.
   return (
     <span
       aria-hidden
-      className={`inline-grid shrink-0 place-items-center rounded-[28%] bg-gradient-brand ${className}`}
+      className={`inline-grid shrink-0 place-items-center rounded-[2px] bg-plate ${className}`}
     >
       <svg viewBox="0 0 32 32" className="size-full">
-        <circle
-          cx="16"
-          cy="16"
-          r="8.5"
+        <rect
+          x="11"
+          y="6"
+          width="10"
+          height="20"
+          rx="1"
           fill="none"
-          stroke="#fff"
-          strokeOpacity=".45"
+          stroke="var(--plate-ink)"
           strokeWidth="1.6"
         />
-        <circle
-          cx="16"
-          cy="16"
-          r="4"
-          fill="none"
-          stroke="#fff"
-          strokeOpacity=".7"
-          strokeWidth="1.6"
-        />
-        <path d="M16 16 L22.5 9.5" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
-        <circle cx="16" cy="16" r="1.8" fill="#fff" />
+        <rect x="13" y="8" width="6" height="8" rx="0.6" fill="var(--plate-ink)" />
+        <path d="M6 26h4M22 26h4" stroke="var(--plate-ink)" strokeOpacity=".5" strokeWidth="1.6" />
       </svg>
     </span>
   );

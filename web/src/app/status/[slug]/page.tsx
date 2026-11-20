@@ -54,24 +54,23 @@ export default async function StatusPage({ params }: { params: Promise<{ slug: s
   const overall = page.status as string;
   return (
     <main className="relative mx-auto max-w-3xl px-4 pt-16 pb-12 sm:px-6">
-      <div className="bg-grid mask-fade pointer-events-none absolute inset-x-0 top-0 -z-10 h-72" />
-      <h1 className="text-3xl font-semibold tracking-[-0.03em]">{page.title}</h1>
+      <h1 className="border-b-2 border-ink pb-3 font-plate text-4xl leading-none font-bold text-ink uppercase">
+        {page.title}
+      </h1>
       {page.description && <p className="mt-2 text-ink-2">{page.description}</p>}
       <div
-        className={`mt-8 flex items-center gap-3 rounded-2xl px-5 py-4 font-semibold text-white shadow-card ${overall === "up" || overall === "operational" ? "bg-gradient-to-r from-emerald-500 to-teal-500" : overall === "degraded" || overall === "partial" ? "bg-gradient-to-r from-amber-500 to-orange-500" : "bg-gradient-to-r from-rose-500 to-red-500"}`}
+        className={`mt-8 flex items-center gap-3 rounded-[3px] px-5 py-4 font-plate text-xl font-semibold tracking-[0.04em] text-on-status uppercase ${overall === "up" || overall === "operational" ? "bg-ok" : overall === "degraded" || overall === "partial" ? "bg-warn" : "bg-bad"}`}
       >
-        <span className="grid size-7 place-items-center rounded-full bg-white/20">
-          <span className="size-2.5 rounded-full bg-white" />
-        </span>
+        <span className="inline-block h-4 w-2.5 rounded-[1px] bg-on-status" aria-hidden />
         {WORDS[overall] ?? overall}
       </div>
 
       {page.active.map((u) => (
         <section
           key={`${u.title}-${u.updated_at}`}
-          className="mt-4 rounded-2xl border border-line bg-panel p-5 shadow-card"
+          className="mt-4 rounded-[3px] border border-line bg-panel p-5"
         >
-          <p className="text-xs font-medium tracking-wide text-ink-3 uppercase">
+          <p className="font-plate text-[13px] font-semibold tracking-[0.08em] text-ink-2 uppercase">
             {u.kind} · {u.state}
           </p>
           <h2 className="mt-1 font-semibold">{u.title}</h2>
@@ -79,12 +78,15 @@ export default async function StatusPage({ params }: { params: Promise<{ slug: s
         </section>
       ))}
 
-      <section className="mt-6 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-panel shadow-card">
+      <section className="mt-6 divide-y divide-line overflow-hidden rounded-[3px] border border-line bg-panel">
         {page.items.map((i) => (
           <div key={i.label} className="p-4">
             <div className="flex items-center justify-between gap-3">
               <span className="flex items-center gap-2 font-medium">
-                <span className={`size-2.5 rounded-full ${COLOR[i.status] ?? "bg-idle"}`} />
+                <span
+                  className={`h-3 w-2 rounded-[1px] ${COLOR[i.status] ?? "bg-idle"}`}
+                  aria-hidden
+                />
                 {i.label}
               </span>
               <span className="text-sm text-ink-2 tabular">
@@ -106,7 +108,9 @@ export default async function StatusPage({ params }: { params: Promise<{ slug: s
       </section>
 
       <section className="mt-8">
-        <h2 className="mb-3 font-semibold">Recent incidents</h2>
+        <h2 className="mb-3 font-plate text-xl font-semibold tracking-[0.04em] uppercase">
+          Recent incidents
+        </h2>
         {page.incidents.length === 0 ? (
           <p className="text-sm text-ink-2">No incidents in the past week.</p>
         ) : (

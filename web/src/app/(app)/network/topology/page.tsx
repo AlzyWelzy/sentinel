@@ -150,7 +150,7 @@ export default function TopologyPage() {
                           y={p.y}
                           width={W}
                           height={H}
-                          rx={10}
+                          rx={3}
                           className={`fill-panel ${n.online ? "stroke-ok" : "stroke-bad"}`}
                           strokeWidth={1.5}
                         />
@@ -173,9 +173,9 @@ export default function TopologyPage() {
             </div>
           </Card>
           <p className="mt-3 text-xs text-ink-3">
-            Grey lines are LLDP links. Violet lines point to each device&apos;s upstream (dashed
-            when set by hand). A device without an upstream of its own depends on the server that
-            polls it.
+            Grey lines are LLDP links. Blue lines point to each device&apos;s upstream (dashed when
+            set by hand). A device without an upstream of its own depends on the server that polls
+            it.
           </p>
         </>
       )}

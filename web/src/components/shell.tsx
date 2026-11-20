@@ -63,20 +63,17 @@ function NavLink({ href, label, icon, onClick }: Item & { onClick?: () => void }
       onClick={onClick}
       aria-current={exact ? "page" : undefined}
       className={cx(
-        "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] transition",
+        "group relative flex items-center gap-2.5 rounded-[2px] px-2.5 py-[7px] text-[14px] transition-colors duration-100",
         exact
-          ? "bg-panel-2 font-medium text-ink shadow-card"
-          : "text-ink-2 hover:bg-panel-2/70 hover:text-ink",
+          ? "bg-plate font-medium text-plate-ink"
+          : "text-ink-2 hover:bg-panel-2 hover:text-ink",
       )}
     >
-      {exact && (
-        <span className="absolute top-1.5 bottom-1.5 -left-3 w-[3px] rounded-r-full bg-gradient-brand" />
-      )}
       <Icon
         name={icon}
         className={cx(
           "size-4 shrink-0",
-          exact ? "text-brand" : "text-ink-3 group-hover:text-ink-2",
+          exact ? "text-plate-ink" : "text-ink-3 group-hover:text-ink-2",
         )}
       />
       {label}
@@ -87,7 +84,7 @@ function NavLink({ href, label, icon, onClick }: Item & { onClick?: () => void }
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="space-y-0.5">
-      <p className="px-2.5 pb-1.5 text-[10.5px] font-semibold tracking-[0.12em] text-ink-3 uppercase">
+      <p className="border-b border-line px-2.5 pb-1 mb-1.5 font-plate text-[12px] font-semibold tracking-[0.14em] text-ink-3 uppercase">
         {title}
       </p>
       {children}
@@ -108,7 +105,7 @@ function OrgSwitcher() {
         if (e.target.value === "__new") router.push("/settings/organisation?new=1");
         else orgs.select(e.target.value);
       }}
-      className="h-10 w-full truncate rounded-xl border border-line bg-panel-2 px-2.5 text-sm font-medium shadow-card transition hover:border-line-2"
+      className="h-10 w-full truncate rounded-[3px] border border-line-2 bg-panel px-2.5 text-sm font-medium transition-colors hover:border-ink-3"
     >
       {orgs.list.map((o) => (
         <option key={o.tenant_id} value={o.tenant_id}>
@@ -143,7 +140,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     <nav className="flex h-full flex-col gap-5 overflow-y-auto px-4 py-5">
       <Link href="/overview" className="flex items-center gap-2.5 px-1">
         <Logo className="size-7" />
-        <span className="text-[15px] font-semibold tracking-tight">Sentinel</span>
+        <span className="font-plate text-[20px] leading-none font-bold tracking-[0.12em] uppercase">
+          Sentinel
+        </span>
       </Link>
       <OrgSwitcher />
       {NAV.map((group) => (
@@ -161,9 +160,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <NavLink href="/admin" label="Superadmin" icon="shield" onClick={close} />
         )}
       </Section>
-      <div className="mt-auto rounded-xl border border-line bg-panel-2/60 p-2.5">
+      <div className="mt-auto rounded-[3px] border border-line bg-panel-2 p-2.5">
         <div className="flex items-center gap-2.5">
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-gradient-brand text-xs font-semibold text-white">
+          <span className="plate grid size-8 shrink-0 place-items-center text-sm tracking-normal">
             {initial}
           </span>
           <p className="min-w-0 flex-1 truncate text-xs text-ink-2" title={user.email}>
@@ -174,7 +173,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ThemeToggle />
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-ink-3 transition hover:bg-panel hover:text-ink"
+            className="inline-flex items-center gap-1.5 rounded-[2px] px-2 py-1 text-xs text-ink-2 transition-colors hover:bg-panel hover:text-ink"
             onClick={async () => {
               await signOut();
               qc.clear();
@@ -190,14 +189,14 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="app-bg min-h-screen lg:grid lg:grid-cols-[248px_1fr]">
-      <aside className="hidden border-r border-line bg-panel/70 backdrop-blur-xl lg:sticky lg:top-0 lg:block lg:h-screen">
+      <aside className="hidden border-r border-line-2 bg-panel lg:sticky lg:top-0 lg:block lg:h-screen">
         {sidebar}
       </aside>
       {open && (
         <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setOpen(false)}>
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-black/50" />
           <aside
-            className="absolute inset-y-0 left-0 w-72 animate-rise border-r border-line bg-panel shadow-pop"
+            className="drawer absolute inset-y-0 left-0 w-72 border-r border-line bg-panel shadow-pop"
             onClick={(e) => e.stopPropagation()}
           >
             {sidebar}
@@ -205,17 +204,17 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
       <div className="min-w-0">
-        <div className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-panel/80 px-4 py-2.5 backdrop-blur-xl lg:hidden">
+        <div className="sticky top-0 z-30 flex items-center gap-3 border-b border-line-2 bg-panel px-4 py-2.5 lg:hidden">
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="grid size-9 place-items-center rounded-lg border border-line text-ink-2"
+            className="grid size-9 place-items-center rounded-[3px] border border-line-2 text-ink-2"
             aria-label="Menu"
           >
             <Icon name="menu" />
           </button>
           <Logo className="size-6" />
-          <span className="font-semibold tracking-tight">Sentinel</span>
+          <span className="font-plate text-lg font-bold tracking-[0.12em] uppercase">Sentinel</span>
         </div>
         {me.data?.impersonating && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-warn/25 bg-warn/10 px-4 py-2 text-sm text-warn">

@@ -17,11 +17,10 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-gradient-brand text-brand-ink shadow-glow hover:brightness-110 active:brightness-95 [text-shadow:0_1px_0_rgb(0_0_0/0.15)]",
-  secondary:
-    "bg-panel border border-line text-ink shadow-card hover:border-line-2 hover:bg-panel-2",
+    "plate px-4 text-[15px] tracking-[0.07em] hover:bg-[color-mix(in_srgb,var(--plate)_86%,var(--bad))]",
+  secondary: "bg-panel border border-line-2 text-ink shadow-card hover:bg-panel-2",
   ghost: "text-ink-2 hover:bg-panel-2 hover:text-ink",
-  danger: "bg-bad text-white shadow-sm hover:brightness-110",
+  danger: "bg-bad text-on-status hover:bg-[color-mix(in_srgb,var(--bad)_88%,black)]",
 };
 
 export function Button({
@@ -37,7 +36,7 @@ export function Button({
       {...rest}
       disabled={disabled || loading}
       className={cx(
-        "inline-flex h-9 items-center justify-center gap-2 rounded-[10px] px-3.5 text-sm font-medium whitespace-nowrap transition duration-150 select-none disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex h-9 items-center justify-center gap-2 rounded-[3px] px-3.5 text-sm font-medium whitespace-nowrap transition-[transform,background-color,border-color,color] duration-150 ease-(--ease-out) select-none active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
         variants[variant],
         className,
       )}
@@ -63,7 +62,7 @@ export function LinkButton({
     <Link
       href={href}
       className={cx(
-        "inline-flex h-9 items-center justify-center gap-2 rounded-[10px] px-3.5 text-sm font-medium whitespace-nowrap transition duration-150",
+        "inline-flex h-9 items-center justify-center gap-2 rounded-[3px] px-3.5 text-sm font-medium whitespace-nowrap transition-[transform,background-color,border-color,color] duration-150 ease-(--ease-out) active:scale-[0.97]",
         variants[variant],
         className,
       )}
@@ -78,7 +77,7 @@ export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={cx(
-        "h-9 w-full rounded-[10px] border border-line bg-panel px-3 text-sm text-ink shadow-[inset_0_1px_2px_rgb(0_0_0/0.04)] transition placeholder:text-ink-3 hover:border-line-2 focus:border-brand focus:ring-4 focus:ring-brand/15 focus:outline-none",
+        "h-9 w-full rounded-[3px] border border-line-2 bg-panel px-3 text-sm text-ink shadow-[inset_0_1px_2px_rgb(0_0_0/0.06)] transition-[border-color,box-shadow] duration-150 placeholder:text-ink-3 hover:border-ink-3 focus:border-brand focus:ring-2 focus:ring-brand/25 focus:outline-none",
         props.className,
       )}
     />
@@ -90,7 +89,7 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
     <select
       {...props}
       className={cx(
-        "h-9 max-w-full truncate rounded-[10px] border border-line bg-panel px-2.5 text-sm text-ink transition hover:border-line-2 focus:border-brand focus:ring-4 focus:ring-brand/15 focus:outline-none",
+        "h-9 max-w-full truncate rounded-[3px] border border-line-2 bg-panel px-2.5 text-sm text-ink transition-[border-color,box-shadow] duration-150 hover:border-ink-3 focus:border-brand focus:ring-2 focus:ring-brand/25 focus:outline-none",
         props.className,
       )}
     />
@@ -151,18 +150,17 @@ export function Card({
 }) {
   return (
     <section
-      className={cx(
-        "min-w-0 animate-rise rounded-2xl border border-line bg-panel shadow-card",
-        className,
-      )}
+      className={cx("min-w-0 rounded-[3px] border border-line bg-panel shadow-card", className)}
     >
       {(title || actions) && (
-        <header className="flex min-h-12 items-center justify-between gap-3 border-b border-line px-5 py-3">
-          <h2 className="text-sm font-semibold tracking-tight text-ink">{title}</h2>
+        <header className="flex min-h-11 items-center justify-between gap-3 border-b border-line bg-panel-2/60 px-4 py-2">
+          <h2 className="font-plate text-[15px] font-semibold tracking-[0.06em] text-ink uppercase">
+            {title}
+          </h2>
           {actions}
         </header>
       )}
-      <div className={pad ? "p-5" : undefined}>{children}</div>
+      <div className={pad ? "p-4 sm:p-5" : undefined}>{children}</div>
     </section>
   );
 }
@@ -177,14 +175,12 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-8 flex animate-rise flex-wrap items-end justify-between gap-4">
+    <div className="mb-7 flex flex-wrap items-end justify-between gap-4 border-b-2 border-ink pb-4">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-[-0.02em] [overflow-wrap:anywhere] text-ink sm:text-[28px]">
+        <h1 className="font-plate text-[30px] leading-none font-bold tracking-[0.005em] [overflow-wrap:anywhere] text-ink sm:text-[38px]">
           {title}
         </h1>
-        {subtitle && (
-          <p className="mt-1.5 text-sm [overflow-wrap:anywhere] text-ink-2">{subtitle}</p>
-        )}
+        {subtitle && <p className="mt-2 text-sm [overflow-wrap:anywhere] text-ink-2">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -194,18 +190,18 @@ export function PageHeader({
 export type Tone = "ok" | "warn" | "bad" | "idle" | "brand";
 
 const tones: Record<Tone, string> = {
-  ok: "bg-ok/10 text-ok ring-1 ring-inset ring-ok/25",
-  warn: "bg-warn/10 text-warn ring-1 ring-inset ring-warn/25",
-  bad: "bg-bad/10 text-bad ring-1 ring-inset ring-bad/25",
-  idle: "bg-idle/10 text-ink-2 ring-1 ring-inset ring-idle/25",
-  brand: "bg-brand/10 text-brand ring-1 ring-inset ring-brand/25",
+  ok: "bg-ok/12 text-ok ring-1 ring-inset ring-ok/35",
+  warn: "bg-warn/12 text-warn ring-1 ring-inset ring-warn/40",
+  bad: "bg-bad text-on-status ring-1 ring-inset ring-bad [&>[aria-hidden]]:bg-on-status",
+  idle: "bg-idle/12 text-ink-2 ring-1 ring-inset ring-idle/35",
+  brand: "bg-brand/10 text-brand ring-1 ring-inset ring-brand/30",
 };
 
 export function Badge({ tone = "idle", children }: { tone?: Tone; children: ReactNode }) {
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1.5 rounded-[2px] px-1.5 py-px font-plate text-[12.5px] font-semibold tracking-[0.06em] whitespace-nowrap uppercase",
         tones[tone],
       )}
     >
@@ -228,7 +224,7 @@ export function Dot({ tone }: { tone: Tone }) {
   return (
     <span
       className={cx(
-        "inline-block size-2 shrink-0 rounded-full",
+        "inline-block h-2.5 w-1.5 shrink-0 rounded-[1px]",
         bg,
         text,
         tone === "bad" && "animate-pulse-ring",
@@ -244,7 +240,7 @@ export function Spinner({ small }: { small?: boolean }) {
       role="status"
       aria-label="Loading"
       className={cx(
-        "inline-block animate-spin rounded-full border-2 border-current border-t-transparent",
+        "inline-block animate-[spin_0.6s_linear_infinite] rounded-full border-2 border-current border-t-transparent",
         small ? "size-3.5" : "size-5 text-ink-3",
       )}
     />
@@ -270,23 +266,21 @@ export function Empty({
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-      <div className="relative mb-2 grid size-12 place-items-center rounded-2xl border border-line bg-panel-2 text-ink-3 shadow-card">
-        <span className="absolute inset-0 rounded-2xl bg-gradient-brand opacity-[0.08]" />
-        <svg
-          viewBox="0 0 24 24"
-          className="size-5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinecap="round"
-          aria-hidden
-        >
-          <circle cx="12" cy="12" r="8" />
-          <circle cx="12" cy="12" r="3" />
-          <path d="M12 12l5-5" />
-        </svg>
-      </div>
-      <p className="font-semibold tracking-tight text-ink">{title}</p>
+      <svg
+        viewBox="0 0 32 40"
+        className="mb-2 h-10 w-8 text-ink-3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        aria-hidden
+      >
+        <rect x="2" y="2" width="28" height="36" rx="1.5" />
+        <rect x="11" y="9" width="10" height="22" rx="1" />
+        <rect x="12.5" y="10.5" width="7" height="9" rx="0.5" fill="currentColor" />
+      </svg>
+      <p className="font-plate text-lg font-semibold tracking-[0.04em] text-ink uppercase">
+        {title}
+      </p>
       {children && (
         <p className="max-w-md text-sm [overflow-wrap:anywhere] text-ink-2">{children}</p>
       )}
@@ -298,10 +292,10 @@ export function Empty({
 export function ErrorState({ message, retry }: { message: string; retry?: () => void }) {
   const missing = /not found|nothing here/i.test(message);
   return (
-    <div className="flex animate-rise flex-col items-center gap-3 px-6 py-20 text-center">
+    <div className="flex flex-col items-center gap-3 px-6 py-20 text-center">
       <div
         className={cx(
-          "grid size-12 place-items-center rounded-2xl border shadow-card",
+          "grid size-11 place-items-center rounded-[3px] border",
           missing ? "border-line bg-panel-2 text-ink-3" : "border-bad/25 bg-bad/10 text-bad",
         )}
       >
@@ -321,7 +315,7 @@ export function ErrorState({ message, retry }: { message: string; retry?: () => 
           )}
         </svg>
       </div>
-      <p className="font-semibold tracking-tight text-ink">
+      <p className="font-plate text-lg font-semibold tracking-[0.04em] text-ink uppercase">
         {missing ? "We couldn't find that" : "Something went wrong"}
       </p>
       <p className="max-w-md text-sm text-ink-2">{message}</p>
@@ -339,6 +333,11 @@ export function ErrorState({ message, retry }: { message: string; retry?: () => 
   );
 }
 
+const noticeTones: Record<Tone, string> = {
+  ...tones,
+  bad: "bg-bad/10 text-bad ring-1 ring-inset ring-bad/30",
+};
+
 export function Notice({ tone = "idle", children }: { tone?: Tone; children: ReactNode }) {
   const border = {
     ok: "border-ok/30",
@@ -348,14 +347,16 @@ export function Notice({ tone = "idle", children }: { tone?: Tone; children: Rea
     brand: "border-brand/30",
   }[tone];
   return (
-    <div className={cx("rounded-xl border px-4 py-3 text-sm", border, tones[tone])}>{children}</div>
+    <div className={cx("rounded-[3px] border px-4 py-3 text-sm", border, noticeTones[tone])}>
+      {children}
+    </div>
   );
 }
 
 export function Table({ children }: { children: ReactNode }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm [&_tbody_tr]:border-t [&_tbody_tr]:border-line [&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-panel-2/50 [&_td]:px-5 [&_td]:py-3 [&_th]:bg-panel-2/40 [&_th]:px-5 [&_th]:py-2.5 [&_th]:text-[11px] [&_th]:font-semibold [&_th]:tracking-[0.06em] [&_th]:text-ink-3 [&_th]:uppercase">
+      <table className="w-full text-left text-sm [&_tbody_tr]:border-t [&_tbody_tr]:border-line [&_tbody_tr:hover]:bg-panel-2/70 [&_td]:px-4 [&_td]:py-2.5 [&_th]:border-b [&_th]:border-line-2 [&_th]:bg-panel-2 [&_th]:px-4 [&_th]:py-2 [&_th]:font-plate [&_th]:text-[12.5px] [&_th]:font-semibold [&_th]:tracking-[0.08em] [&_th]:text-ink-2 [&_th]:uppercase">
         {children}
       </table>
     </div>
@@ -372,17 +373,22 @@ export function Meter({
   bad?: number;
 }) {
   if (value == null) return <span className="text-ink-3">—</span>;
-  const tone =
-    value >= bad ? "bg-bad" : value >= warn ? "bg-warn" : "bg-gradient-to-r from-brand to-brand-2";
+  const tone = value >= bad ? "bg-bad" : value >= warn ? "bg-warn" : "bg-ink-2";
   return (
     <div className="flex min-w-24 items-center gap-2">
-      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-panel-2">
-        <div
-          className={cx("h-full rounded-full", tone)}
-          style={{ width: `${Math.min(100, value)}%` }}
-        />
+      <div className="relative h-2 flex-1 overflow-hidden rounded-[1px] border border-line bg-panel-2">
+        <div className={cx("h-full", tone)} style={{ width: `${Math.min(100, value)}%` }} />
+        {/* Scale ticks every 10%, like a bar meter's face. */}
+        <div className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(90deg,transparent_0_calc(10%-1px),var(--panel)_calc(10%-1px)_10%)]" />
       </div>
-      <span className="w-11 text-right text-xs tabular text-ink-2">{value.toFixed(0)}%</span>
+      <span
+        className={cx(
+          "w-10 text-right font-mono text-xs tabular",
+          value >= bad ? "text-bad" : value >= warn ? "text-warn" : "text-ink-2",
+        )}
+      >
+        {value.toFixed(0)}%
+      </span>
     </div>
   );
 }
@@ -405,13 +411,13 @@ export function Stat({
 }) {
   const body = (
     <>
-      <div className="flex items-center gap-2 text-xs font-medium text-ink-2">
+      <div className="flex items-center gap-2 font-plate text-[13px] font-semibold tracking-[0.08em] text-ink-2 uppercase">
         {tone && <Dot tone={tone} />}
         {label}
       </div>
       <div
         className={cx(
-          "mt-3 text-[28px] leading-none font-semibold tracking-tight tabular",
+          "mt-2 font-mono text-[26px] leading-none font-medium tabular",
           value === 0 && "text-ink-3",
         )}
       >
@@ -421,12 +427,48 @@ export function Stat({
     </>
   );
   const cls =
-    "group relative block animate-rise overflow-hidden rounded-2xl border border-line bg-panel p-4 shadow-card transition";
+    "group relative block overflow-hidden rounded-[3px] border border-line bg-panel px-4 py-3.5 shadow-card transition-colors duration-150";
   return href ? (
-    <Link href={href} className={cx(cls, "hover:-translate-y-0.5 hover:border-brand/40")}>
+    <Link href={href} className={cx(cls, "hover:border-ink-3 hover:bg-panel-2")}>
       {body}
     </Link>
   ) : (
     <div className={cls}>{body}</div>
+  );
+}
+
+/** A breaker handle: up and dark when the circuit is energized, thrown down
+ * in trip orange when it tripped. The flip is the one motion the panel owns. */
+export function Breaker({ state }: { state: "on" | "tripped" | "off" | "warn" }) {
+  const down = state === "tripped" || state === "off";
+  const fill =
+    state === "tripped"
+      ? "fill-bad"
+      : state === "warn"
+        ? "fill-warn"
+        : state === "off"
+          ? "fill-idle"
+          : "fill-ink";
+  return (
+    <svg viewBox="0 0 14 24" className="h-6 w-3.5 shrink-0" aria-hidden>
+      <rect
+        x="0.75"
+        y="0.75"
+        width="12.5"
+        height="22.5"
+        rx="1.5"
+        className="fill-panel-2 stroke-line-2"
+        strokeWidth="1.5"
+      />
+      <rect
+        x="3"
+        y="3"
+        width="8"
+        height="9"
+        rx="1"
+        className={cx(fill, "transition-transform duration-[160ms] ease-(--ease-out)")}
+        style={{ transform: down ? "translateY(9px)" : undefined }}
+      />
+    </svg>
   );
 }
