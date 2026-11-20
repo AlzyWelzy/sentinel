@@ -213,6 +213,21 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			s.configs.forget(id.HostID)
 		}
 	}
+	if hasNetworkPolls(req) && hc != nil {
+		seen, err := s.store.saveNetworkPolls(r.Context(), id, req.Batches, hc.devices)
+		if err != nil {
+			s.log.Warn("network polls not stored", "err", err, "host_id", id.HostID)
+		}
+		for deviceID, at := range seen {
+			dev := hostIdentity{HostID: deviceID, TenantID: id.TenantID, Active: true}
+			if now := time.Now(); at.After(now) {
+				at = now // an agent clock running fast
+			}
+			if err := s.cache.markSeen(r.Context(), dev, at); err != nil {
+				s.log.Warn("device heartbeat not recorded", "err", err, "device_id", deviceID)
+			}
+		}
+	}
 	if req.Inventory != nil {
 		if err := s.store.saveInventory(r.Context(), id, req.Inventory); err != nil {
 			s.log.Warn("inventory not stored", "err", err, "host_id", id.HostID)
@@ -338,4 +353,13 @@ func randomToken() string {
 func hashSecret(v string) string {
 	sum := sha256.Sum256([]byte(v))
 	return hex.EncodeToString(sum[:])
+}
+
+func hasNetworkPolls(req proto.MetricsRequest) bool {
+	for _, b := range req.Batches {
+		if len(b.Network) > 0 {
+			return true
+		}
+	}
+	return false
 }

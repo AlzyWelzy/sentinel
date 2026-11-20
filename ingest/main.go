@@ -32,6 +32,9 @@ type config struct {
 	// Tempo for APM traces; empty turns it off.
 	TempoURL       string
 	SpansPerMinute int
+	// Opens network device credentials for the agents that poll them
+	// (the API's CREDENTIALS_KEY).
+	CredentialsKey string
 }
 
 func loadConfig() config {
@@ -48,6 +51,7 @@ func loadConfig() config {
 		LogLinesPerMinute: envInt("LOG_LINES_PER_MINUTE", 6000),
 		TempoURL:          os.Getenv("TEMPO_URL"),
 		SpansPerMinute:    envInt("SPANS_PER_MINUTE", 30000),
+		CredentialsKey:    os.Getenv("CREDENTIALS_KEY"),
 	}
 }
 

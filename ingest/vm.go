@@ -78,7 +78,14 @@ func toPrometheusText(req proto.MetricsRequest, id hostIdentity, hc *hostConfig,
 				continue
 			}
 			tenantID, fixed := id.TenantID, `host_id="`+id.HostID+`"`
-			if checkID, ok := s.Labels["check_id"]; ok {
+			if deviceID, ok := s.Labels["device_id"]; ok {
+				// A network device this host polls: filed under the device.
+				if hc == nil || !hc.devices[deviceID] {
+					dropped++
+					continue
+				}
+				fixed = `host_id="` + deviceID + `"`
+			} else if checkID, ok := s.Labels["check_id"]; ok {
 				var c checkDef
 				if hc != nil {
 					c, ok = hc.checks[checkID]
@@ -96,7 +103,7 @@ func toPrometheusText(req proto.MetricsRequest, id hostIdentity, hc *hostConfig,
 			b.WriteByte('{')
 			b.WriteString(fixed)
 			for k, v := range s.Labels {
-				if k == "probe" {
+				if k == "probe" || k == "device_id" || k == "host_id" || k == "tenant_id" {
 					continue
 				}
 				b.WriteByte(',')

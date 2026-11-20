@@ -21,6 +21,7 @@ const configTTL = 10 * time.Second
 type hostConfig struct {
 	cfg      proto.AgentConfig
 	checks   map[string]checkDef
+	devices  map[string]bool // network devices this host polls
 	region   string
 	loadedAt time.Time
 }
@@ -99,6 +100,10 @@ func (s *server) loadHostConfig(ctx context.Context, id hostIdentity) (*hostConf
 		e.checks[c.ID] = c
 	}
 	if cfg.Actions, err = s.store.pendingActions(ctx, id.HostID); err != nil {
+		e.cfg = cfg
+		return e, err
+	}
+	if cfg.Devices, e.devices, err = s.networkDevices(ctx, id); err != nil {
 		e.cfg = cfg
 		return e, err
 	}

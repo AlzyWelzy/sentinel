@@ -111,3 +111,24 @@ func TestDiffPackages(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 }
+
+func TestDeviceSamplesAreFiledUnderTheDevice(t *testing.T) {
+	now := time.Now()
+	r := proto.MetricsRequest{Batches: []proto.Batch{{TimestampMs: now.UnixMilli(), Samples: []proto.Sample{
+		{Name: "sentinel_net_if_in_octets_total", Labels: map[string]string{"device_id": "dev-1", "ifname": "Eth1"}, Value: 5},
+		{Name: "sentinel_net_snmp_up", Labels: map[string]string{"device_id": "someone-elses", "host_id": "x"}, Value: 1},
+		{Name: "sentinel_cpu_usage_percent", Labels: map[string]string{"host_id": "spoofed"}, Value: 3},
+	}}}}
+	hc := &hostConfig{checks: map[string]checkDef{}, devices: map[string]bool{"dev-1": true}}
+	bodies, kept, dropped := toPrometheusText(r, host1, hc, now)
+	body := string(bodies[host1.TenantID])
+	if kept != 1 || dropped != 2 { // a spoofed host_id is refused outright
+		t.Fatalf("kept %d dropped %d: %s", kept, dropped, body)
+	}
+	if !strings.Contains(body, `sentinel_net_if_in_octets_total{host_id="dev-1",ifname="Eth1"} 5`) {
+		t.Fatalf("device sample not filed under the device:\n%s", body)
+	}
+	if strings.Contains(body, "someone-elses") || strings.Contains(body, "spoofed") || strings.Contains(body, "device_id") {
+		t.Fatalf("a device this host doesn't poll, or a spoofed host_id, got through:\n%s", body)
+	}
+}
