@@ -22,6 +22,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY proto ./proto
 COPY agent ./agent
+COPY netmon ./netmon
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
       -ldflags="-s -w -X main.version=$AGENT_VERSION" -o /sentinel-agent ./agent
 

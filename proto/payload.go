@@ -51,6 +51,29 @@ type AgentConfig struct {
 	// Collect the software inventory (packages, listening ports) this often.
 	// Zero means the agent's default.
 	InventoryIntervalSeconds int `json:"inventory_interval_seconds,omitempty"`
+	// Network devices this agent polls over SNMP for its site. Their
+	// credentials are in here: the agent keeps config in memory only.
+	Devices []NetworkDevice `json:"devices,omitempty"`
+}
+
+// NetworkDevice is a switch, firewall or other device this agent polls.
+type NetworkDevice struct {
+	ID         string         `json:"id"`
+	Address    string         `json:"address"`           // host or host:port (161)
+	Profile    string         `json:"profile,omitempty"` // pinned; empty detects it
+	Credential SNMPCredential `json:"credential"`
+}
+
+// SNMPCredential is a v1/v2c community or a v3 user.
+type SNMPCredential struct {
+	Version      string `json:"version"` // 1, 2c, 3
+	Community    string `json:"community,omitempty"`
+	Username     string `json:"username,omitempty"`
+	AuthProtocol string `json:"auth_protocol,omitempty"`
+	AuthPassword string `json:"auth_password,omitempty"`
+	PrivProtocol string `json:"priv_protocol,omitempty"`
+	PrivPassword string `json:"priv_password,omitempty"`
+	Context      string `json:"context,omitempty"`
 }
 
 // Check is one resource or uptime check.
@@ -192,6 +215,57 @@ type Sample struct {
 type Batch struct {
 	TimestampMs int64    `json:"ts"`
 	Samples     []Sample `json:"samples"`
+	// Network device polls in this tick. Their samples are in Samples,
+	// labelled device_id; ingest files them under the device.
+	Network []NetworkPoll `json:"network,omitempty"`
+}
+
+// NetworkPoll is what one poll of a device found besides its samples.
+type NetworkPoll struct {
+	DeviceID   string            `json:"device_id"`
+	OK         bool              `json:"ok"` // the device answered SNMP
+	Error      string            `json:"error,omitempty"`
+	Profile    string            `json:"profile,omitempty"`
+	DurationMs int64             `json:"duration_ms,omitempty"`
+	System     *NetworkSystem    `json:"system,omitempty"`
+	Inventory  map[string]string `json:"inventory,omitempty"`
+	// Full is an inventory poll: Interfaces and Neighbors are complete and
+	// replace what ingest had (on other polls they're absent).
+	Full       bool               `json:"full,omitempty"`
+	Interfaces []NetworkInterface `json:"interfaces,omitempty"`
+	Neighbors  []NetworkNeighbor  `json:"neighbors,omitempty"`
+}
+
+type NetworkSystem struct {
+	Descr     string  `json:"descr,omitempty"`
+	ObjectID  string  `json:"object_id,omitempty"`
+	Name      string  `json:"name,omitempty"`
+	Contact   string  `json:"contact,omitempty"`
+	Location  string  `json:"location,omitempty"`
+	UptimeSec float64 `json:"uptime_sec,omitempty"`
+	Vendor    string  `json:"vendor,omitempty"`
+}
+
+type NetworkInterface struct {
+	Index      int    `json:"index"`
+	Name       string `json:"name"`
+	Descr      string `json:"descr,omitempty"`
+	Alias      string `json:"alias,omitempty"`
+	Type       int    `json:"type,omitempty"`
+	SpeedBps   uint64 `json:"speed_bps,omitempty"`
+	MTU        int    `json:"mtu,omitempty"`
+	MAC        string `json:"mac,omitempty"`
+	AdminUp    bool   `json:"admin_up"`
+	OperStatus int    `json:"oper_status,omitempty"`
+}
+
+type NetworkNeighbor struct {
+	LocalPort      string `json:"local_port"`
+	RemoteSysName  string `json:"remote_sys_name,omitempty"`
+	RemotePortID   string `json:"remote_port_id,omitempty"`
+	RemotePortDesc string `json:"remote_port_desc,omitempty"`
+	RemoteChassis  string `json:"remote_chassis_id,omitempty"`
+	RemoteMgmtAddr string `json:"remote_mgmt_addr,omitempty"`
 }
 
 // MetricsRequest may carry several batches when the agent is replaying its

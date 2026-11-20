@@ -229,6 +229,7 @@ type agent struct {
 	running       map[string]bool
 	doneActions   []string
 	refreshNow    chan struct{}
+	net           *netPoller // network devices this agent polls for its site
 	// Pushes refused (401/403) in a row, and when to try again. Used only by
 	// flush, which runs on the tick goroutine.
 	refusedPushes int
@@ -257,6 +258,15 @@ func (a *agent) loop(ctx context.Context) {
 	a.refreshNow = make(chan struct{}, 1)
 	a.running = map[string]bool{}
 	a.doneActions = slices.Clone(a.st.DoneActions)
+	if n, err := newNetPoller(func(b proto.Batch) {
+		if err := a.spool.add(b); err != nil {
+			a.log.Error("spool write failed", "err", err)
+		}
+	}, a.log); err != nil {
+		a.log.Error("network polling unavailable", "err", err)
+	} else {
+		a.net = n
+	}
 	a.refreshConfig(ctx)
 	go a.checkLoop(ctx)
 	go a.logLoop(ctx)
@@ -637,6 +647,9 @@ func (a *agent) refreshConfig(ctx context.Context) bool {
 	if err != nil {
 		a.log.Warn("config refresh failed", "err", err)
 		return false
+	}
+	if a.net != nil {
+		a.net.set(ctx, cfg.Devices)
 	}
 	next := a.st
 	next.IngestURL = orDefault(cfg.IngestURL, a.st.IngestURL)
