@@ -924,6 +924,235 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/network/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Credentials */
+        get: operations["list_credentials_v1_network_credentials_get"];
+        put?: never;
+        /** Create Credential */
+        post: operations["create_credential_v1_network_credentials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/network/credentials/{credential_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Credential */
+        delete: operations["delete_credential_v1_network_credentials__credential_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Credential
+         * @description Secrets left out (or empty) keep their current value.
+         */
+        patch: operations["update_credential_v1_network_credentials__credential_id__patch"];
+        trace?: never;
+    };
+    "/v1/network/pollers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pollers
+         * @description Servers that can poll devices: any of the organisation's agents.
+         */
+        get: operations["list_pollers_v1_network_pollers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/network/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Profiles
+         * @description Vendor profiles; a device's is detected from its sysObjectID unless pinned.
+         */
+        get: operations["list_profiles_v1_network_profiles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/network/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Devices
+         * @description Adds devices to be polled by one of your servers. Each is named from
+         *     its sysName at the first poll, unless named here.
+         */
+        post: operations["add_devices_v1_network_devices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/network/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Device */
+        get: operations["get_device_v1_network_devices__device_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Device */
+        patch: operations["update_device_v1_network_devices__device_id__patch"];
+        trace?: never;
+    };
+    "/v1/network/devices/{device_id}/traffic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Device Traffic */
+        get: operations["device_traffic_v1_network_devices__device_id__traffic_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/network/devices/{device_id}/interfaces/{ifindex}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Interface */
+        patch: operations["update_interface_v1_network_devices__device_id__interfaces__ifindex__patch"];
+        trace?: never;
+    };
+    "/v1/network/topology": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Topology */
+        get: operations["topology_v1_network_topology_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/network/conditions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conditions
+         * @description What a network alert rule can watch (kind network, target = key).
+         */
+        get: operations["list_conditions_v1_network_conditions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/network/bandwidth/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bandwidth Tags */
+        get: operations["bandwidth_tags_v1_network_bandwidth_tags_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/network/bandwidth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bandwidth
+         * @description 95th-percentile bandwidth for the ports tagged `tag`: 5-minute
+         *     average rates, the ports summed per sample, the top 5% of samples
+         *     dropped. Missing samples are skipped, not counted as zero; coverage
+         *     says how complete the period is.
+         */
+        get: operations["bandwidth_v1_network_bandwidth_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/channels": {
         parameters: {
             query?: never;
@@ -3292,6 +3521,74 @@ export interface components {
             /** Password Min Length */
             password_min_length: number;
         };
+        /** BandwidthOut */
+        BandwidthOut: {
+            /** Tag */
+            tag: string;
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /** Timezone */
+            timezone: string;
+            /** Ports */
+            ports: components["schemas"]["BillingPort"][];
+            inbound: components["schemas"]["BillingDirection"];
+            outbound: components["schemas"]["BillingDirection"];
+            /**
+             * Billable P95 Bps
+             * @description the higher of inbound and outbound
+             */
+            billable_p95_bps: number;
+            /** Samples */
+            samples: number;
+            /** Expected Samples */
+            expected_samples: number;
+            /** Coverage Pct */
+            coverage_pct: number;
+            /** Method */
+            method: string;
+            /** Series In */
+            series_in: number[][];
+            /** Series Out */
+            series_out: number[][];
+        };
+        /** BillingDirection */
+        BillingDirection: {
+            /** P95 Bps */
+            p95_bps: number;
+            /** Max Bps */
+            max_bps: number;
+            /** Avg Bps */
+            avg_bps: number;
+            /** Total Bytes */
+            total_bytes: number;
+        };
+        /** BillingPort */
+        BillingPort: {
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Device */
+            device: string;
+            /** Ifname */
+            ifname: string;
+            /** Alias */
+            alias: string | null;
+            /** Speed Bps */
+            speed_bps: number | null;
+        };
+        /** BillingTagOut */
+        BillingTagOut: {
+            /** Tag */
+            tag: string;
+            /** Ports */
+            ports: number;
+            /** Devices */
+            devices: number;
+        };
         /** BulkIn */
         BulkIn: {
             /** Host Ids */
@@ -3576,6 +3873,21 @@ export interface components {
             /** Points */
             points: number[][];
         };
+        /** ConditionOut */
+        ConditionOut: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Unit */
+            unit: string;
+            /** Default */
+            default: number | null;
+            /** About */
+            about: string;
+            /** Vendor */
+            vendor: string;
+        };
         /** ContainerOut */
         ContainerOut: {
             /** Name */
@@ -3590,6 +3902,85 @@ export interface components {
             memory_bytes: number | null;
             /** Memory Percent */
             memory_percent: number | null;
+        };
+        /** CredentialIn */
+        CredentialIn: {
+            /** Community */
+            community?: string | null;
+            /** Username */
+            username?: string | null;
+            /** Auth Protocol */
+            auth_protocol?: string | null;
+            /** Auth Password */
+            auth_password?: string | null;
+            /** Priv Protocol */
+            priv_protocol?: string | null;
+            /** Priv Password */
+            priv_password?: string | null;
+            /** Context */
+            context?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Version
+             * @default 2c
+             * @enum {string}
+             */
+            version: "1" | "2c" | "3";
+        };
+        /** CredentialOut */
+        CredentialOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+            /** Community Set */
+            community_set: boolean;
+            /** Username */
+            username: string | null;
+            /** Auth Protocol */
+            auth_protocol: string | null;
+            /** Auth Set */
+            auth_set: boolean;
+            /** Priv Protocol */
+            priv_protocol: string | null;
+            /** Priv Set */
+            priv_set: boolean;
+            /** Context */
+            context: string | null;
+            /** Devices */
+            devices: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** CredentialPatch */
+        CredentialPatch: {
+            /** Community */
+            community?: string | null;
+            /** Username */
+            username?: string | null;
+            /** Auth Protocol */
+            auth_protocol?: string | null;
+            /** Auth Password */
+            auth_password?: string | null;
+            /** Priv Protocol */
+            priv_protocol?: string | null;
+            /** Priv Password */
+            priv_password?: string | null;
+            /** Context */
+            context?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Version */
+            version?: ("1" | "2c" | "3") | null;
         };
         /** CustomMetricOut */
         CustomMetricOut: {
@@ -3672,6 +4063,100 @@ export interface components {
             sent_at: string | null;
             /** Held Until */
             held_until: string | null;
+        };
+        /** DeviceOut */
+        DeviceOut: {
+            host: components["schemas"]["HostOut"];
+            /** Profile */
+            profile: string | null;
+            /** Profile Pinned */
+            profile_pinned: boolean;
+            /** System */
+            system: {
+                [key: string]: unknown;
+            };
+            /** Inventory */
+            inventory: {
+                [key: string]: unknown;
+            };
+            /** Last Ok At */
+            last_ok_at: string | null;
+            /** Polled At */
+            polled_at: string | null;
+            /** Poll Duration Ms */
+            poll_duration_ms: number | null;
+            /** Credential Id */
+            credential_id: string | null;
+            /** Credential Name */
+            credential_name: string | null;
+            /** Poller Hostname */
+            poller_hostname: string | null;
+            /** Interfaces */
+            interfaces: components["schemas"]["InterfaceOut"][];
+            /** Links */
+            links: components["schemas"]["LinkOut"][];
+        };
+        /** DevicePatch */
+        DevicePatch: {
+            /** Name */
+            name?: string | null;
+            /** Address */
+            address?: string | null;
+            /** Credential Id */
+            credential_id?: string | null;
+            /** Poller Host Id */
+            poller_host_id?: string | null;
+            /**
+             * Profile
+             * @description '' detects it again
+             */
+            profile?: string | null;
+            /** Network Role */
+            network_role?: ("core" | "distribution" | "access" | "firewall" | "router" | "wireless" | "other") | null;
+            /**
+             * Clear Role
+             * @default false
+             */
+            clear_role: boolean;
+        };
+        /** DevicesIn */
+        DevicesIn: {
+            /** Addresses */
+            addresses: string[];
+            /**
+             * Name
+             * @description only with one address; else named from sysName
+             */
+            name?: string | null;
+            /**
+             * Credential Id
+             * Format: uuid
+             */
+            credential_id: string;
+            /**
+             * Poller Host Id
+             * Format: uuid
+             */
+            poller_host_id: string;
+            /**
+             * Profile
+             * @description pin a profile; empty detects it
+             */
+            profile?: string | null;
+            /** Network Role */
+            network_role?: ("core" | "distribution" | "access" | "firewall" | "router" | "wireless" | "other") | null;
+            /** Tags */
+            tags?: string[];
+        };
+        /** DevicesOut */
+        DevicesOut: {
+            /** Created */
+            created: components["schemas"]["HostOut"][];
+            /**
+             * Skipped
+             * @description addresses this poller already polls
+             */
+            skipped: string[];
         };
         /** DisableIn */
         DisableIn: {
@@ -3945,6 +4430,37 @@ export interface components {
             paused_at?: string | null;
             /** Paused By */
             paused_by?: string | null;
+            /**
+             * Kind
+             * @default server
+             * @enum {string}
+             */
+            kind: "server" | "network";
+            /**
+             * Address
+             * @description network devices: what's polled
+             */
+            address?: string | null;
+            /**
+             * Poller Host Id
+             * @description network devices: the server that polls it
+             */
+            poller_host_id?: string | null;
+            /** Network Role */
+            network_role?: string | null;
+            /** Vendor */
+            vendor?: string | null;
+            /**
+             * Device Error
+             * @description network devices: why the last poll failed
+             */
+            device_error?: string | null;
+            /**
+             * Depends On Auto
+             * @description set from LLDP topology
+             * @default false
+             */
+            depends_on_auto: boolean;
         };
         /** HostPatch */
         HostPatch: {
@@ -4209,6 +4725,50 @@ export interface components {
             /** Merged Into */
             merged_into?: string | null;
         };
+        /** InterfaceOut */
+        InterfaceOut: {
+            /** Ifindex */
+            ifindex: number;
+            /** Name */
+            name: string;
+            /** Descr */
+            descr: string | null;
+            /** Alias */
+            alias: string | null;
+            /** Speed Bps */
+            speed_bps: number | null;
+            /** Mac */
+            mac: string | null;
+            /** Admin Up */
+            admin_up: boolean | null;
+            /** Oper Up */
+            oper_up: boolean | null;
+            /** In Bps */
+            in_bps?: number | null;
+            /** Out Bps */
+            out_bps?: number | null;
+            /**
+             * Utilisation
+             * @description the busier direction, % of speed
+             */
+            utilisation?: number | null;
+            /** Errors Per Sec */
+            errors_per_sec?: number | null;
+            /** Billing Tag */
+            billing_tag: string | null;
+            /** Neighbor */
+            neighbor?: string | null;
+            /** Neighbor Host Id */
+            neighbor_host_id?: string | null;
+        };
+        /** InterfacePatch */
+        InterfacePatch: {
+            /**
+             * Billing Tag
+             * @description groups ports for 95th-percentile bandwidth; '' clears
+             */
+            billing_tag?: string | null;
+        };
         /** InventoryOut */
         InventoryOut: {
             /** Updated At */
@@ -4340,6 +4900,23 @@ export interface components {
              * Format: uuid
              */
             id: string;
+        };
+        /** LinkOut */
+        LinkOut: {
+            /** Local Port */
+            local_port: string;
+            /** Remote Sys Name */
+            remote_sys_name: string;
+            /** Remote Port Id */
+            remote_port_id: string;
+            /** Remote Port Desc */
+            remote_port_desc: string | null;
+            /** Remote Mgmt Addr */
+            remote_mgmt_addr: string | null;
+            /** Remote Host Id */
+            remote_host_id: string | null;
+            /** Remote Hostname */
+            remote_hostname: string | null;
         };
         /**
          * LogFilterIn
@@ -4681,6 +5258,24 @@ export interface components {
             /** Charts */
             charts: string[];
         };
+        /** PollerOut */
+        PollerOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Hostname */
+            hostname: string;
+            /** Online */
+            online: boolean;
+            /** Os */
+            os: string | null;
+            /** Agent Version */
+            agent_version: string | null;
+            /** Devices */
+            devices: number;
+        };
         /** ProbeIn */
         ProbeIn: {
             /**
@@ -4720,6 +5315,15 @@ export interface components {
         ProfileIn: {
             /** Name */
             name?: string | null;
+        };
+        /** ProfileOut */
+        ProfileOut: {
+            /** Name */
+            name: string;
+            /** Vendor */
+            vendor: string;
+            /** Description */
+            description: string;
         };
         /** PublicDay */
         PublicDay: {
@@ -4990,7 +5594,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "metric" | "host_down" | "process_down" | "service_down" | "check" | "anomaly" | "forecast" | "plugin_down" | "container_down" | "custom" | "logs";
+            kind: "metric" | "host_down" | "process_down" | "service_down" | "check" | "anomaly" | "forecast" | "plugin_down" | "container_down" | "custom" | "logs" | "network";
             /** Metric */
             metric?: ("cpu" | "memory" | "swap" | "disk" | "load1" | "load5" | "iowait" | "steal" | "inodes" | "disk_busy" | "network_in" | "network_out") | null;
             /** Operator */
@@ -5570,6 +6174,37 @@ export interface components {
             /** Paused By */
             paused_by?: string | null;
             /**
+             * Kind
+             * @default server
+             * @enum {string}
+             */
+            kind: "server" | "network";
+            /**
+             * Address
+             * @description network devices: what's polled
+             */
+            address?: string | null;
+            /**
+             * Poller Host Id
+             * @description network devices: the server that polls it
+             */
+            poller_host_id?: string | null;
+            /** Network Role */
+            network_role?: string | null;
+            /** Vendor */
+            vendor?: string | null;
+            /**
+             * Device Error
+             * @description network devices: why the last poll failed
+             */
+            device_error?: string | null;
+            /**
+             * Depends On Auto
+             * @description set from LLDP topology
+             * @default false
+             */
+            depends_on_auto: boolean;
+            /**
              * Tenant Id
              * Format: uuid
              */
@@ -5822,6 +6457,60 @@ export interface components {
             /** Bottom */
             bottom: components["schemas"]["Ranked"][];
         };
+        /** TopologyEdge */
+        TopologyEdge: {
+            /**
+             * Source
+             * Format: uuid
+             */
+            source: string;
+            /**
+             * Target
+             * Format: uuid
+             */
+            target: string;
+            /** Source Port */
+            source_port: string;
+            /** Target Port */
+            target_port: string;
+        };
+        /** TopologyNode */
+        TopologyNode: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Hostname */
+            hostname: string;
+            /** Kind */
+            kind: string;
+            /** Network Role */
+            network_role: string | null;
+            /** Online */
+            online: boolean;
+            /** Parent Id */
+            parent_id: string | null;
+            /** Parent Auto */
+            parent_auto: boolean;
+            /**
+             * Parent Via
+             * @description how the upstream was chosen; poller when it has none of its own
+             */
+            parent_via?: ("lldp" | "manual" | "poller") | null;
+        };
+        /** TopologyOut */
+        TopologyOut: {
+            /** Nodes */
+            nodes: components["schemas"]["TopologyNode"][];
+            /** Edges */
+            edges: components["schemas"]["TopologyEdge"][];
+            /**
+             * Has Core
+             * @description a device is marked core: automatic upstreams need one
+             */
+            has_core: boolean;
+        };
         /** TotpDisableIn */
         TotpDisableIn: {
             /** Password */
@@ -5850,6 +6539,16 @@ export interface components {
             duration_ms: number;
             /** Matched */
             matched: number;
+        };
+        /** TrafficOut */
+        TrafficOut: {
+            /**
+             * Series
+             * @description direction in/out, in bits per second
+             */
+            series: {
+                [key: string]: unknown;
+            }[];
         };
         /** UpdateIn */
         UpdateIn: {
@@ -7778,6 +8477,431 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetricsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_credentials_v1_network_credentials_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialOut"][];
+                };
+            };
+        };
+    };
+    create_credential_v1_network_credentials_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_credential_v1_network_credentials__credential_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_credential_v1_network_credentials__credential_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pollers_v1_network_pollers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PollerOut"][];
+                };
+            };
+        };
+    };
+    list_profiles_v1_network_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"][];
+                };
+            };
+        };
+    };
+    add_devices_v1_network_devices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevicesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_device_v1_network_devices__device_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_device_v1_network_devices__device_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevicePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    device_traffic_v1_network_devices__device_id__traffic_get: {
+        parameters: {
+            query: {
+                start: number;
+                end: number;
+                /** @description one interface; all of them summed if left out */
+                ifname?: string | null;
+            };
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrafficOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_interface_v1_network_devices__device_id__interfaces__ifindex__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+                ifindex: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterfacePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    topology_v1_network_topology_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyOut"];
+                };
+            };
+        };
+    };
+    list_conditions_v1_network_conditions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConditionOut"][];
+                };
+            };
+        };
+    };
+    bandwidth_tags_v1_network_bandwidth_tags_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingTagOut"][];
+                };
+            };
+        };
+    };
+    bandwidth_v1_network_bandwidth_get: {
+        parameters: {
+            query: {
+                tag: string;
+                /** @description YYYY-MM, in the organisation's timezone */
+                month?: string | null;
+                start?: number | null;
+                end?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BandwidthOut"];
                 };
             };
             /** @description Validation Error */

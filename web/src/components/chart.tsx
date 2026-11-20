@@ -44,6 +44,15 @@ function formatValue(unit: string, v: number | null): string {
   if (unit === "percent") return `${v.toFixed(1)}%`;
   if (unit === "bytes") return bytes(v);
   if (unit === "bytes_per_second") return `${bytes(v)}/s`;
+  if (unit === "bits_per_second") {
+    const units = ["b/s", "kb/s", "Mb/s", "Gb/s", "Tb/s"];
+    let i = 0;
+    while (Math.abs(v) >= 1000 && i < units.length - 1) {
+      v /= 1000;
+      i++;
+    }
+    return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
+  }
   if (unit === "seconds") return `${(v * 1000).toFixed(0)} ms`;
   return Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2);
 }

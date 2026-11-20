@@ -2475,6 +2475,733 @@
     }
    }
   },
+  "/v1/network/credentials": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "List Credentials",
+    "operationId": "list_credentials_v1_network_credentials_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CredentialOut"
+         },
+         "type": "array",
+         "title": "Response List Credentials V1 Network Credentials Get"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   },
+   "post": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Create Credential",
+    "operationId": "create_credential_v1_network_credentials_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CredentialIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CredentialOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/network/credentials/{credential_id}": {
+   "patch": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Update Credential",
+    "description": "Secrets left out (or empty) keep their current value.",
+    "operationId": "update_credential_v1_network_credentials__credential_id__patch",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "credential_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Credential Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CredentialPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CredentialOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Delete Credential",
+    "operationId": "delete_credential_v1_network_credentials__credential_id__delete",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "credential_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Credential Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/network/pollers": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "List Pollers",
+    "description": "Servers that can poll devices: any of the organisation's agents.",
+    "operationId": "list_pollers_v1_network_pollers_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/PollerOut"
+         },
+         "type": "array",
+         "title": "Response List Pollers V1 Network Pollers Get"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/network/profiles": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "List Profiles",
+    "description": "Vendor profiles; a device's is detected from its sysObjectID unless pinned.",
+    "operationId": "list_profiles_v1_network_profiles_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ProfileOut"
+         },
+         "type": "array",
+         "title": "Response List Profiles V1 Network Profiles Get"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/network/devices": {
+   "post": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Add Devices",
+    "description": "Adds devices to be polled by one of your servers. Each is named from\nits sysName at the first poll, unless named here.",
+    "operationId": "add_devices_v1_network_devices_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DevicesIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DevicesOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/network/devices/{device_id}": {
+   "patch": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Update Device",
+    "operationId": "update_device_v1_network_devices__device_id__patch",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "device_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Device Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DevicePatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HostOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Get Device",
+    "operationId": "get_device_v1_network_devices__device_id__get",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "device_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Device Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DeviceOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/network/devices/{device_id}/traffic": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Device Traffic",
+    "operationId": "device_traffic_v1_network_devices__device_id__traffic_get",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "device_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Device Id"
+      }
+     },
+     {
+      "name": "start",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Start"
+      }
+     },
+     {
+      "name": "end",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "End"
+      }
+     },
+     {
+      "name": "ifname",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 255
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "one interface; all of them summed if left out",
+       "title": "Ifname"
+      },
+      "description": "one interface; all of them summed if left out"
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TrafficOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/network/devices/{device_id}/interfaces/{ifindex}": {
+   "patch": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Update Interface",
+    "operationId": "update_interface_v1_network_devices__device_id__interfaces__ifindex__patch",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "device_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Device Id"
+      }
+     },
+     {
+      "name": "ifindex",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Ifindex"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/InterfacePatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Update Interface V1 Network Devices  Device Id  Interfaces  Ifindex  Patch"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/network/topology": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Topology",
+    "operationId": "topology_v1_network_topology_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TopologyOut"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/network/conditions": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "List Conditions",
+    "description": "What a network alert rule can watch (kind network, target = key).",
+    "operationId": "list_conditions_v1_network_conditions_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ConditionOut"
+         },
+         "type": "array",
+         "title": "Response List Conditions V1 Network Conditions Get"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/network/bandwidth/tags": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Bandwidth Tags",
+    "operationId": "bandwidth_tags_v1_network_bandwidth_tags_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/BillingTagOut"
+         },
+         "type": "array",
+         "title": "Response Bandwidth Tags V1 Network Bandwidth Tags Get"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/network/bandwidth": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Bandwidth",
+    "description": "95th-percentile bandwidth for the ports tagged `tag`: 5-minute\naverage rates, the ports summed per sample, the top 5% of samples\ndropped. Missing samples are skipped, not counted as zero; coverage\nsays how complete the period is.",
+    "operationId": "bandwidth_v1_network_bandwidth_get",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "tag",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 100,
+       "title": "Tag"
+      }
+     },
+     {
+      "name": "month",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^\\d{4}-\\d{2}$"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "YYYY-MM, in the organisation's timezone",
+       "title": "Month"
+      },
+      "description": "YYYY-MM, in the organisation's timezone"
+     },
+     {
+      "name": "start",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Start"
+      }
+     },
+     {
+      "name": "end",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "End"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BandwidthOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/v1/channels": {
    "get": {
     "summary": "List Channels",
@@ -10909,6 +11636,197 @@
     ],
     "title": "AuthConfig"
    },
+   "BandwidthOut": {
+    "properties": {
+     "tag": {
+      "type": "string",
+      "title": "Tag"
+     },
+     "start": {
+      "type": "integer",
+      "title": "Start"
+     },
+     "end": {
+      "type": "integer",
+      "title": "End"
+     },
+     "timezone": {
+      "type": "string",
+      "title": "Timezone"
+     },
+     "ports": {
+      "items": {
+       "$ref": "#/components/schemas/BillingPort"
+      },
+      "type": "array",
+      "title": "Ports"
+     },
+     "inbound": {
+      "$ref": "#/components/schemas/BillingDirection"
+     },
+     "outbound": {
+      "$ref": "#/components/schemas/BillingDirection"
+     },
+     "billable_p95_bps": {
+      "type": "number",
+      "title": "Billable P95 Bps",
+      "description": "the higher of inbound and outbound"
+     },
+     "samples": {
+      "type": "integer",
+      "title": "Samples"
+     },
+     "expected_samples": {
+      "type": "integer",
+      "title": "Expected Samples"
+     },
+     "coverage_pct": {
+      "type": "number",
+      "title": "Coverage Pct"
+     },
+     "method": {
+      "type": "string",
+      "title": "Method"
+     },
+     "series_in": {
+      "items": {
+       "items": {
+        "type": "number"
+       },
+       "type": "array"
+      },
+      "type": "array",
+      "title": "Series In"
+     },
+     "series_out": {
+      "items": {
+       "items": {
+        "type": "number"
+       },
+       "type": "array"
+      },
+      "type": "array",
+      "title": "Series Out"
+     }
+    },
+    "type": "object",
+    "required": [
+     "tag",
+     "start",
+     "end",
+     "timezone",
+     "ports",
+     "inbound",
+     "outbound",
+     "billable_p95_bps",
+     "samples",
+     "expected_samples",
+     "coverage_pct",
+     "method",
+     "series_in",
+     "series_out"
+    ],
+    "title": "BandwidthOut"
+   },
+   "BillingDirection": {
+    "properties": {
+     "p95_bps": {
+      "type": "number",
+      "title": "P95 Bps"
+     },
+     "max_bps": {
+      "type": "number",
+      "title": "Max Bps"
+     },
+     "avg_bps": {
+      "type": "number",
+      "title": "Avg Bps"
+     },
+     "total_bytes": {
+      "type": "number",
+      "title": "Total Bytes"
+     }
+    },
+    "type": "object",
+    "required": [
+     "p95_bps",
+     "max_bps",
+     "avg_bps",
+     "total_bytes"
+    ],
+    "title": "BillingDirection"
+   },
+   "BillingPort": {
+    "properties": {
+     "device_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Device Id"
+     },
+     "device": {
+      "type": "string",
+      "title": "Device"
+     },
+     "ifname": {
+      "type": "string",
+      "title": "Ifname"
+     },
+     "alias": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alias"
+     },
+     "speed_bps": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Speed Bps"
+     }
+    },
+    "type": "object",
+    "required": [
+     "device_id",
+     "device",
+     "ifname",
+     "alias",
+     "speed_bps"
+    ],
+    "title": "BillingPort"
+   },
+   "BillingTagOut": {
+    "properties": {
+     "tag": {
+      "type": "string",
+      "title": "Tag"
+     },
+     "ports": {
+      "type": "integer",
+      "title": "Ports"
+     },
+     "devices": {
+      "type": "integer",
+      "title": "Devices"
+     }
+    },
+    "type": "object",
+    "required": [
+     "tag",
+     "ports",
+     "devices"
+    ],
+    "title": "BillingTagOut"
+   },
    "BulkIn": {
     "properties": {
      "host_ids": {
@@ -11781,6 +12699,51 @@
     ],
     "title": "CompareSeries"
    },
+   "ConditionOut": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "unit": {
+      "type": "string",
+      "title": "Unit"
+     },
+     "default": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Default"
+     },
+     "about": {
+      "type": "string",
+      "title": "About"
+     },
+     "vendor": {
+      "type": "string",
+      "title": "Vendor"
+     }
+    },
+    "type": "object",
+    "required": [
+     "key",
+     "name",
+     "unit",
+     "default",
+     "about",
+     "vendor"
+    ],
+    "title": "ConditionOut"
+   },
    "ContainerOut": {
     "properties": {
      "name": {
@@ -11846,6 +12809,328 @@
      "memory_percent"
     ],
     "title": "ContainerOut"
+   },
+   "CredentialIn": {
+    "properties": {
+     "community": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Community"
+     },
+     "username": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Username"
+     },
+     "auth_protocol": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Auth Protocol"
+     },
+     "auth_password": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Auth Password"
+     },
+     "priv_protocol": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Priv Protocol"
+     },
+     "priv_password": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Priv Password"
+     },
+     "context": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Context"
+     },
+     "name": {
+      "type": "string",
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "version": {
+      "type": "string",
+      "enum": [
+       "1",
+       "2c",
+       "3"
+      ],
+      "title": "Version",
+      "default": "2c"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "CredentialIn"
+   },
+   "CredentialOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "version": {
+      "type": "string",
+      "title": "Version"
+     },
+     "community_set": {
+      "type": "boolean",
+      "title": "Community Set"
+     },
+     "username": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Username"
+     },
+     "auth_protocol": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Auth Protocol"
+     },
+     "auth_set": {
+      "type": "boolean",
+      "title": "Auth Set"
+     },
+     "priv_protocol": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Priv Protocol"
+     },
+     "priv_set": {
+      "type": "boolean",
+      "title": "Priv Set"
+     },
+     "context": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Context"
+     },
+     "devices": {
+      "type": "integer",
+      "title": "Devices"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "version",
+     "community_set",
+     "username",
+     "auth_protocol",
+     "auth_set",
+     "priv_protocol",
+     "priv_set",
+     "context",
+     "devices",
+     "created_at"
+    ],
+    "title": "CredentialOut"
+   },
+   "CredentialPatch": {
+    "properties": {
+     "community": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Community"
+     },
+     "username": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Username"
+     },
+     "auth_protocol": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Auth Protocol"
+     },
+     "auth_password": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Auth Password"
+     },
+     "priv_protocol": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Priv Protocol"
+     },
+     "priv_password": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Priv Password"
+     },
+     "context": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Context"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "version": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "1",
+         "2c",
+         "3"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Version"
+     }
+    },
+    "type": "object",
+    "title": "CredentialPatch"
    },
    "CustomMetricOut": {
     "properties": {
@@ -12120,6 +13405,336 @@
      "held_until"
     ],
     "title": "DeliveryOut"
+   },
+   "DeviceOut": {
+    "properties": {
+     "host": {
+      "$ref": "#/components/schemas/HostOut"
+     },
+     "profile": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Profile"
+     },
+     "profile_pinned": {
+      "type": "boolean",
+      "title": "Profile Pinned"
+     },
+     "system": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "System"
+     },
+     "inventory": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Inventory"
+     },
+     "last_ok_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Ok At"
+     },
+     "polled_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Polled At"
+     },
+     "poll_duration_ms": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Poll Duration Ms"
+     },
+     "credential_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Credential Id"
+     },
+     "credential_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Credential Name"
+     },
+     "poller_hostname": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Poller Hostname"
+     },
+     "interfaces": {
+      "items": {
+       "$ref": "#/components/schemas/InterfaceOut"
+      },
+      "type": "array",
+      "title": "Interfaces"
+     },
+     "links": {
+      "items": {
+       "$ref": "#/components/schemas/LinkOut"
+      },
+      "type": "array",
+      "title": "Links"
+     }
+    },
+    "type": "object",
+    "required": [
+     "host",
+     "profile",
+     "profile_pinned",
+     "system",
+     "inventory",
+     "last_ok_at",
+     "polled_at",
+     "poll_duration_ms",
+     "credential_id",
+     "credential_name",
+     "poller_hostname",
+     "interfaces",
+     "links"
+    ],
+    "title": "DeviceOut"
+   },
+   "DevicePatch": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "address": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Address"
+     },
+     "credential_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Credential Id"
+     },
+     "poller_host_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Poller Host Id"
+     },
+     "profile": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Profile",
+      "description": "'' detects it again"
+     },
+     "network_role": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "core",
+         "distribution",
+         "access",
+         "firewall",
+         "router",
+         "wireless",
+         "other"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Network Role"
+     },
+     "clear_role": {
+      "type": "boolean",
+      "title": "Clear Role",
+      "default": false
+     }
+    },
+    "type": "object",
+    "title": "DevicePatch"
+   },
+   "DevicesIn": {
+    "properties": {
+     "addresses": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Addresses"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name",
+      "description": "only with one address; else named from sysName"
+     },
+     "credential_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Credential Id"
+     },
+     "poller_host_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Poller Host Id"
+     },
+     "profile": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Profile",
+      "description": "pin a profile; empty detects it"
+     },
+     "network_role": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "core",
+         "distribution",
+         "access",
+         "firewall",
+         "router",
+         "wireless",
+         "other"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Network Role"
+     },
+     "tags": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Tags"
+     }
+    },
+    "type": "object",
+    "required": [
+     "addresses",
+     "credential_id",
+     "poller_host_id"
+    ],
+    "title": "DevicesIn"
+   },
+   "DevicesOut": {
+    "properties": {
+     "created": {
+      "items": {
+       "$ref": "#/components/schemas/HostOut"
+      },
+      "type": "array",
+      "title": "Created"
+     },
+     "skipped": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Skipped",
+      "description": "addresses this poller already polls"
+     }
+    },
+    "type": "object",
+    "required": [
+     "created",
+     "skipped"
+    ],
+    "title": "DevicesOut"
    },
    "DisableIn": {
     "properties": {
@@ -13007,6 +14622,80 @@
        }
       ],
       "title": "Paused By"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "server",
+       "network"
+      ],
+      "title": "Kind",
+      "default": "server"
+     },
+     "address": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Address",
+      "description": "network devices: what's polled"
+     },
+     "poller_host_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Poller Host Id",
+      "description": "network devices: the server that polls it"
+     },
+     "network_role": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Network Role"
+     },
+     "vendor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vendor"
+     },
+     "device_error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Device Error",
+      "description": "network devices: why the last poll failed"
+     },
+     "depends_on_auto": {
+      "type": "boolean",
+      "title": "Depends On Auto",
+      "description": "set from LLDP topology",
+      "default": false
      }
     },
     "type": "object",
@@ -13887,6 +15576,195 @@
     ],
     "title": "IncidentOut"
    },
+   "InterfaceOut": {
+    "properties": {
+     "ifindex": {
+      "type": "integer",
+      "title": "Ifindex"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "descr": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Descr"
+     },
+     "alias": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alias"
+     },
+     "speed_bps": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Speed Bps"
+     },
+     "mac": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Mac"
+     },
+     "admin_up": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Admin Up"
+     },
+     "oper_up": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Oper Up"
+     },
+     "in_bps": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "In Bps"
+     },
+     "out_bps": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Out Bps"
+     },
+     "utilisation": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Utilisation",
+      "description": "the busier direction, % of speed"
+     },
+     "errors_per_sec": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Errors Per Sec"
+     },
+     "billing_tag": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Billing Tag"
+     },
+     "neighbor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Neighbor"
+     },
+     "neighbor_host_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Neighbor Host Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "ifindex",
+     "name",
+     "descr",
+     "alias",
+     "speed_bps",
+     "mac",
+     "admin_up",
+     "oper_up",
+     "billing_tag"
+    ],
+    "title": "InterfaceOut"
+   },
+   "InterfacePatch": {
+    "properties": {
+     "billing_tag": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Billing Tag",
+      "description": "groups ports for 95th-percentile bandwidth; '' clears"
+     }
+    },
+    "type": "object",
+    "title": "InterfacePatch"
+   },
    "InventoryOut": {
     "properties": {
      "updated_at": {
@@ -14317,6 +16195,78 @@
      "id"
     ],
     "title": "ItemOut"
+   },
+   "LinkOut": {
+    "properties": {
+     "local_port": {
+      "type": "string",
+      "title": "Local Port"
+     },
+     "remote_sys_name": {
+      "type": "string",
+      "title": "Remote Sys Name"
+     },
+     "remote_port_id": {
+      "type": "string",
+      "title": "Remote Port Id"
+     },
+     "remote_port_desc": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remote Port Desc"
+     },
+     "remote_mgmt_addr": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remote Mgmt Addr"
+     },
+     "remote_host_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remote Host Id"
+     },
+     "remote_hostname": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remote Hostname"
+     }
+    },
+    "type": "object",
+    "required": [
+     "local_port",
+     "remote_sys_name",
+     "remote_port_id",
+     "remote_port_desc",
+     "remote_mgmt_addr",
+     "remote_host_id",
+     "remote_hostname"
+    ],
+    "title": "LinkOut"
    },
    "LogFilterIn": {
     "properties": {
@@ -15238,6 +17188,59 @@
     ],
     "title": "PluginOut"
    },
+   "PollerOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "hostname": {
+      "type": "string",
+      "title": "Hostname"
+     },
+     "online": {
+      "type": "boolean",
+      "title": "Online"
+     },
+     "os": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Os"
+     },
+     "agent_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Agent Version"
+     },
+     "devices": {
+      "type": "integer",
+      "title": "Devices"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "hostname",
+     "online",
+     "os",
+     "agent_version",
+     "devices"
+    ],
+    "title": "PollerOut"
+   },
    "ProbeIn": {
     "properties": {
      "region": {
@@ -15374,6 +17377,29 @@
     },
     "type": "object",
     "title": "ProfileIn"
+   },
+   "ProfileOut": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "vendor": {
+      "type": "string",
+      "title": "Vendor"
+     },
+     "description": {
+      "type": "string",
+      "title": "Description"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "vendor",
+     "description"
+    ],
+    "title": "ProfileOut"
    },
    "PublicDay": {
     "properties": {
@@ -16089,7 +18115,8 @@
        "plugin_down",
        "container_down",
        "custom",
-       "logs"
+       "logs",
+       "network"
       ],
       "title": "Kind"
      },
@@ -17819,6 +19846,80 @@
       ],
       "title": "Paused By"
      },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "server",
+       "network"
+      ],
+      "title": "Kind",
+      "default": "server"
+     },
+     "address": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Address",
+      "description": "network devices: what's polled"
+     },
+     "poller_host_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Poller Host Id",
+      "description": "network devices: the server that polls it"
+     },
+     "network_role": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Network Role"
+     },
+     "vendor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vendor"
+     },
+     "device_error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Device Error",
+      "description": "network devices: why the last poll failed"
+     },
+     "depends_on_auto": {
+      "type": "boolean",
+      "title": "Depends On Auto",
+      "description": "set from LLDP topology",
+      "default": false
+     },
      "tenant_id": {
       "type": "string",
       "format": "uuid",
@@ -18574,6 +20675,142 @@
     ],
     "title": "TopBottom"
    },
+   "TopologyEdge": {
+    "properties": {
+     "source": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Source"
+     },
+     "target": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Target"
+     },
+     "source_port": {
+      "type": "string",
+      "title": "Source Port"
+     },
+     "target_port": {
+      "type": "string",
+      "title": "Target Port"
+     }
+    },
+    "type": "object",
+    "required": [
+     "source",
+     "target",
+     "source_port",
+     "target_port"
+    ],
+    "title": "TopologyEdge"
+   },
+   "TopologyNode": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "hostname": {
+      "type": "string",
+      "title": "Hostname"
+     },
+     "kind": {
+      "type": "string",
+      "title": "Kind"
+     },
+     "network_role": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Network Role"
+     },
+     "online": {
+      "type": "boolean",
+      "title": "Online"
+     },
+     "parent_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parent Id"
+     },
+     "parent_auto": {
+      "type": "boolean",
+      "title": "Parent Auto"
+     },
+     "parent_via": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "lldp",
+         "manual",
+         "poller"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parent Via",
+      "description": "how the upstream was chosen; poller when it has none of its own"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "hostname",
+     "kind",
+     "network_role",
+     "online",
+     "parent_id",
+     "parent_auto"
+    ],
+    "title": "TopologyNode"
+   },
+   "TopologyOut": {
+    "properties": {
+     "nodes": {
+      "items": {
+       "$ref": "#/components/schemas/TopologyNode"
+      },
+      "type": "array",
+      "title": "Nodes"
+     },
+     "edges": {
+      "items": {
+       "$ref": "#/components/schemas/TopologyEdge"
+      },
+      "type": "array",
+      "title": "Edges"
+     },
+     "has_core": {
+      "type": "boolean",
+      "title": "Has Core",
+      "description": "a device is marked core: automatic upstreams need one"
+     }
+    },
+    "type": "object",
+    "required": [
+     "nodes",
+     "edges",
+     "has_core"
+    ],
+    "title": "TopologyOut"
+   },
    "TotpDisableIn": {
     "properties": {
      "password": {
@@ -18664,6 +20901,24 @@
      "matched"
     ],
     "title": "TraceSummary"
+   },
+   "TrafficOut": {
+    "properties": {
+     "series": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Series",
+      "description": "direction in/out, in bits per second"
+     }
+    },
+    "type": "object",
+    "required": [
+     "series"
+    ],
+    "title": "TrafficOut"
    },
    "UpdateIn": {
     "properties": {

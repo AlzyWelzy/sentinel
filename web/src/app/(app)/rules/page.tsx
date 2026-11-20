@@ -49,6 +49,11 @@ const KINDS: { value: RuleIn["kind"]; label: string; help: string }[] = [
     help: "Disk, inodes or memory projected to fill.",
   },
   { value: "anomaly", label: "Unusual for this server", help: "Far above the past week's normal." },
+  {
+    value: "network",
+    label: "Network device",
+    help: "Ports, links, BGP, VPN tunnels, sensors… on switches and firewalls (see Network).",
+  },
 ];
 const METRICS = [
   "cpu",
@@ -69,6 +74,8 @@ function describe(r: Rule): string {
   if (r.kind === "metric")
     return `${r.metric} ${r.aggregation !== "last" ? `(${r.aggregation} over ${duration(r.window_seconds)}) ` : ""}${r.operator} ${r.threshold} for ${duration(r.duration_seconds)}`;
   if (r.kind === "host_down") return `silent for ${duration(r.duration_seconds)}`;
+  if (r.kind === "network")
+    return `${(r.target ?? "").replaceAll("_", " ")}${r.threshold != null ? ` > ${r.threshold}` : ""} · ${duration(r.duration_seconds)}`;
   if (r.target) return `${r.target} · ${duration(r.duration_seconds)}`;
   return r.kind.replace("_", " ");
 }
@@ -268,6 +275,13 @@ function RuleForm({ onDone, initial }: { onDone: () => void; initial?: Rule }) {
   );
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<RuleIn>) => setRule((r) => ({ ...r, ...patch }));
+  const conditions = useQuery({
+    queryKey: ["network", "conditions"],
+    enabled: rule.kind === "network",
+    staleTime: 10 * 60_000,
+    queryFn: async () => unwrap(await api.GET("/v1/network/conditions")),
+  });
+  const condition = conditions.data?.find((c) => c.key === rule.target);
   const body = (): RuleIn => ({
     ...rule,
     host_id: scope === "host" ? rule.host_id : null,
@@ -378,6 +392,50 @@ function RuleForm({ onDone, initial }: { onDone: () => void; initial?: Rule }) {
                 onChange={(e) => set({ threshold: Number(e.target.value) })}
               />
             </div>
+          </Field>
+        )}
+        {rule.kind === "network" && (
+          <Field
+            label="Condition"
+            hint={
+              condition?.about || (condition?.vendor ? `${condition.vendor} devices` : undefined)
+            }
+          >
+            <Select
+              required
+              value={rule.target ?? ""}
+              onChange={(e) => {
+                const c = conditions.data?.find((x) => x.key === e.target.value);
+                set({
+                  target: e.target.value,
+                  threshold: c?.default ?? null,
+                  operator: c?.unit ? ">" : null,
+                });
+              }}
+              className="w-full"
+            >
+              <option value="" disabled>
+                Choose…
+              </option>
+              {conditions.data?.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.vendor ? `${c.vendor}: ` : ""}
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {rule.kind === "network" && condition?.unit && (
+          <Field label={`Above (${condition.unit})`}>
+            <Input
+              type="number"
+              step="any"
+              required
+              aria-label="Threshold"
+              value={rule.threshold ?? ""}
+              onChange={(e) => set({ threshold: Number(e.target.value) })}
+            />
           </Field>
         )}
         {(rule.kind === "process_down" || rule.kind === "service_down") && (

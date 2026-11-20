@@ -29,10 +29,12 @@ test-api:
 
 # The browser journey (sign-up to outage and recovery, ~10 minutes), the
 # extras, and the API access matrix. Needs `make up` and the web app on
-# :3000 (cd web && npm run dev). Clears sign-up rate limits first.
+# :3000 (cd web && npm run dev). Clears sign-up rate limits and the journey's
+# superadmin (superadmin@example.com, in SUPERADMIN_EMAILS) first.
 e2e:
 	cd e2e && npm ci --silent && npx playwright install chromium
 	docker exec beyond-dev-redis-1 sh -c "redis-cli --scan --pattern 'pg:rl:*' | xargs -r redis-cli del" >/dev/null
+	docker exec beyond-dev-postgres-1 psql -U sentinel -d sentinel -qc "DELETE FROM users WHERE email = 'superadmin@example.com'"
 	cd e2e && node journey.mjs && node extras.mjs && npm run --silent api
 
 lint:

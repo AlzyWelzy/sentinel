@@ -15,7 +15,7 @@ const STATE = `${REPO}/.agent/state`;
 const run = Date.now().toString(36);
 const owner = { name: "Olivia Owner", email: `owner-${run}@example.com`, password: "owner password 123" };
 const member = { name: "Max Member", email: `member-${run}@example.com`, password: "member password 123" };
-const admin = { name: "Ada Admin", email: "admin@sentinel.test", password: "admin password 123" };
+const admin = { name: "Ada Admin", email: "superadmin@example.com", password: "admin password 123" };
 
 mkdirSync("shots", { recursive: true });
 const errors = [];

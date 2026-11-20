@@ -49,7 +49,9 @@ function Servers() {
   const err = overview.error ?? hosts.error;
   if (err) return <ErrorState message={errorText(err)} retry={() => overview.refetch()} />;
 
-  const rows = overview.data!.servers.filter((s) => {
+  // Network devices have their own section.
+  const servers = overview.data!.servers.filter((s) => byId.get(s.id)?.kind !== "network");
+  const rows = servers.filter((s) => {
     const h = byId.get(s.id);
     if (status && s.status !== status) return false;
     if (tag && !h?.tags.includes(tag)) return false;
@@ -72,7 +74,7 @@ function Servers() {
     <>
       <PageHeader
         title="Servers"
-        subtitle={`${overview.data!.servers.length} in this organisation`}
+        subtitle={`${servers.length} in this organisation`}
         actions={
           <LinkButton href="/welcome" variant="primary">
             Add server
