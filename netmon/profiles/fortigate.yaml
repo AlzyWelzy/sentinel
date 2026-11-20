@@ -1,0 +1,111 @@
+name: fortigate
+vendor: Fortinet
+description: FortiGate firewalls (verified on FortiGate-120G, FortiOS 7.4.9).
+extends: [_entity, _routing]
+match:
+  sys_object_id: [1.3.6.1.4.1.12356.101.1]
+snmp:
+  # These FORTINET-FORTIGATE-MIB subtrees return genErr mid-walk or are huge
+  # (per-policy/AV/IPS tables) and made full walks run for >25 minutes.
+  skip_roots:
+    - 1.3.6.1.4.1.12356.101.5
+    - 1.3.6.1.4.1.12356.101.6
+    - 1.3.6.1.4.1.12356.101.7
+inventory:
+  os_version: {oid: 1.3.6.1.4.1.12356.101.4.1.1.0, regex: '^v([^,]+)'}   # fgSysVersion
+  serial: {oid: 1.3.6.1.2.1.47.1.1.1.1.11.1}
+  model: {oid: 1.3.6.1.2.1.47.1.1.1.1.13.1}
+  ha_mode: {oid: 1.3.6.1.4.1.12356.101.13.1.1.0, map: {"1": standalone, "2": active-active, "3": active-passive}}
+scalars:
+  - {name: cpu_usage_percent, oid: 1.3.6.1.4.1.12356.101.4.1.3.0}        # fgSysCpuUsage
+  - {name: memory_usage_percent, oid: 1.3.6.1.4.1.12356.101.4.1.4.0}     # fgSysMemUsage
+  - {name: memory_capacity_bytes, oid: 1.3.6.1.4.1.12356.101.4.1.5.0, scale: 1024}
+  - {name: disk_used_bytes, oid: 1.3.6.1.4.1.12356.101.4.1.6.0, scale: 1048576}
+  - {name: disk_capacity_bytes, oid: 1.3.6.1.4.1.12356.101.4.1.7.0, scale: 1048576}
+  - {name: firewall_sessions, oid: 1.3.6.1.4.1.12356.101.4.1.8.0}        # fgSysSesCount
+  - {name: firewall_session_rate, oid: 1.3.6.1.4.1.12356.101.4.1.11.0}   # fgSysSesRate1 (per second, 1m avg)
+  - {name: ha_mode, oid: 1.3.6.1.4.1.12356.101.13.1.1.0, interval: slow, states: {1: standalone, 2: active-active, 3: active-passive}}
+tables:
+  - name: vpn_tunnel
+    labels:
+      phase1: {oid: 1.3.6.1.4.1.12356.101.12.2.2.1.2}
+      phase2: {oid: 1.3.6.1.4.1.12356.101.12.2.2.1.3}
+      remote_gateway: {oid: 1.3.6.1.4.1.12356.101.12.2.2.1.4}
+    metrics:
+      - {name: status, oid: 1.3.6.1.4.1.12356.101.12.2.2.1.20, states: {1: down, 2: up}}
+      - {name: in_octets, oid: 1.3.6.1.4.1.12356.101.12.2.2.1.18, type: counter}
+      - {name: out_octets, oid: 1.3.6.1.4.1.12356.101.12.2.2.1.19, type: counter}
+  # SD-WAN performance SLAs (FORTINET-FORTIGATE-MIB fgVWLHealthCheckLinkTable,
+  # one row per health check per member link). Values are strings in the MIB.
+  - name: sdwan_health
+    index: hc
+    labels:
+      check: {oid: 1.3.6.1.4.1.12356.101.4.9.2.1.2}
+      ifname: {oid: 1.3.6.1.4.1.12356.101.4.9.2.1.14}
+      vdom: {oid: 1.3.6.1.4.1.12356.101.4.9.2.1.10}
+    metrics:
+      - {name: state, oid: 1.3.6.1.4.1.12356.101.4.9.2.1.4, states: {0: alive, 1: dead}}
+      - {name: latency_ms, oid: 1.3.6.1.4.1.12356.101.4.9.2.1.5}
+      - {name: jitter_ms, oid: 1.3.6.1.4.1.12356.101.4.9.2.1.6}
+      - {name: packet_loss_percent, oid: 1.3.6.1.4.1.12356.101.4.9.2.1.9}
+      - {name: used_bandwidth_in_kbps, oid: 1.3.6.1.4.1.12356.101.4.9.2.1.15}
+      - {name: used_bandwidth_out_kbps, oid: 1.3.6.1.4.1.12356.101.4.9.2.1.16}
+  - name: hw_sensor
+    labels:
+      name: {oid: 1.3.6.1.4.1.12356.101.4.3.2.1.2}
+    metrics:
+      - {name: value, oid: 1.3.6.1.4.1.12356.101.4.3.2.1.3}    # string-encoded number
+      - {name: alarm, oid: 1.3.6.1.4.1.12356.101.4.3.2.1.4, states: {0: ok, 1: alarm}}
+  - name: ha_member
+    labels:
+      serial: {oid: 1.3.6.1.4.1.12356.101.13.2.1.1.2}
+      hostname: {oid: 1.3.6.1.4.1.12356.101.13.2.1.1.11}
+    metrics:
+      - {name: cpu_usage_percent, oid: 1.3.6.1.4.1.12356.101.13.2.1.1.3}
+      - {name: memory_usage_percent, oid: 1.3.6.1.4.1.12356.101.13.2.1.1.4}
+      - {name: sessions, oid: 1.3.6.1.4.1.12356.101.13.2.1.1.6}
+      - {name: sync_status, oid: 1.3.6.1.4.1.12356.101.13.2.1.1.12, states: {0: unsynchronized, 1: synchronized}}
+alerts:
+  - name: SD-WAN link dead
+    expr: beacon_sdwan_health_state == 1
+    for: 1m
+    severity: critical
+    summary: '{{ $labels.device }} SD-WAN {{ $labels.ifname }} fails health check {{ $labels.check }}'
+  - name: SD-WAN latency high
+    expr: beacon_sdwan_health_latency_ms > 150
+    for: 10m
+    severity: warning
+    summary: '{{ $labels.device }} SD-WAN {{ $labels.ifname }} latency {{ $value }} ms ({{ $labels.check }})'
+  - name: SD-WAN packet loss
+    expr: beacon_sdwan_health_packet_loss_percent > 5
+    for: 10m
+    severity: warning
+    summary: '{{ $labels.device }} SD-WAN {{ $labels.ifname }} losing {{ $value }}% ({{ $labels.check }})'
+  - name: FortiGate CPU high
+    expr: beacon_cpu_usage_percent{profile="fortigate"} > 90
+    for: 5m
+    severity: warning
+    summary: '{{ $labels.device }} CPU at {{ $value }}%'
+  - name: FortiGate memory high
+    expr: beacon_memory_usage_percent{profile="fortigate"} > 90
+    for: 5m
+    severity: warning
+    summary: '{{ $labels.device }} memory at {{ $value }}%'
+  - name: VPN tunnel down
+    # Only tunnels that were up at some point in the last day: idle dial-up /
+    # on-demand phase-2 selectors sit "down" by design and must not alert.
+    expr: beacon_vpn_tunnel_status == 1 and on(device_id, index) max_over_time(beacon_vpn_tunnel_status[1d] offset 5m) == 2
+    for: 2m
+    severity: critical
+    summary: '{{ $labels.device }} VPN {{ $labels.phase1 }}/{{ $labels.phase2 }} is down'
+  - name: Hardware sensor alarm
+    expr: beacon_hw_sensor_alarm == 1
+    for: 1m
+    severity: critical
+    summary: '{{ $labels.device }} sensor {{ $labels.name }} in alarm'
+  - name: HA out of sync
+    # Standalone units report one member with sync_status 0; only clusters count.
+    expr: beacon_ha_member_sync_status == 0 and on(device_id) beacon_ha_mode != 1
+    for: 5m
+    severity: critical
+    summary: '{{ $labels.device }} HA member {{ $labels.hostname }} unsynchronized'

@@ -1,0 +1,25 @@
+# HOST-RESOURCES-MIB (RFC 2790): CPU and storage/memory. Used by most
+# Linux-based network OSes (Arista EOS, Sophos SFOS, net-snmp hosts).
+name: _host_resources
+tables:
+  - name: cpu
+    index: core
+    metrics:
+      - name: load_percent
+        oid: 1.3.6.1.2.1.25.3.3.1.2        # hrProcessorLoad
+        help: Average CPU load of the core over the last minute.
+  - name: storage
+    labels:
+      descr: {oid: 1.3.6.1.2.1.25.2.3.1.3} # hrStorageDescr
+      kind:
+        oid: 1.3.6.1.2.1.25.2.3.1.2        # hrStorageType (OID, last arc mapped)
+        map: {1: other, 2: ram, 3: virtual_memory, 4: fixed_disk, 5: removable_disk, 6: floppy, 7: compact_disc, 8: ram_disk, 9: flash, 10: network_disk}
+    exclude:
+      - {label: descr, regex: '^/(sys|proc|dev|run)(/|$)'}
+    metrics:
+      - name: size_bytes
+        oid: 1.3.6.1.2.1.25.2.3.1.5        # hrStorageSize
+        multiply_by: 1.3.6.1.2.1.25.2.3.1.4 # hrStorageAllocationUnits
+      - name: used_bytes
+        oid: 1.3.6.1.2.1.25.2.3.1.6        # hrStorageUsed
+        multiply_by: 1.3.6.1.2.1.25.2.3.1.4

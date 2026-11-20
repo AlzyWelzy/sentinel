@@ -1,0 +1,38 @@
+name: arista-eos
+vendor: Arista
+description: Arista EOS switches (verified on DCS-7050QX-32S, EOS 4.22/4.28).
+extends: [_host_resources, _entity, _routing]
+match:
+  sys_object_id: [1.3.6.1.4.1.30065.1]
+inventory:
+  os_version: {oid: 1.3.6.1.2.1.1.1.0, regex: 'EOS version (\S+)'}
+  model: {oid: 1.3.6.1.2.1.1.1.0, regex: 'Arista Networks (DCS-\S+)$'}
+tables:
+  # ARISTA-ENTITY-SENSOR-MIB: per-sensor thresholds in the same units as the
+  # sensor. +/-1e9 means "no threshold" and is ignored.
+  - name: sensor_threshold
+    transform: entity_sensor
+    labels:
+      name: {oid: 1.3.6.1.2.1.47.1.1.1.1.2}
+    metrics:
+      - {name: low_warning, oid: 1.3.6.1.4.1.30065.3.12.1.1.1.1, ignore: [-1000000000, 1000000000]}
+      - {name: low_critical, oid: 1.3.6.1.4.1.30065.3.12.1.1.1.2, ignore: [-1000000000, 1000000000]}
+      - {name: high_warning, oid: 1.3.6.1.4.1.30065.3.12.1.1.1.3, ignore: [-1000000000, 1000000000]}
+      - {name: high_critical, oid: 1.3.6.1.4.1.30065.3.12.1.1.1.4, ignore: [-1000000000, 1000000000]}
+    interval: slow
+alerts:
+  - name: Sensor above critical threshold
+    expr: beacon_sensor_value > on(device_id, index) group_left beacon_sensor_threshold_high_critical
+    for: 2m
+    severity: critical
+    summary: '{{ $labels.device }} {{ $labels.name }} is {{ $value }} (above the switch''s critical threshold)'
+  - name: Sensor above warning threshold
+    expr: beacon_sensor_value > on(device_id, index) group_left beacon_sensor_threshold_high_warning
+    for: 10m
+    severity: warning
+    summary: '{{ $labels.device }} {{ $labels.name }} is {{ $value }} (above warning threshold)'
+  - name: Optic receive power low
+    expr: beacon_sensor_value{name=~".*RX Power.*"} < on(device_id, index) group_left beacon_sensor_threshold_low_warning
+    for: 10m
+    severity: warning
+    summary: '{{ $labels.device }} {{ $labels.name }} below warning threshold'

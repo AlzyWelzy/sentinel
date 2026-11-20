@@ -1,0 +1,45 @@
+# Routing neighbours polled over SNMP (BGP4-MIB RFC 4273, OSPF-MIB RFC 4750).
+# Complements the BGP/OSPF traps: polling notices a peer that's down even if
+# its trap was lost. Devices without BGP/OSPF simply return no rows.
+name: _routing
+tables:
+  - name: bgp_peer
+    index: peer   # bgpPeerRemoteAddr
+    labels:
+      remote_as: {oid: 1.3.6.1.2.1.15.3.1.9}
+    metrics:
+      - name: state
+        oid: 1.3.6.1.2.1.15.3.1.2
+        help: BGP FSM state (6 = established).
+        states: {1: idle, 2: connect, 3: active, 4: opensent, 5: openconfirm, 6: established}
+      - {name: admin_status, oid: 1.3.6.1.2.1.15.3.1.3, help: '1 = stop (shut by admin), 2 = start'}
+      - {name: established_seconds, oid: 1.3.6.1.2.1.15.3.1.16}
+      - {name: in_updates, oid: 1.3.6.1.2.1.15.3.1.10, type: counter}
+      - {name: out_updates, oid: 1.3.6.1.2.1.15.3.1.11, type: counter}
+    interval: normal
+  - name: ospf_neighbor
+    index: neighbor   # ospfNbrIpAddr.ospfNbrAddressLessIndex
+    labels:
+      router_id: {oid: 1.3.6.1.2.1.14.10.1.3}
+    metrics:
+      - name: state
+        oid: 1.3.6.1.2.1.14.10.1.6
+        help: OSPF neighbour state (8 = full; 4 = 2-way is normal between DROTHERs).
+        states: {1: down, 2: attempt, 3: init, 4: twoway, 5: exchangestart, 6: exchange, 7: loading, 8: full}
+    interval: normal
+alerts:
+  - name: BGP peer not established
+    expr: beacon_bgp_peer_state != 6 and on(device_id, peer) beacon_bgp_peer_admin_status == 2
+    for: 3m
+    severity: critical
+    summary: '{{ $labels.device }} BGP peer {{ $labels.peer }} (AS {{ $labels.remote_as }}) is not established'
+  - name: BGP peer flapped
+    expr: beacon_bgp_peer_established_seconds < 300 and on(device_id, peer) beacon_bgp_peer_state == 6
+    for: 0m
+    severity: warning
+    summary: '{{ $labels.device }} BGP peer {{ $labels.peer }} re-established {{ $value }} s ago'
+  - name: OSPF neighbour not full
+    expr: beacon_ospf_neighbor_state < 8 and beacon_ospf_neighbor_state != 4
+    for: 5m
+    severity: warning
+    summary: '{{ $labels.device }} OSPF neighbour {{ $labels.neighbor }} is not full'

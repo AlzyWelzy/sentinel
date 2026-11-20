@@ -1,0 +1,16 @@
+# ENTITY-MIB (RFC 6933) chassis inventory + ENTITY-SENSOR-MIB (RFC 3433)
+# sensors: temperature, fans, PSU volts/amps/watts, optics DOM.
+name: _entity
+inventory:
+  serial: {oid: 1.3.6.1.2.1.47.1.1.1.1.11.1}   # entPhysicalSerialNum (chassis)
+  model: {oid: 1.3.6.1.2.1.47.1.1.1.1.13.1}    # entPhysicalModelName
+  hardware: {oid: 1.3.6.1.2.1.47.1.1.1.1.2.1}  # entPhysicalDescr
+tables:
+  - name: sensor
+    transform: entity_sensor   # applies scale/precision, drops non-ok sensors, adds `type`
+    labels:
+      name: {oid: 1.3.6.1.2.1.47.1.1.1.1.2}    # entPhysicalDescr
+    metrics:
+      - name: value
+        oid: 1.3.6.1.2.1.99.1.1.1.4            # entPhySensorValue
+        help: Sensor reading in base units (celsius, volts, amperes, watts, rpm).

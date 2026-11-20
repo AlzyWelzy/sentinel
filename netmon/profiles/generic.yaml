@@ -1,0 +1,6 @@
+# Fallback for any SNMP agent without a vendor profile: system group,
+# interfaces, LLDP, host resources and entity sensors when present.
+name: generic
+vendor: Generic
+description: Standard MIBs only (IF-MIB, LLDP, HOST-RESOURCES, ENTITY).
+extends: [_host_resources, _entity, _routing]
