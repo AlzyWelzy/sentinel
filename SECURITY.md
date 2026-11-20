@@ -70,6 +70,22 @@ organisation only through an impersonation, which:
   can't get round it). Updates are verified by SHA-256 and self-tested
   before they're swapped in.
 
+## Network device credentials
+
+- SNMP communities, v3 passwords and Proxmox tokens are sealed with
+  AES-256-GCM under a key derived from `CREDENTIALS_KEY`, which only the API
+  and ingest have. The API never returns them; patches keep a secret unless
+  a new one is given.
+- Ingest hands a credential only to the agent of the server that polls the
+  device, in its config; the agent keeps it in memory. A sample or poll
+  result for a device another server polls is dropped.
+- Discovery scans only private ranges (10/8, 172.16/12, 192.168/16,
+  100.64/10), at most 1024 addresses, three scans per organisation at a
+  time: a customer's server can't be turned into a scanner of other
+  people's networks.
+- Text from devices (names, descriptions, LLDP, interface aliases) is
+  cleaned and capped at ingest; PromQL label values from it are escaped.
+
 ## Outbound requests
 
 Webhooks, Slack, Teams and Discord URLs are customer-supplied: the sender

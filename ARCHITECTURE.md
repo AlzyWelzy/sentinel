@@ -105,6 +105,29 @@ Over a limit: 429 with `Retry-After`; the agent keeps its data and retries.
 Bodies are limited to 32 MiB after decompression and 100,000 samples per
 request; over that is 413.
 
+## Network devices
+
+1. The API stores a device as a hosts row (`kind = network`, `address`,
+   `poller_host_id`, `snmp_credential_id`) and its credential sealed with
+   `CREDENTIALS_KEY`.
+2. Ingest puts the devices a host polls, with credentials opened, in that
+   host's agent config (memory only on the agent; never written to disk).
+3. The agent polls each device on its profile's interval classes (or the
+   Proxmox API every minute) and spools each poll as a batch: samples
+   labelled `device_id`, plus the poll's system group, inventory,
+   interfaces and LLDP neighbours.
+4. Ingest accepts a device's samples only from its poller and writes them
+   under the device's `host_id`; it records the poll on the hosts row
+   (ignoring polls older than the last, from a spool replay), replaces the
+   interface and neighbour lists on inventory polls, resolves neighbours to
+   known hosts, and marks the device seen when SNMP answered.
+5. The jobs service sets automatic upstreams from LLDP toward core devices;
+   the alerter treats a device's poller as its upstream when it has none,
+   and evaluates `network` rules as filter expressions (no series means
+   healthy).
+6. Discovery: the API records a scan in Redis (`pg:netdisc:*`, 24 h); ingest
+   hands it to the poller, which scans once and reports progress.
+
 ## Delivery guarantees (agent → stores)
 
 What the spool guarantees, precisely:

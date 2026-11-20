@@ -1,6 +1,6 @@
 # Sentinel
 
-Multi-tenant server and uptime monitoring, at
+Multi-tenant server, network and uptime monitoring, at
 [sentinel.rajpoot.app](https://sentinel.rajpoot.app). A small agent on each
 server pushes metrics every 30 seconds, runs checks (ports, URLs,
 certificates, DNS, files, log patterns) and plugins (MySQL, PostgreSQL,
@@ -8,7 +8,10 @@ Redis, Nginx, Apache, Docker, SMART/IPMI, SNMP, Prometheus endpoints,
 scripts). Sentinel stores everything, evaluates alert rules (thresholds,
 anomalies, forecasts, silence), opens incidents with a timeline, notifies
 verified contacts (email, Web Push, webhooks, Slack, Teams, Discord,
-Telegram, PagerDuty), and publishes status pages and reports.
+Telegram, PagerDuty), and publishes status pages and reports. Agents also
+poll the switches, firewalls and Proxmox clusters at their site, so the
+network is monitored with the servers: interfaces, LLDP topology,
+vendor-specific health, and 95th-percentile bandwidth.
 
 People sign up at the web app, create an organisation, invite their team,
 install the agent with one command and manage everything there. Nothing
@@ -30,6 +33,8 @@ agent ───https──▶ Caddy ──▶ ingest (Go) ──▶ VictoriaMetr
 | `api/` | Accounts, organisations, servers, rules, incidents, status pages, reports | FastAPI · uv · ruff · ty |
 | `web/` | The web app and public status pages | Next.js · TypeScript |
 | `proto/` | Agent ⇄ ingest wire contract (JSON v1, backward compatible) | Go |
+| `netmon/` | SNMP collection and vendor profiles (YAML), tested against recordings of real devices | Go |
+| `e2e/` | Browser journey, network UI, live network/Proxmox/discovery runs, API access matrix (`make e2e`) | Playwright · Python |
 | `deploy/` | Dev compose, production Swarm stack, Caddy, backups | Docker |
 
 Read next: [ARCHITECTURE.md](ARCHITECTURE.md) (components, data flow,
@@ -240,17 +245,63 @@ tenant. The API reports services (requests, error rate, p50/p95/p99 from
 TraceQL metrics over entry spans), searches traces and returns one trace's
 spans; 7 days kept. Off unless `TEMPO_URL` is set.
 
-## Hardware and network devices
+## Network monitoring
 
-- `sudo sentinel-agent enable-hardware` finds smartctl disks and an IPMI
-  BMC, writes `plugins.d/smart.conf` / `ipmi.conf`, and a sudoers file
-  allowing exactly those read-only command lines (`--remove` undoes it).
-  Metrics: `sentinel_custom_smart_*` (healthy, temperature, reallocated and
-  pending sectors, NVMe wear) and `sentinel_custom_ipmi_sensor{sensor,unit}`.
-- `type = snmp` plugins poll a device from the server (v1/v2c/v3): uptime,
-  per-interface traffic and status, and named custom OIDs
-  (`sentinel_custom_snmp_*`).
-- Alert with custom rules (e.g. `smart_healthy < 1`).
+Switches, firewalls, routers and Proxmox VE clusters are **network devices**:
+hosts with `kind = network`, so not-reporting alerts, maintenance windows,
+dependencies, tags, pausing and incidents work for them as for servers.
+A device has no agent of its own: one of the organisation's servers at its
+site polls it (its *poller*) and reports for it, through its own spool.
+
+- **Adding devices:** Network › Add devices (addresses or hostnames, a
+  credential, the poller, optionally a role and a pinned profile), or
+  **Discover**: the poller scans a private range (up to /22) for devices
+  answering SNMP and lists what each one is.
+- **Credentials:** SNMP v1/v2c communities, v3 users (MD5/SHA/SHA-2 with
+  DES/AES/AES-192/256, including the Cisco key extension), and Proxmox API
+  tokens. Sealed with `CREDENTIALS_KEY` (AES-256-GCM); the API only says
+  whether each secret is set.
+- **What's collected** (`netmon/`, profiles in `netmon/profiles/*.yaml`,
+  detected from sysObjectID/sysDescr): interface counters and status every
+  30 s (64-bit counters when present, names from ifName), health every
+  minute (CPU, memory, sensors, VPN tunnels, SD-WAN, HA, BGP/OSPF), and
+  inventory and LLDP neighbours every 6 h and after a reboot. Metrics are
+  `sentinel_net_*` under the device's `host_id`. Profiles: Arista EOS,
+  FortiGate, Sophos SFOS, Aruba Instant On, TP-Link JetStream/Omada, and a
+  generic fallback; adding a vendor is a YAML file.
+- **Topology:** LLDP neighbours are matched to known devices by name,
+  management address or chassis MAC. Mark the core switches (role *core*)
+  and each device's upstream becomes the neighbour one hop closer to them
+  (set as its dependency, unless one was set by hand), so a failed switch
+  is one alert and the devices behind it are *affected*. A device without
+  an upstream depends on its poller. Network › Topology draws it.
+- **Alerts:** rule kind `network` with a condition from a catalog
+  (`/v1/network/conditions`): interface down (ports that were up in the
+  last day), utilisation, errors, LAG member down, reboots, every
+  profile's alerts, and Proxmox node offline, lost quorum, guest stopped,
+  node CPU/memory and full storage. They arrive, with sensible timings,
+  when the first device is added. A silent device is "unreachable", with
+  the poller's reason (timeout, wrong community, refused token).
+- **Bandwidth:** tag ports with a customer or service (*billing tag*);
+  Network › Bandwidth gives the 95th percentile of 5-minute rates (ports
+  summed per sample, missing samples skipped, coverage shown), per month in
+  the organisation's timezone, with CSV.
+- **Proxmox VE:** a cluster's address (port 8006) with an API token
+  credential (PVEAuditor is enough): nodes, VMs, containers, storage and
+  quorum, polled every minute through the API.
+
+### Hardware
+
+- `sudo sentinel-agent enable-hardware` finds smartctl disks, an IPMI BMC
+  and LVM volume groups and thin pools, writes `plugins.d/smart.conf`,
+  `ipmi.conf` and `lvm.conf`, and a sudoers file allowing exactly those
+  read-only command lines (`--remove` undoes it; without sudo, a root timer
+  caches the output). Metrics: `sentinel_custom_smart_*`,
+  `sentinel_custom_ipmi_sensor{sensor,unit}`, and LVM storage as disks
+  (`lvm:<vg>`, `lvm:<vg>/<pool>`) plus `sentinel_custom_lvm_metadata_percent`.
+- A `type = snmp` plugin file still polls one device from the server with
+  named custom OIDs (`sentinel_custom_snmp_*`), for anything outside the
+  profiles.
 
 ## Terraform
 

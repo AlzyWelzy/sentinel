@@ -3,11 +3,42 @@
 Sentinel's releases. Agent versions are separate (`agent/VERSION`) and noted
 where they change.
 
-## Unreleased: 0.9.1 (agent 0.9.1)
+## 0.10.0 (agent 0.10.0), 2026-11-20
 
-Edge cases found by probing the running stack before going live.
+Network monitoring, Proxmox VE and discovery, and edge cases found by
+probing the running stack before going live. New deployments need
+`CREDENTIALS_KEY` (see DEPLOYMENT.md).
 
 ### Added
+
+- **Network monitoring.** Switches, firewalls and routers are polled over
+  SNMP (v1, v2c, v3) by one of the organisation's servers at their site,
+  and are first-class: not-reporting alerts, maintenance, dependencies,
+  incidents and tags work for them. Vendor profiles (Arista EOS,
+  FortiGate, Sophos SFOS, Aruba Instant On, TP-Link, generic) are detected
+  automatically and tested against recordings of real devices: interfaces
+  with live rates and errors, sensors, VPN tunnels, SD-WAN, HA, BGP and
+  OSPF, inventory and LLDP neighbours. A Network section lists devices,
+  shows each one's traffic, interfaces and neighbours, and manages SNMP
+  credentials (encrypted at rest; never shown again).
+- **Topology from LLDP.** Mark the core switches and every device's
+  upstream is worked out from the cabling, so a failed switch is one
+  alert and the devices behind it are affected; a device without an
+  upstream depends on the server that polls it. Network › Topology draws
+  it.
+- **Network alert rules:** interface down (only ports that were up in the
+  last day), utilisation, errors, LAG member down, reboots, and each
+  vendor profile's alerts (BGP, VPN, SD-WAN, sensors, optics, HA). They
+  arrive with the first device. A device that stops answering is
+  "unreachable", with the reason the poller saw.
+- **95th-percentile bandwidth** per customer or service: tag ports, pick a
+  month (in the organisation's timezone), see the billable rate, totals
+  and data coverage, and download a CSV.
+- **Proxmox VE clusters** through the API with a read-only token: nodes,
+  VMs, containers, storage and quorum, with alerts for an offline node,
+  lost quorum, a stopped guest, node CPU and memory, and full storage.
+- **Discovery:** scan a private range (up to /22) from one of your servers
+  for devices answering SNMP, see what each is, and add the ones you pick.
 
 - **Sentinel's own outage doesn't page everyone.** When no server anywhere
   has reported for 90 seconds, and just before that servers in at least
@@ -41,11 +72,18 @@ Edge cases found by probing the running stack before going live.
 - **Custom-metric alerts say which series fired** (for example
   `pool=pve/data 91.2`), worst first, like disk and plugin alerts.
 - **End-to-end checks in the repo** (`e2e/`, `make e2e`): the 41-step
-  browser journey, the extras and the API access matrix. They lived in a
-  scratch folder before and were lost once.
+  browser journey, the extras, the network UI, live network, Proxmox and
+  discovery runs against simulated devices, and the API access matrix.
+  They lived in a scratch folder before and were lost once.
 
 ### Fixed
 
+- **Autoupdate and new settings:** a release whose stack needs a setting
+  missing from `prod.env` (0.10.0: `CREDENTIALS_KEY`) used to fail to
+  deploy and roll back on every run. It now waits, before migrating, and
+  logs which setting to add.
+- **Big devices:** a poll larger than ingest's per-request limit is split
+  into several batches instead of being dropped.
 - **Next.js 16.4.6:** 16.4.4 had a moderate cache-leak advisory
   (GHSA-mfr8-8qww-v76h, GHSA-vc7v-qv4w-wrv8).
 - **Alert email footer** still pointed at "the console", which Sentinel

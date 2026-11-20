@@ -159,6 +159,15 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - [x] Agent uninstall: `install.sh --uninstall`, `install.ps1 -Uninstall`.
 - [x] Terms and privacy pages; per-organisation export (JSON, secrets masked); owners hand an organisation to another member; users delete their own account (and organisations only they are in). The legal text is a sound starting point, not legal advice: have it reviewed before taking paying customers.
 
+### Phase 7: Network monitoring (from Beacon) and beyond
+
+- [x] Pulsegrid since the fork (v0.8.28-30): LVM volume groups and thin pools as disks, the clearer alert email (Sentinel's design, the organisation's timezone, the event's own time).
+- [x] SNMP devices (`netmon/`, Beacon's profile engine and recordings) polled by a site agent; devices are hosts with `kind = network`; credentials sealed with `CREDENTIALS_KEY`.
+- [x] LLDP topology with automatic upstreams toward core devices; a device without one depends on its poller.
+- [x] Network rule kind with a catalog shared by the alerter (`alerter/network.go`) and the API (`services/netconditions.py`); a test on each side checks the keys match.
+- [x] 95th-percentile bandwidth per billing tag; Proxmox VE through its API; discovery of private ranges.
+- [ ] SNMP traps (needs a privileged UDP 162 listener next to the unprivileged agent), flows (sFlow/NetFlow), IPDR: not built. Beacon's console tickets and JWT sign-on don't apply.
+
 ### Verified end to end (dev stack, real containers)
 
 - `deploy/stack.yml` resolves with every variable of `production.env.example` set; Caddy validates the production Caddyfile; actionlint and shellcheck are clean.
@@ -168,12 +177,19 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - The `installers` workflow passes on Linux, Windows (`install.ps1` and `-Uninstall`), FreeBSD, OpenBSD and NetBSD: install, the service runs, a metrics push arrives, uninstall leaves nothing.
 - The redesigned web app passes the browser journey (41 steps) and the extras (fleet wall, saved views, incident merge).
 - Backups: a real dump restores (`restore-check.sh`), a truncated one is caught, and the nightly loop runs both; `vm-backup.sh` brings back a series deleted after the backup.
-- The journey script lives outside the repo (Playwright in a scratch folder). Before rerunning it on the dev stack, clear `pg:rl:*` in Redis (it signs up several accounts from one address and trips the hourly sign-up limit) and delete the `superadmin@example.com` user it creates.
+- The end-to-end scripts live in `e2e/` (`make e2e` runs the journey, extras and access matrix; it clears `pg:rl:*` and the journey's `superadmin@example.com` first). Don't run the API tests at the same time: they sign up accounts from the same address and trip the hourly sign-up limit.
+- Network, live (0.10.0): a real agent polled simulated Arista and FortiGate devices (snmpsim serving `netmon/testdata/walks`), a fake Proxmox API over HTTPS, and a discovery scan; the network UI passes in a browser; the access matrix covers the network endpoints. Simulator data must be sorted by OID first (the recordings were taken subtree by subtree).
 
 ### Not verified here
 
 - Anything needing the real domain and accounts: TLS issuance, SMTP delivery to outside mailboxes, Turnstile, Web Push.
 - The installers on BSD and Windows run in CI (`installers` workflow, against `deploy/testing/installer-stub`), not on customer-like machines with real services for autoconfig to find.
+
+## Lessons from building it
+
+- **Keep test scripts in the repo.** The browser journey once lived in a scratch folder and was lost when it was cleaned up.
+- **The disk fills during image builds** and Docker Desktop then stops answering; `docker builder prune -af` and the Go/npm caches free several GB.
+- **Fixtures from real devices** (`netmon/testdata/walks`) carry the company network's names and serials: the repo must stay private.
 
 ## Lessons from the production fleet
 
