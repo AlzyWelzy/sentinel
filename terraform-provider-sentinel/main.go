@@ -8,7 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/terraform-provider-sentinel/internal/provider"
+	"github.com/AlzyWelzy/sentinel/terraform-provider-sentinel/internal/provider"
 )
 
 // Set by the release build.

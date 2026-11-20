@@ -1,6 +1,6 @@
 #!/bin/sh
 # Deploys new Sentinel releases. Cron runs this every 5 minutes; a release
-# is a v* tag in AlzyWelzy/pulsegrid-beyond, whose workflow publishes
+# is a v* tag in AlzyWelzy/sentinel, whose workflow publishes
 # ghcr.io/alzywelzy/sentinel-{api,ingest,alerter}:<version>.
 #
 # When a newer version than SENTINEL_VERSION in prod.env has all three

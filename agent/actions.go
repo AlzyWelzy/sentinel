@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/agent/plugins"
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/agent/plugins"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 // Remote actions ("restart nginx when it stops") are opt-in per server. The

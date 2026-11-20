@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/snmp"
+	"github.com/AlzyWelzy/sentinel/netmon/snmp"
 )
 
 // IF-MIB columns.

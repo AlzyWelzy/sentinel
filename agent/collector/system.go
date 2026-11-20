@@ -7,7 +7,7 @@ import (
 	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 // memoryDetail: where memory goes (used, cache, buffers, free, committed),

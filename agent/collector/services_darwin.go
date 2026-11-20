@@ -5,7 +5,7 @@ package collector
 import (
 	"context"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 // macOS builds are for development; launchd services aren't checked.

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/agent/plugins"
+	"github.com/AlzyWelzy/sentinel/agent/plugins"
 )
 
 func TestConfig(t *testing.T) {

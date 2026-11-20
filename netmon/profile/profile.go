@@ -13,7 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/snmp"
+	"github.com/AlzyWelzy/sentinel/netmon/snmp"
 )
 
 // Interval classes; the device's poll settings map them to durations.

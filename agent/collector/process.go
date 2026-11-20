@@ -16,7 +16,7 @@ import (
 
 	"github.com/shirou/gopsutil/v4/process"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 // topProcesses is how many process names are reported by CPU and by memory

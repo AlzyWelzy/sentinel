@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 const (

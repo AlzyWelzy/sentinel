@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/profile"
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/snmp"
+	"github.com/AlzyWelzy/sentinel/netmon/profile"
+	"github.com/AlzyWelzy/sentinel/netmon/snmp"
 )
 
 // Standard OIDs.

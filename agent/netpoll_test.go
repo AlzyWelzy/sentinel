@@ -4,8 +4,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/collect"
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/netmon/collect"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 func TestNetSamplesAreNamedAndLabelledForTheDevice(t *testing.T) {

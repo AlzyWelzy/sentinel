@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 func find(s []proto.Sample, name string, labels ...string) (float64, bool) {

@@ -9,7 +9,7 @@ Sentinel is its own project. It does not rely on any other project, and work her
 - **History:** it started from a copy of an earlier monitoring codebase (Pulsegrid) at release v0.8.27 (`565b89f`, agent 0.8.11). That's history only: that product, the console it served and its services are not upstreams, dependencies or deploy targets.
 - **No syncing:** don't pull from, push to, or sync with the Pulsegrid repositories. Changes start here. Anything borrowed from elsewhere is re-implemented here deliberately.
 - **Own infrastructure:** use only Sentinel's own accounts, registry (`ghcr.io/alzywelzy/sentinel-*`), domain, servers, secrets and email provider. Never use another organisation's resources.
-- **The repo** is still `AlzyWelzy/pulsegrid-beyond` on GitHub, and the Go module path matches it. Renaming the GitHub repo is the owner's call; if it happens, change `go.mod` and the imports in one commit.
+- **The repo** is `AlzyWelzy/sentinel` on GitHub (renamed from `pulsegrid-beyond` on 2026-11-20, history anonymised) and public; the Go module path matches it.
 
 `README.md` has the feature list, `ARCHITECTURE.md` the components, data flow and delivery guarantees, `SECURITY.md` accounts, tenancy and the threat model, `DEPLOYMENT.md` the single-VPS setup, backups and restores. This file holds what they don't: how work is done here, where things stand, and what was learned running the inherited code on a real fleet of about 80 servers.
 

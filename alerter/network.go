@@ -16,8 +16,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/profile"
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/profiles"
+	"github.com/AlzyWelzy/sentinel/netmon/profile"
+	"github.com/AlzyWelzy/sentinel/netmon/profiles"
 )
 
 type netCondition struct {

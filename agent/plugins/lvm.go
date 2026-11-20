@@ -28,7 +28,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 // VGSArgs and LVSArgs are the exact commands; the sudoers rule must match.

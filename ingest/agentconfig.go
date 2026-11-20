@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 // configTTL bounds how stale a host's config can be: a new alert rule or

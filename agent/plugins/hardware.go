@@ -30,7 +30,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 // SmartArgs is the exact smartctl command for one device; the sudoers rule

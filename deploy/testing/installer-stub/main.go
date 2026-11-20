@@ -20,7 +20,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 func main() {

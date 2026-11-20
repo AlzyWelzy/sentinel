@@ -16,7 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 const (

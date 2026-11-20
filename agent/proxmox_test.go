@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 func fakePVE(t *testing.T, token string) *httptest.Server {

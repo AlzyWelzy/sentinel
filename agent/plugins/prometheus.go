@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 // A plugin may send at most this many series per run, so a chatty exporter

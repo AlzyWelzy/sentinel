@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/agent/checks"
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/agent/checks"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 func TestSpoolKeepsBatchesWithTheSameTimestamp(t *testing.T) {

@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/agent/plugins"
+	"github.com/AlzyWelzy/sentinel/agent/plugins"
 )
 
 const (

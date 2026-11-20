@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 func TestClockAhead(t *testing.T) {

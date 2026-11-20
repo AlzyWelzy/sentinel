@@ -7,7 +7,7 @@ import (
 	"errors"
 	"runtime"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 var errUnsupported = errors.New("sentinel agent doesn't support " + runtime.GOOS + " yet")

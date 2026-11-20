@@ -24,11 +24,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/collect"
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/profile"
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/profiles"
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/snmp"
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/netmon/collect"
+	"github.com/AlzyWelzy/sentinel/netmon/profile"
+	"github.com/AlzyWelzy/sentinel/netmon/profiles"
+	"github.com/AlzyWelzy/sentinel/netmon/snmp"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 const (

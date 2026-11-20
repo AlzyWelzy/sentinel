@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 func runOne(t *testing.T, r *Runner, c proto.Check) proto.CheckResult {

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 // DockerSocket is where the Docker API listens.

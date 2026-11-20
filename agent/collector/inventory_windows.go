@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/sys/windows/registry"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 // windowsPackages reads installed programs from the Uninstall registry keys

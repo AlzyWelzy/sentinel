@@ -23,12 +23,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/agent/apm"
-	"github.com/AlzyWelzy/pulsegrid-beyond/agent/checks"
-	"github.com/AlzyWelzy/pulsegrid-beyond/agent/collector"
-	"github.com/AlzyWelzy/pulsegrid-beyond/agent/logs"
-	"github.com/AlzyWelzy/pulsegrid-beyond/agent/plugins"
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/agent/apm"
+	"github.com/AlzyWelzy/sentinel/agent/checks"
+	"github.com/AlzyWelzy/sentinel/agent/collector"
+	"github.com/AlzyWelzy/sentinel/agent/logs"
+	"github.com/AlzyWelzy/sentinel/agent/plugins"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 // Set at build time: -ldflags "-X main.version=1.2.3"

@@ -1,4 +1,4 @@
-module github.com/AlzyWelzy/pulsegrid-beyond
+module github.com/AlzyWelzy/sentinel
 
 go 1.26.5
 

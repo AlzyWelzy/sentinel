@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/agent/plugins"
+	"github.com/AlzyWelzy/sentinel/agent/plugins"
 )
 
 func appendTo(t *testing.T, path, s string) {

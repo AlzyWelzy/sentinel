@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/agent/plugins"
+	"github.com/AlzyWelzy/sentinel/agent/plugins"
 )
 
 // cmdEnableHardware: sentinel-agent enable-hardware [--remove]. Run as

@@ -7,7 +7,7 @@ package collector
 import (
 	"context"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 type Collector interface {

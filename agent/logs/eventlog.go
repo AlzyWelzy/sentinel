@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/proto"
+	"github.com/AlzyWelzy/sentinel/proto"
 )
 
 // Windows Event Log, read with wevtutil (part of every Windows since Vista):

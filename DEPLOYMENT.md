@@ -55,7 +55,7 @@ aren't processed yet: watch the provider's bounce dashboard.
 ## 4. Configure
 
 ```sh
-git clone https://github.com/AlzyWelzy/pulsegrid-beyond.git /srv/sentinel-src
+git clone https://github.com/AlzyWelzy/sentinel.git /srv/sentinel-src
 mkdir -p /srv/sentinel && cp -R /srv/sentinel-src/deploy/. /srv/sentinel/
 cd /srv/sentinel
 cp production.env.example prod.env && chmod 600 prod.env

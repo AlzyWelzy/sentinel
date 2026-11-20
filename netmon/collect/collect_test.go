@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/collect"
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/profile"
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/profiles"
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/snmp"
+	"github.com/AlzyWelzy/sentinel/netmon/collect"
+	"github.com/AlzyWelzy/sentinel/netmon/profile"
+	"github.com/AlzyWelzy/sentinel/netmon/profiles"
+	"github.com/AlzyWelzy/sentinel/netmon/snmp"
 )
 
 // These expectations come from real devices recorded on 2026-11-16, anonymised

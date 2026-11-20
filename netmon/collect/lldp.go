@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/snmp"
+	"github.com/AlzyWelzy/sentinel/netmon/snmp"
 )
 
 // LLDP-MIB (IEEE 802.1AB-2005) columns.
