@@ -62,8 +62,10 @@ cp production.env.example prod.env && chmod 600 prod.env
 ```
 
 Fill in `prod.env`. Generate every secret with `openssl rand -hex 32`:
-`AUTH_SECRET`, `POSTGRES_PASSWORD`, `SENTINEL_APP_PASSWORD`,
+`AUTH_SECRET`, `CREDENTIALS_KEY`, `POSTGRES_PASSWORD`, `SENTINEL_APP_PASSWORD`,
 `SENTINEL_SERVICE_PASSWORD`, `WEBHOOK_SIGNING_SECRET`, `ACK_SIGNING_SECRET`.
+Keep a copy of `CREDENTIALS_KEY` with your backups: the network device
+credentials in a database dump can't be read without it.
 Then:
 
 - `SUPERADMIN_EMAILS`: your own address.
@@ -177,6 +179,7 @@ their next config refresh; an hour to be safe).
 | Secret | How |
 |---|---|
 | `AUTH_SECRET` | Move it to `AUTH_SECRET_PREVIOUS`, set a new one, deploy; clear the previous a day later |
+| `CREDENTIALS_KEY` | Not rotated in place: SNMP credentials sealed with the old key can't be read with a new one. To change it, note each credential, set the new key, deploy, and enter them again under Network › Credentials |
 | `ACK_SIGNING_SECRET` | Change and deploy: acknowledge links in old emails stop working |
 | `WEBHOOK_SIGNING_SECRET` | Change, deploy, tell webhook customers the new value |
 | Database passwords | `ALTER ROLE … PASSWORD` in Postgres, update `prod.env`, deploy |

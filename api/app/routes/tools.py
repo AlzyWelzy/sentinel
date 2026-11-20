@@ -191,8 +191,10 @@ async def bulk(body: BulkIn, t: Tenant) -> BulkOut:
     else:
         from app.routes.v1 import delete_host
 
-        for h in hosts:
+        # Devices first: a server that polls them can go in the same request.
+        for h in sorted(hosts, key=lambda h: h.kind != "network"):
             await delete_host(h.id, t)
+            await t.db.flush()
     await t.db.flush()
     return BulkOut(action=body.action, changed=len(hosts))
 

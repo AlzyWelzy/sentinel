@@ -112,6 +112,7 @@ services:
       ACK_SIGNING_SECRET: change-me-ack-secret
       # Local only; production refuses short or missing secrets.
       AUTH_SECRET: dev-only-auth-secret-change-me-in-production
+      CREDENTIALS_KEY: dev-only-credentials-key-change-me-in-production
       COOKIE_SECURE: "false"
       # The browser reaches the API under /api (the web app's dev proxy, or
       # Caddy), and the refresh cookie is scoped to that path.
@@ -150,6 +151,7 @@ services:
       PUBLIC_INGEST_URL: ${PUBLIC_INGEST_URL:-http://localhost:8090}
       PUBLIC_DOWNLOAD_URL: ${PUBLIC_DOWNLOAD_URL:-http://localhost:8010}
       AGENT_VERSION: ${AGENT_VERSION:-dev}
+      CREDENTIALS_KEY: dev-only-credentials-key-change-me-in-production
     ports:
       - "${INGEST_PORT:-8090}:8080"
     depends_on:
@@ -202,6 +204,7 @@ services:
       VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
       AUTH_SECRET: dev-only-auth-secret-change-me-in-production
+      CREDENTIALS_KEY: dev-only-credentials-key-change-me-in-production
     depends_on:
       migrate:
         condition: service_completed_successfully

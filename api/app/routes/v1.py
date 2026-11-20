@@ -211,6 +211,17 @@ class HostOut(BaseModel):
     paused: bool = False
     paused_at: datetime | None = None
     paused_by: str | None = None
+    kind: Literal["server", "network"] = "server"
+    address: str | None = Field(default=None, description="network devices: what's polled")
+    poller_host_id: uuid.UUID | None = Field(
+        default=None, description="network devices: the server that polls it"
+    )
+    network_role: str | None = None
+    vendor: str | None = None
+    device_error: str | None = Field(
+        default=None, description="network devices: why the last poll failed"
+    )
+    depends_on_auto: bool = Field(default=False, description="set from LLDP topology")
 
 
 def _host_out(h: Host, last_seen: int | None, maintenance: bool = False) -> HostOut:
@@ -238,6 +249,15 @@ def _host_out(h: Host, last_seen: int | None, maintenance: bool = False) -> Host
         paused=h.paused_at is not None,
         paused_at=h.paused_at,
         paused_by=h.paused_by,
+        kind="network" if h.kind == "network" else "server",
+        address=h.address,
+        poller_host_id=h.poller_host_id,
+        network_role=h.network_role,
+        vendor=((h.device or {}).get("system") or {}).get("vendor")
+        if h.kind == "network"
+        else None,
+        device_error=h.device_error,
+        depends_on_auto=h.depends_on_auto,
     )
 
 
@@ -307,11 +327,12 @@ async def update_host(host_id: uuid.UUID, body: HostPatch, t: Tenant) -> HostOut
     host = await _get_host(t, host_id)
     if body.tags is not None:
         host.tags = body.tags
+    # Set by hand: topology leaves it alone from now on.
     if body.clear_depends_on:
-        host.depends_on_host_id = None
+        host.depends_on_host_id, host.depends_on_auto = None, False
     elif body.depends_on_host_id is not None:
         await _check_dependency(t, host, body.depends_on_host_id)
-        host.depends_on_host_id = body.depends_on_host_id
+        host.depends_on_host_id, host.depends_on_auto = body.depends_on_host_id, False
     if body.notes is not None:
         host.notes = body.notes.strip() or None
         host.notes_updated_at = datetime.now(UTC)
@@ -412,6 +433,17 @@ async def delete_host(host_id: uuid.UUID, t: Tenant) -> None:
     """Removes the host; its agent's token stops working immediately. Its
     open incidents resolve (nothing else ever would) and its alert state goes."""
     host = await _get_host(t, host_id)
+    polled = await t.db.scalar(
+        select(func.count())
+        .select_from(Host)
+        .where(Host.tenant_id == t.tenant_id, Host.poller_host_id == host.id)
+    )
+    if polled:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This server polls {polled} network device{'s' if polled != 1 else ''}: "
+            "move them to another server or remove them first",
+        )
     await t.db.execute(
         update(Incident)
         .where(
@@ -425,7 +457,8 @@ async def delete_host(host_id: uuid.UUID, t: Tenant) -> None:
         delete(AlertState).where(AlertState.tenant_id == t.tenant_id, AlertState.host_id == host.id)
     )
     await t.db.delete(host)
-    await heartbeats.forget_host_tokens([host.token_hash])
+    if host.token_hash:
+        await heartbeats.forget_host_tokens([host.token_hash])
     try:
         await metrics.delete_host_series(t.tenant_id, host.id)
     except metrics.MetricsUnavailable:

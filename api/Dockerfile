@@ -25,6 +25,7 @@ RUN go mod download
 COPY scripts/build-agents.sh ./scripts/
 COPY proto ./proto
 COPY agent ./agent
+COPY netmon ./netmon
 RUN sh scripts/build-agents.sh "$AGENT_VERSION" "/dist/$AGENT_VERSION"
 
 FROM busybox:1.37 AS dist
@@ -61,6 +62,8 @@ COPY deploy/stack.yml /deploy/stack.yml
 COPY deploy/caddy /deploy/caddy
 COPY deploy/postgres /deploy/postgres
 COPY deploy/tempo /deploy/tempo
+# Vendor profiles, to list them in the UI (the agent embeds its own copy).
+COPY netmon/profiles /app/netmon-profiles
 
 RUN useradd --system sentinel
 USER sentinel

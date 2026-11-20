@@ -25,10 +25,12 @@ def is_online(last_seen_ts: int | None) -> bool:
     return time.time() - last_seen_ts < settings.HOST_OFFLINE_AFTER_SECONDS
 
 
-async def forget_host_tokens(token_hashes: list[str]) -> None:
-    """Drop ingest's cached token lookups so a revoke or suspend takes effect now."""
-    if token_hashes:
-        await redis.delete(*[HOST_TOKEN_CACHE_KEY.format(token_hash=t) for t in token_hashes])
+async def forget_host_tokens(token_hashes: list[str | None]) -> None:
+    """Drop ingest's cached token lookups so a revoke or suspend takes effect
+    now. Network devices have no token (None) and are skipped."""
+    keys = [HOST_TOKEN_CACHE_KEY.format(token_hash=t) for t in token_hashes if t]
+    if keys:
+        await redis.delete(*keys)
 
 
 async def clock_ahead(host_id: uuid.UUID) -> int | None:

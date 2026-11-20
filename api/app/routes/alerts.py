@@ -73,6 +73,7 @@ Kind = Literal[
     "container_down",
     "custom",
     "logs",
+    "network",
 ]
 FORECAST_METRICS = ("disk", "inodes", "memory", "swap")
 # Metrics an anomaly rule can watch: ones with a meaningful "usual level".
@@ -214,6 +215,25 @@ class RuleIn(BaseModel):
                 raise ValueError(f"{k} rules need a target (the name to watch)")
             self.target = validate_target(k, self.target)
             self.metric = self.operator = self.threshold = None
+        elif k == "network":
+            from app.services.netconditions import CONDITIONS
+
+            c = CONDITIONS.get(self.target or "")
+            if c is None:
+                raise ValueError(
+                    "network rules need target: a condition from /v1/network/conditions"
+                )
+            if c.unit:
+                if self.threshold is None:
+                    self.threshold = c.default
+                if self.threshold is None or not c.minimum <= self.threshold <= c.maximum:
+                    raise ValueError(
+                        f"{c.name}: the threshold is {c.minimum:g}-{c.maximum:g} {c.unit}"
+                    )
+                self.operator = ">"
+            else:
+                self.operator = self.threshold = None
+            self.metric = None
         elif k == "container_down":
             if not self.target or not CONTAINER_RE.match(self.target.strip()):
                 raise ValueError("container_down rules need the container's name")

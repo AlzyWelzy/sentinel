@@ -8,6 +8,7 @@ from app.config import Settings
 PROD = {
     "ENVIRONMENT": "production",
     "AUTH_SECRET": "s" * 48,
+    "CREDENTIALS_KEY": "c" * 48,
     "COOKIE_SECURE": "true",
     "TURNSTILE_SECRET_KEY": "turnstile-secret",
     "PUBLIC_APP_URL": "https://sentinel.example.com",
@@ -36,6 +37,8 @@ def test_a_private_install_may_turn_the_captcha_off(prod_env):
     [
         ("AUTH_SECRET", ""),
         ("AUTH_SECRET", "short"),
+        ("CREDENTIALS_KEY", ""),
+        ("CREDENTIALS_KEY", "short"),
         ("COOKIE_SECURE", "false"),
         ("TURNSTILE_SECRET_KEY", ""),
         ("PUBLIC_APP_URL", "http://sentinel.example.com"),

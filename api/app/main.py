@@ -25,6 +25,7 @@ from app.routes import (
     logs,
     maintenance,
     members,
+    network,
     oncall,
     reports,
     saved_views,
@@ -66,6 +67,7 @@ app.include_router(tools.router)
 app.include_router(fleetview.router)
 app.include_router(fleet.router)
 app.include_router(v1.router)
+app.include_router(network.router)
 app.include_router(channels.router)
 app.include_router(alerts.router)
 app.include_router(checks.router)

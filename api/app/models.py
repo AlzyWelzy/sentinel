@@ -99,7 +99,8 @@ class Host(TenantScoped):
     platform_version: Mapped[str | None] = mapped_column(Text)
     arch: Mapped[str | None] = mapped_column(Text)
     agent_version: Mapped[str | None] = mapped_column(Text)
-    token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    # None for network devices: they have no agent of their own.
+    token_hash: Mapped[str | None] = mapped_column(Text, unique=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     last_seen_at: Mapped[datetime | None]
     revoked_at: Mapped[datetime | None]
@@ -120,6 +121,23 @@ class Host(TenantScoped):
     memory_bytes: Mapped[int | None] = mapped_column(BigInteger)
     probe_region: Mapped[str | None] = mapped_column(Text)
     allowed_actions: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    # 'server' (an agent) or 'network' (a device an agent polls over SNMP).
+    kind: Mapped[str] = mapped_column(Text, server_default="server", default="server")
+    address: Mapped[str | None] = mapped_column(Text)
+    poller_host_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("hosts.id", ondelete="SET NULL")
+    )
+    snmp_credential_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("snmp_credentials.id", ondelete="RESTRICT")
+    )
+    profile: Mapped[str | None] = mapped_column(Text)
+    network_role: Mapped[str | None] = mapped_column(Text)
+    # The last poll: ok, profile, system group, inventory, last_ok_at.
+    device: Mapped[dict] = mapped_column(JSONB, server_default="{}", default=dict)
+    device_error: Mapped[str | None] = mapped_column(Text)
+    device_polled_at: Mapped[datetime | None]
+    # depends_on_host_id was set by topology (LLDP), not by hand.
+    depends_on_auto: Mapped[bool] = mapped_column(server_default="false", default=False)
 
 
 class NotificationChannel(TenantScoped):
@@ -443,3 +461,51 @@ class Dashboard(TenantScoped):
     created_by: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class SNMPCredential(TenantScoped):
+    __tablename__ = "snmp_credentials"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(Text)
+    version: Mapped[str] = mapped_column(Text)
+    secret: Mapped[str] = mapped_column(Text)  # devicesecrets.seal(...)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class NetworkInterface(TenantScoped):
+    __tablename__ = "network_interfaces"
+
+    host_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("hosts.id", ondelete="CASCADE"), primary_key=True
+    )
+    ifindex: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    descr: Mapped[str | None] = mapped_column(Text)
+    alias: Mapped[str | None] = mapped_column(Text)
+    type: Mapped[int | None]
+    speed_bps: Mapped[int | None] = mapped_column(BigInteger)
+    mtu: Mapped[int | None]
+    mac: Mapped[str | None] = mapped_column(Text)
+    admin_up: Mapped[bool | None]
+    oper_status: Mapped[int | None]
+    billing_tag: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class NetworkLink(TenantScoped):
+    __tablename__ = "network_links"
+
+    host_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("hosts.id", ondelete="CASCADE"), primary_key=True
+    )
+    local_port: Mapped[str] = mapped_column(Text, primary_key=True)
+    remote_chassis_id: Mapped[str] = mapped_column(Text, primary_key=True, default="")
+    remote_port_id: Mapped[str] = mapped_column(Text, primary_key=True, default="")
+    remote_sys_name: Mapped[str] = mapped_column(Text, default="")
+    remote_port_desc: Mapped[str | None] = mapped_column(Text)
+    remote_mgmt_addr: Mapped[str | None] = mapped_column(Text)
+    remote_host_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("hosts.id", ondelete="SET NULL")
+    )
+    seen_at: Mapped[datetime] = mapped_column(server_default=func.now())

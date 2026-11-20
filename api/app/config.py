@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     # tokens and secrets made with it keep working until they're renewed.
     AUTH_SECRET: str = ""
     AUTH_SECRET_PREVIOUS: str = ""
+    # Encrypts SNMP credentials (and other device secrets) at rest. Ingest has
+    # the same value: it hands them to the agent that polls the device.
+    CREDENTIALS_KEY: str = ""
     ACCESS_TOKEN_TTL_SECONDS: int = 600
     REFRESH_TOKEN_TTL_DAYS: int = 30
     # Refresh cookies need HTTPS; only development over plain http turns it off.
@@ -111,6 +114,8 @@ class Settings(BaseSettings):
             return self
         if len(self.AUTH_SECRET) < 32:
             raise ValueError("Set AUTH_SECRET to a random value of at least 32 characters")
+        if len(self.CREDENTIALS_KEY) < 32:
+            raise ValueError("Set CREDENTIALS_KEY to a random value of at least 32 characters")
         if not self.COOKIE_SECURE:
             raise ValueError("COOKIE_SECURE must stay on in production")
         if not self.CAPTCHA_DISABLED and not self.TURNSTILE_SECRET_KEY:

@@ -313,6 +313,14 @@ async def tick() -> None:
     except Exception:
         log.exception("recommended rules failed")
     try:
+        from app.routes.network import topology_everywhere
+
+        n = await topology_everywhere()
+        if n:
+            log.info("topology moved %d device upstream(s)", n)
+    except Exception:
+        log.exception("topology failed")
+    try:
         n = await send_digests(now)
         if n:
             log.info("queued %d digest(s)", n)

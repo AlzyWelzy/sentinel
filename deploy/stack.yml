@@ -71,6 +71,7 @@ services:
       AGENT_IMAGE: ${REGISTRY:-ghcr.io/alzywelzy}/sentinel-agent:${AGENT_VERSION:?}
       CORS_ORIGINS: ""
       AUTH_SECRET: ${AUTH_SECRET:?}
+      CREDENTIALS_KEY: ${CREDENTIALS_KEY:?}
       AUTH_SECRET_PREVIOUS: ${AUTH_SECRET_PREVIOUS:-}
       SUPERADMIN_EMAILS: ${SUPERADMIN_EMAILS:-}
       SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
@@ -102,6 +103,7 @@ services:
       PUBLIC_INGEST_URL: https://${INGEST_HOST}
       PUBLIC_DOWNLOAD_URL: https://${DOWNLOAD_HOST}
       AGENT_VERSION: ${AGENT_VERSION:?}
+      CREDENTIALS_KEY: ${CREDENTIALS_KEY:?}
     networks: [edge, backend]
     deploy:
       <<: *rolling
@@ -152,6 +154,7 @@ services:
       VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
       PUBLIC_APP_URL: https://${APP_HOST}
       AUTH_SECRET: ${AUTH_SECRET:?}
+      CREDENTIALS_KEY: ${CREDENTIALS_KEY:?}
       CAPTCHA_DISABLED: "true"   # the worker serves no sign-ups
     networks: [backend]
     deploy:
