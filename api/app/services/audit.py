@@ -203,7 +203,13 @@ async def record_request(
 
 async def record_safely(db: AsyncSession, request: Request, **kw: Any) -> None:
     """record_request in a savepoint: the audit log must never undo the
-    change it describes (a failed insert would abort the transaction)."""
+    change it describes (a failed insert would abort the transaction).
+
+    The change is flushed first, outside the savepoint: opening the savepoint
+    would otherwise flush it inside, where its error (a constraint, a missing
+    grant) is caught here and rolled back with the audit row, and the request
+    answers 200 with nothing saved."""
+    await db.flush()
     try:
         async with db.begin_nested():
             await record_request(db, request, **kw)

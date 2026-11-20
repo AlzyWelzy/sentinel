@@ -2004,6 +2004,24 @@ export interface paths {
         patch: operations["rename_organisation_v1_organisation_patch"];
         trace?: never;
     };
+    "/v1/organisation/alerting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Alerting */
+        get: operations["get_alerting_v1_organisation_alerting_get"];
+        /** Put Alerting */
+        put: operations["put_alerting_v1_organisation_alerting_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organisation/delete": {
         parameters: {
             query?: never;
@@ -3474,6 +3492,20 @@ export interface components {
             /** History */
             history: components["schemas"]["ActionOut"][];
         };
+        /** AffectedHost */
+        AffectedHost: {
+            /**
+             * Host Id
+             * Format: uuid
+             */
+            host_id: string;
+            /** Hostname */
+            hostname: string;
+            /** Kind */
+            kind: string;
+            /** Online */
+            online: boolean;
+        };
         /** AgentKeyCreated */
         AgentKeyCreated: {
             /**
@@ -3534,6 +3566,14 @@ export interface components {
             created_at: string;
             /** Revoked At */
             revoked_at: string | null;
+        };
+        /** AlertingSettings */
+        AlertingSettings: {
+            /**
+             * Reminder Minutes
+             * @description re-send open, unacknowledged incidents this often; 0 turns reminders off
+             */
+            reminder_minutes: number;
         };
         /** Anomaly */
         Anomaly: {
@@ -4888,6 +4928,11 @@ export interface components {
             merged_into?: string | null;
             /** Events */
             events: components["schemas"]["IncidentEventOut"][];
+            /**
+             * Affected
+             * @default []
+             */
+            affected: components["schemas"]["AffectedHost"][];
         };
         /** IncidentEventOut */
         IncidentEventOut: {
@@ -11001,6 +11046,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_alerting_v1_organisation_alerting_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertingSettings"];
+                };
+            };
+        };
+    };
+    put_alerting_v1_organisation_alerting_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertingSettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertingSettings"];
                 };
             };
             /** @description Validation Error */

@@ -76,6 +76,8 @@ func (e *evaluator) evaluateAll(ctx context.Context, partition, partitions int) 
 		}
 	}
 	e.escalateAll(ctx, c, partition, partitions)
+	e.remindAll(ctx, c, partition, partitions)
+	e.sitesAll(ctx, partition, partitions)
 }
 
 func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
@@ -158,6 +160,11 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 		}
 		if act != actionNone {
 			o.Detail = e.checkDetail(ctx, r, h)
+			if r.Kind == "host_down" && act == actionOpen {
+				if a := e.affectedDetail(ctx, r.TenantID, h); a != "" {
+					o.Detail = strings.TrimSpace(o.Detail + "\n" + a)
+				}
+			}
 			if r.Kind == "plugin_down" {
 				o.Plugins, o.Detail = e.pluginDetail(ctx, r, h, act)
 			}

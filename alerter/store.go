@@ -662,7 +662,7 @@ func (s *store) skipStaleHeld(ctx context.Context) (int64, error) {
 		 WHERE m.incident_id = i.id AND m.tenant_id = i.tenant_id
 		   AND m.status = 'pending' AND m.held_until IS NOT NULL
 		   AND m.next_attempt_at <= now() AND i.status = 'resolved'
-		   AND (m.kind IN ('alert_firing', 'alert_escalation')
+		   AND (m.kind IN ('alert_firing', 'alert_escalation', 'alert_reminder')
 		        OR (m.kind = 'alert_resolved' AND EXISTS (
 		            SELECT 1 FROM outbound_messages f
 		             WHERE f.incident_id = m.incident_id AND f.channel_id = m.channel_id

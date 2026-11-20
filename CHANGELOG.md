@@ -28,6 +28,12 @@ probing the running stack before going live. New deployments need
   or unit; everything is listed on the device's Events. `install.sh
   --traps` lets the agent bind UDP 162 (systemd, OpenRC); otherwise it
   listens on 1162.
+- **Reminders, affected hosts and site incidents.** Unacknowledged
+  incidents are re-sent every 4 hours (an organisation setting). A "not
+  reporting" alert names the hosts behind it that are quiet too. Five or
+  more servers behind one public IP (or devices behind one poller) going
+  quiet within 15 minutes become one site incident that resolves when they
+  all report again.
 - **Topology from LLDP.** Mark the core switches and every device's
   upstream is worked out from the cabling, so a failed switch is one
   alert and the devices behind it are affected; a device without an
@@ -95,6 +101,10 @@ probing the running stack before going live. New deployments need
 
 ### Fixed
 
+- **Saves that failed silently:** a change the database refused when it was
+  saved (a constraint, a missing column grant) answered 200 with nothing
+  saved, because the audit log's savepoint swallowed the error. Such a
+  request now fails.
 - **Autoupdate and new settings:** a release whose stack needs a setting
   missing from `prod.env` (0.10.0: `CREDENTIALS_KEY`) used to fail to
   deploy and roll back on every run. It now waits, before migrating, and

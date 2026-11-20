@@ -194,3 +194,55 @@ async def test_pausing_a_server_closes_its_incidents_and_resume_clears_it(alice:
     bulk = await alice.request("POST", "/v1/hosts/bulk", json=body)
     assert bulk.status_code == 200 and bulk.json()["changed"] == 1
     assert (await alice.request("GET", f"/v1/hosts/{host}")).json()["paused"] is True
+
+
+async def test_an_incident_names_the_silent_hosts_behind_it(alice: User, bob: User):
+    import time
+
+    from app.services.heartbeats import redis
+
+    tid = await alice.tenant_id()
+    switch = await insert_host(tid, "tor-1")
+    behind_a = await insert_host(tid, "web-a")
+    behind_b = await insert_host(tid, "web-b")
+    two_hops = await insert_host(tid, "vm-under-web-a")
+    still_up = await insert_host(tid, "web-up")
+    never_seen = await insert_host(tid, "web-new")
+    async with ServiceSession() as db, db.begin():
+        for h, up in (
+            (behind_a, switch),
+            (behind_b, switch),
+            (still_up, switch),
+            (never_seen, switch),
+            (two_hops, behind_a),
+        ):
+            await db.execute(
+                text("UPDATE hosts SET depends_on_host_id = :u WHERE id = :h"), {"u": up, "h": h}
+            )
+    old = int(time.time()) - 3600
+    for h in (switch, behind_a, behind_b, two_hops):
+        await redis.set(f"pg:last_seen:{h}", old)
+    await redis.set(f"pg:last_seen:{still_up}", int(time.time()))
+    incident = await _incident(tid, switch, "tor-1 is not reporting", severity="critical")
+
+    detail = (await alice.request("GET", f"/v1/incidents/{incident}")).json()
+    assert [a["hostname"] for a in detail["affected"]] == ["vm-under-web-a", "web-a", "web-b"]
+    assert (await bob.request("GET", f"/v1/incidents/{incident}")).status_code == 404
+
+    resolved = await alice.request("POST", f"/v1/incidents/{incident}/resolve")
+    assert resolved.status_code == 200 and resolved.json()["affected"] == []
+
+
+async def test_reminders_are_an_organisation_setting(alice: User):
+    assert (await alice.request("GET", "/v1/organisation/alerting")).json() == {
+        "reminder_minutes": 240
+    }
+    for bad in (5, 20000, -1):
+        r = await alice.request("PUT", "/v1/organisation/alerting", json={"reminder_minutes": bad})
+        assert r.status_code == 422, bad
+    for good in (0, 30, 1440):
+        r = await alice.request("PUT", "/v1/organisation/alerting", json={"reminder_minutes": good})
+        assert r.status_code == 200 and r.json()["reminder_minutes"] == good
+        # Saved, not just echoed.
+        saved = await alice.request("GET", "/v1/organisation/alerting")
+        assert saved.json()["reminder_minutes"] == good

@@ -176,7 +176,19 @@ a rollback or a pin can still download its version.
   server or a tag: no incidents open and nothing is sent; a problem that
   outlasts the window fires when it ends.
 - Dependencies: a server can depend on another (a gateway, a hypervisor).
-  While that one is silent, the dependent server's alerts are held back.
+  While that one is silent, the dependent server's alerts are held back, and
+  its "not reporting" alert and incident name the hosts behind it that went
+  quiet too (through the whole chain of upstreams, and the devices a poller
+  watches).
+- **Reminders:** an incident nobody has acknowledged is sent again to the
+  rule's contacts every 4 hours (Organisation › Reminders: hourly to daily,
+  or never). Acknowledging, snoozing, merging and maintenance stop them;
+  quiet hours still apply.
+- **Site incidents:** five or more servers behind one public IP (shared
+  NAT), or devices behind one poller, that stop reporting within 15 minutes
+  become one incident for the site; theirs are merged into it, later ones
+  join it, and it resolves with one recovery message only when every one of
+  them reports again.
 - The alerter evaluates every 30s: `ok → pending → firing → resolved`, with
   incidents opened and resolved in the same transaction as the state change.
 - Notifications go through an outbox (`outbound_messages`) with retries and

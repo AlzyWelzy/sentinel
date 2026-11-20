@@ -34,6 +34,14 @@ func renderHTML(m message) string {
 		if lead == "" {
 			lead = "This problem has cleared. No action is needed."
 		}
+	case kind == "alert_reminder":
+		badge = "Still open"
+		if str("severity") == "warning" {
+			t = tone{"#fffbeb", "#92400e", "#d97706"}
+		}
+		if lead == "" {
+			lead = "This alert is still open and nobody has acknowledged it. Acknowledge it to stop these reminders."
+		}
 	case kind == "alert_escalation":
 		t = tone{"#fef2f2", "#7f1d1d", "#7f1d1d"}
 		badge = "Escalated"

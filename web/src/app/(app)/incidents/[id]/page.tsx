@@ -28,6 +28,7 @@ const EVENT_TONE: Record<string, string> = {
   resolved: "bg-ok",
   acknowledged: "bg-brand",
   escalated: "bg-warn",
+  reminded: "bg-warn",
   reopened: "bg-bad",
 };
 
@@ -202,6 +203,35 @@ export default function IncidentPage() {
           {i.detail && (
             <Card title="What failed">
               <p className="text-sm whitespace-pre-wrap">{i.detail}</p>
+            </Card>
+          )}
+          {i.affected && i.affected.length > 0 && (
+            <Card title={`Behind it, not reporting either · ${i.affected.length}`} pad={false}>
+              <p className="border-b border-line px-4 py-3 text-sm text-ink-2">
+                These depend on it, so their own alerts are held back while it&apos;s down.
+              </p>
+              <ul className="grid sm:grid-cols-2">
+                {i.affected.map((a) => (
+                  <li
+                    key={a.host_id}
+                    className="flex min-w-0 items-center gap-2 border-b border-line px-4 py-2 text-sm sm:odd:border-r"
+                  >
+                    <span
+                      className="inline-block h-2.5 w-1.5 shrink-0 rounded-[1px] bg-bad"
+                      aria-hidden
+                    />
+                    <Link
+                      href={
+                        a.kind === "network" ? `/network/${a.host_id}` : `/servers/${a.host_id}`
+                      }
+                      className="truncate hover:text-brand"
+                      title={a.hostname}
+                    >
+                      {a.hostname}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </Card>
           )}
           <Card title="Timeline">

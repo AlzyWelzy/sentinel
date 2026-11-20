@@ -168,12 +168,13 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - [x] Network rule kind with a catalog shared by the alerter (`alerter/network.go`) and the API (`services/netconditions.py`); a test on each side checks the keys match.
 - [x] 95th-percentile bandwidth per billing tag; Proxmox VE through its API; discovery of private ranges.
 - [x] SNMP traps: the agent receives v1/v2c/v3 traps itself (gosnmp) on 162 with `install.sh --traps` (CAP_NET_BIND_SERVICE) or 1162; catalog in `netmon/traps` shared by ingest and the alerter (trap conditions are network conditions, keys `trap_*`).
-- [ ] Still to port from Beacon (owner's decision 2026-11-20): IPDR per organisation (syslog, sFlow/NetFlow/IPFIX, MAC/ARP, ClickHouse, audit chain, seals, approved exports), affected-device incidents, 4-hour reminders, site incidents, per-customer alert channels, availability CSV, device insight. Then every Uptime Kuma feature. Beacon's console tickets and JWT sign-on don't apply.
+- [ ] Still to port from Beacon (owner's decision 2026-11-20): IPDR per organisation (syslog, sFlow/NetFlow/IPFIX, MAC/ARP, ClickHouse, audit chain, seals, approved exports), per-customer alert channels, availability CSV, device insight.
+- [x] Reminders (tenants.reminder_minutes, alerter/reminders.go), affected hosts on a not-reporting incident (alerter/affected.go, IncidentDetail.affected), site incidents (alerter/sites.go: 5+ hosts behind one public IP or poller within 15 min, incidents.site_key). Live: `e2e/api/alerting_live.py`. Then every Uptime Kuma feature. Beacon's console tickets and JWT sign-on don't apply.
 
 ### Verified end to end (dev stack, real containers)
 
 - `deploy/stack.yml` resolves with every variable of `production.env.example` set; Caddy validates the production Caddyfile; actionlint and shellcheck are clean.
-- Migrations run up, down to base and up again; the API suite passes (226 tests); the typed web client matches the API.
+- Migrations run up, down to base and up again; the API suite passes (228 tests); the typed web client matches the API.
 - A browser journey (Playwright, scratch script, not in the repo) through the production web image behind Caddy's production routing: landing and legal pages, sign-up and the emailed link, onboarding, a real agent arriving, every screen, rule edit, preview and test, contacts and quiet hours, on-call, status pages (public, rendered on the server, no hostnames), dashboards, PDF report, API tokens, data export, invitations, roles, an outage with the alert and recovery emails, acknowledge, assign, notes, snooze, deliveries, two-factor, password reset signing other browsers out, superadmin impersonation, account deletion, mobile width and dark mode.
 - `install.sh` and `--uninstall` on Ubuntu 24.04 with systemd as PID 1: user, units, timers, autoconfig, registration, spool drained once ingest was reachable, then nothing left behind.
 - The `installers` workflow passes on Linux, Windows (`install.ps1` and `-Uninstall`), FreeBSD, OpenBSD and NetBSD: install, the service runs, a metrics push arrives, uninstall leaves nothing.
@@ -190,6 +191,8 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - The installers on BSD and Windows run in CI (`installers` workflow, against `deploy/testing/installer-stub`), not on customer-like machines with real services for autoconfig to find.
 
 ## Lessons from building it
+
+- **A write that fails at flush can look like success:** the audit savepoint used to flush the request's own changes inside it and swallow the error (200, nothing saved). `record_safely` flushes first now; when adding a `tenants` column the API writes, grant `UPDATE (column)` to `sentinel_app` (that table has column-level grants). Tests should read a setting back, not trust the response.
 
 - **Keep test scripts in the repo.** The browser journey once lived in a scratch folder and was lost when it was cleaned up.
 - **The disk fills during image builds** and Docker Desktop then stops answering; `docker builder prune -af` and the Go/npm caches free several GB.

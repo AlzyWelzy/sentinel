@@ -109,6 +109,8 @@ func pushContent(m message) pushPayload {
 			p.Title = "✓ " + p.Title
 		case "alert_escalation":
 			p.Title = "Escalated: " + p.Title
+		case "alert_reminder":
+			p.Title = "Still open: " + p.Title
 		}
 	}
 	if !p.Resolved {

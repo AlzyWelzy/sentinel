@@ -19,7 +19,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
@@ -135,6 +135,34 @@ async def rename_organisation(body: OrganisationIn, t: Tenant) -> AccountOut:
     row.display_name = body.name.strip()
     row.updated_at = func.now()
     return AccountOut(tenant_id=row.id, name=row.display_name, email=row.email, role=t.role)
+
+
+class AlertingSettings(BaseModel):
+    reminder_minutes: int = Field(
+        description="re-send open, unacknowledged incidents this often; 0 turns reminders off",
+    )
+
+    @field_validator("reminder_minutes")
+    @classmethod
+    def _range(cls, v: int) -> int:
+        if v != 0 and not 30 <= v <= 10080:
+            raise ValueError("between 30 minutes and 7 days, or 0 for no reminders")
+        return v
+
+
+@router.get("/organisation/alerting")
+async def get_alerting(t: Tenant) -> AlertingSettings:
+    row = await t.db.get_one(TenantRow, t.tenant_id)
+    return AlertingSettings(reminder_minutes=row.reminder_minutes)
+
+
+@router.put("/organisation/alerting")
+async def put_alerting(body: AlertingSettings, t: Tenant) -> AlertingSettings:
+    _require_manager(t)
+    row = await t.db.get_one(TenantRow, t.tenant_id)
+    row.reminder_minutes = body.reminder_minutes
+    row.updated_at = func.now()
+    return body
 
 
 class DeleteIn(BaseModel):

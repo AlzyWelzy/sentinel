@@ -5996,6 +5996,70 @@
     ]
    }
   },
+  "/v1/organisation/alerting": {
+   "get": {
+    "summary": "Get Alerting",
+    "operationId": "get_alerting_v1_organisation_alerting_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AlertingSettings"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   },
+   "put": {
+    "summary": "Put Alerting",
+    "operationId": "put_alerting_v1_organisation_alerting_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AlertingSettings"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AlertingSettings"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
   "/v1/organisation/delete": {
    "post": {
     "summary": "Delete Organisation",
@@ -11600,6 +11664,35 @@
     ],
     "title": "ActionsOut"
    },
+   "AffectedHost": {
+    "properties": {
+     "host_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Host Id"
+     },
+     "hostname": {
+      "type": "string",
+      "title": "Hostname"
+     },
+     "kind": {
+      "type": "string",
+      "title": "Kind"
+     },
+     "online": {
+      "type": "boolean",
+      "title": "Online"
+     }
+    },
+    "type": "object",
+    "required": [
+     "host_id",
+     "hostname",
+     "kind",
+     "online"
+    ],
+    "title": "AffectedHost"
+   },
    "AgentKeyCreated": {
     "properties": {
      "id": {
@@ -11733,6 +11826,20 @@
      "revoked_at"
     ],
     "title": "AgentKeyOut"
+   },
+   "AlertingSettings": {
+    "properties": {
+     "reminder_minutes": {
+      "type": "integer",
+      "title": "Reminder Minutes",
+      "description": "re-send open, unacknowledged incidents this often; 0 turns reminders off"
+     }
+    },
+    "type": "object",
+    "required": [
+     "reminder_minutes"
+    ],
+    "title": "AlertingSettings"
    },
    "Anomaly": {
     "properties": {
@@ -15966,6 +16073,14 @@
       },
       "type": "array",
       "title": "Events"
+     },
+     "affected": {
+      "items": {
+       "$ref": "#/components/schemas/AffectedHost"
+      },
+      "type": "array",
+      "title": "Affected",
+      "default": []
      }
     },
     "type": "object",

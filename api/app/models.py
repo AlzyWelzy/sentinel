@@ -40,6 +40,8 @@ class Tenant(Base):
     digest: Mapped[str] = mapped_column(Text, default="weekly")
     digest_hour: Mapped[int] = mapped_column(default=9)
     digest_timezone: Mapped[str] = mapped_column(Text, default="UTC")
+    # Open, unacknowledged incidents are sent again this often; 0 is off.
+    reminder_minutes: Mapped[int] = mapped_column(Integer, default=240)
     digest_sent_at: Mapped[datetime | None]
 
 
@@ -279,6 +281,8 @@ class Incident(TenantScoped):
     assigned_to: Mapped[uuid.UUID | None] = mapped_column(UUID)
     assigned_name: Mapped[str | None] = mapped_column(Text)
     assigned_at: Mapped[datetime | None]
+    reminded_at: Mapped[datetime | None]
+    reminders_sent: Mapped[int] = mapped_column(default=0)
 
 
 class IncidentEvent(TenantScoped):

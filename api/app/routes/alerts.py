@@ -35,7 +35,7 @@ from app.models import (
     TenantMember,
 )
 from app.routes.channels import mask_target
-from app.services import backtest, oncall
+from app.services import backtest, heartbeats, oncall
 from app.services import logs as logstore
 from app.services.metrics import MetricsUnavailable
 from app.tenancy import Tenant, TenantContext
@@ -370,8 +370,18 @@ class IncidentEventOut(BaseModel):
     created_at: datetime
 
 
+class AffectedHost(BaseModel):
+    host_id: uuid.UUID
+    hostname: str
+    kind: str  # server or network
+    online: bool
+
+
 class IncidentDetail(IncidentOut):
     events: list[IncidentEventOut]
+    # Hosts behind this one (their upstream chain reaches it) that aren't
+    # reporting either: their own alerts are held back while it's down.
+    affected: list[AffectedHost] = []
 
 
 class NoteIn(BaseModel):
@@ -849,6 +859,7 @@ async def _detail(t: TenantContext, incident: Incident) -> IncidentDetail:
     )
     return IncidentDetail(
         **_incident_out(incident).model_dump(),
+        affected=await _affected(t, incident),
         events=[
             IncidentEventOut(
                 id=e.id, kind=e.kind, message=e.message, actor=e.actor, created_at=e.created_at
@@ -856,6 +867,41 @@ async def _detail(t: TenantContext, incident: Incident) -> IncidentDetail:
             for e in events
         ],
     )
+
+
+async def _affected(t: TenantContext, incident: Incident) -> list[AffectedHost]:
+    """Hosts behind an open incident's host that are silent too."""
+    if incident.host_id is None or incident.status != "open":
+        return []
+    rows = (
+        await t.db.execute(
+            text(
+                """
+                WITH RECURSIVE behind(id, depth) AS (
+                    SELECT h.id, 1 FROM hosts h
+                     WHERE h.tenant_id = :t AND h.revoked_at IS NULL AND h.id <> :h
+                       AND coalesce(h.depends_on_host_id, h.poller_host_id) = :h
+                    UNION
+                    SELECT h.id, b.depth + 1 FROM hosts h
+                      JOIN behind b ON coalesce(h.depends_on_host_id, h.poller_host_id) = b.id
+                     WHERE h.tenant_id = :t AND h.revoked_at IS NULL AND h.id <> :h
+                       AND b.depth < 16)
+                SELECT DISTINCT h.id, h.hostname, h.kind FROM behind b JOIN hosts h ON h.id = b.id
+                 LIMIT 5000
+                """
+            ),
+            {"t": t.tenant_id, "h": incident.host_id},
+        )
+    ).all()
+    if not rows:
+        return []
+    seen = await heartbeats.last_seen([r.id for r in rows])
+    out = [
+        AffectedHost(host_id=r.id, hostname=r.hostname, kind=r.kind, online=False)
+        for r in rows
+        if seen[r.id] is not None and not heartbeats.is_online(seen[r.id])
+    ]
+    return sorted(out, key=lambda a: a.hostname)[:500]
 
 
 def _event(t: TenantContext, incident: Incident, kind: str, message: str) -> None:

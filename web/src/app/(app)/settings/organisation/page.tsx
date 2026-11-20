@@ -197,6 +197,7 @@ function Organisation() {
             </form>
           </Card>
         )}
+        <Reminders manager={manager} />
         <Card title="Members" pad={false}>
           {manager && (
             <form
@@ -351,5 +352,59 @@ export default function OrganisationPage() {
     <Suspense>
       <Organisation />
     </Suspense>
+  );
+}
+
+const REMINDER_CHOICES: [number, string][] = [
+  [0, "Never"],
+  [60, "Every hour"],
+  [120, "Every 2 hours"],
+  [240, "Every 4 hours"],
+  [480, "Every 8 hours"],
+  [1440, "Once a day"],
+];
+
+/** How often an open, unacknowledged incident is sent again. */
+function Reminders({ manager }: { manager: boolean }) {
+  const qc = useQueryClient();
+  const settings = useQuery({
+    queryKey: ["organisation", "alerting"],
+    queryFn: async () => unwrap(await api.GET("/v1/organisation/alerting")),
+  });
+  const save = useMutation({
+    mutationFn: async (reminder_minutes: number) =>
+      unwrap(await api.PUT("/v1/organisation/alerting", { body: { reminder_minutes } })),
+    onSuccess: (data) => qc.setQueryData(["organisation", "alerting"], data),
+  });
+  const current = settings.data?.reminder_minutes;
+  const choices =
+    current != null && !REMINDER_CHOICES.some(([m]) => m === current)
+      ? [...REMINDER_CHOICES, [current, `Every ${current} minutes`] as [number, string]]
+      : REMINDER_CHOICES;
+  return (
+    <Card title="Reminders">
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="min-w-56">
+          <Field
+            label="Send open alerts again"
+            hint="Until someone acknowledges them, to the same contacts. Quiet hours still apply."
+          >
+            <Select
+              value={current ?? ""}
+              disabled={!manager || settings.isLoading || save.isPending}
+              onChange={(e) => save.mutate(Number(e.target.value))}
+            >
+              {choices.map(([m, label]) => (
+                <option key={m} value={m}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+        {save.isError && <Notice tone="bad">{errorText(save.error)}</Notice>}
+        {save.isSuccess && <span className="pb-2 text-sm text-ok">Saved</span>}
+      </div>
+    </Card>
   );
 }
