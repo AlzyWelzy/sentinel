@@ -499,15 +499,15 @@ async def test_only_probe_accounts_can_be_probes(client, monkeypatch):
     cust_host = await insert_host(await customer.tenant_id(), "cust-1")
 
     r = await client.put(
-        f"/admin/v1/hosts/{cust_host}/probe", headers=staff, json={"region": "region1"}
+        f"/admin/v1/hosts/{cust_host}/probe", headers=staff, json={"region": "eu-west"}
     )
     assert r.status_code == 403
     r = await client.put(
-        f"/admin/v1/hosts/{probe_host}/probe", headers=staff, json={"region": "region1"}
+        f"/admin/v1/hosts/{probe_host}/probe", headers=staff, json={"region": "eu-west"}
     )
-    assert r.status_code == 200 and r.json()["probe_region"] == "region1"
+    assert r.status_code == 200 and r.json()["probe_region"] == "eu-west"
     regions = (await customer.request("GET", "/v1/probes")).json()
-    assert any(p["region"] == "region1" for p in regions)
+    assert any(p["region"] == "eu-west" for p in regions)
     fleet = (await client.get("/admin/v1/fleet", headers=staff)).json()
     assert any(p["id"] == str(probe_host) for p in fleet["probes"])
     # Customers can't use staff routes.

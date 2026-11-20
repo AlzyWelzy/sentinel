@@ -53,7 +53,7 @@ try:
         time.sleep(5)
     a, f = details["arista-eos"], details["fortigate"]
     check("arista detected", a["profile"] == "arista-eos", a["profile"])
-    check("arista named from sysName", a["host"]["hostname"] == "host-redacted", a["host"]["hostname"])
+    check("arista named from sysName", a["host"]["hostname"] == "host-754862", a["host"]["hostname"])
     check("arista interfaces stored", len(a["interfaces"]) > 20, len(a["interfaces"]))
     check("arista LLDP neighbours stored", len(a["links"]) > 0, a["links"][:2])
     check("arista inventory", bool(a["inventory"]), a["inventory"])

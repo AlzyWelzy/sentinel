@@ -174,7 +174,7 @@ probing the running stack before going live. New deployments need
 
 The first release of Sentinel as a product of its own, at
 sentinel.rajpoot.app. It started from a copy of Pulsegrid v0.8.27 (agent
-0.8.11); everything that depended on the Example console is replaced or
+0.8.11); everything that depended on the original console is replaced or
 removed.
 
 ### Added

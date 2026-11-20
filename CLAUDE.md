@@ -6,9 +6,9 @@ Sentinel (this repo, formerly "Pulsegrid Beyond") is a multi-tenant monitoring p
 
 Sentinel is its own project. It does not rely on any other project, and work here never depends on one.
 
-- **History:** it started from a copy of Pulsegrid at release v0.8.27 (`565b89f`, agent 0.8.11). That's history only. Pulsegrid, the Example console, billing and every other Example service are not upstreams, dependencies or deploy targets.
-- **No syncing:** don't pull from, push to, or sync with `example-org/pulsegrid` or `AlzyWelzy/pulsegrid`. Changes start here. Anything borrowed from elsewhere is re-implemented here deliberately.
-- **Own infrastructure:** use only Sentinel's own accounts, registry (`ghcr.io/alzywelzy/sentinel-*`), domain, servers, secrets and email provider. Never use company resources.
+- **History:** it started from a copy of an earlier monitoring codebase (Pulsegrid) at release v0.8.27 (`565b89f`, agent 0.8.11). That's history only: that product, the console it served and its services are not upstreams, dependencies or deploy targets.
+- **No syncing:** don't pull from, push to, or sync with the Pulsegrid repositories. Changes start here. Anything borrowed from elsewhere is re-implemented here deliberately.
+- **Own infrastructure:** use only Sentinel's own accounts, registry (`ghcr.io/alzywelzy/sentinel-*`), domain, servers, secrets and email provider. Never use another organisation's resources.
 - **The repo** is still `AlzyWelzy/pulsegrid-beyond` on GitHub, and the Go module path matches it. Renaming the GitHub repo is the owner's call; if it happens, change `go.mod` and the imports in one commit.
 
 `README.md` has the feature list, `ARCHITECTURE.md` the components, data flow and delivery guarantees, `SECURITY.md` accounts, tenancy and the threat model, `DEPLOYMENT.md` the single-VPS setup, backups and restores. This file holds what they don't: how work is done here, where things stand, and what was learned running the inherited code on a real fleet of about 80 servers.
@@ -102,7 +102,7 @@ The v0.8.27 alerter changes were verified on a demo fleet. Three servers were st
 
 ## Roadmap: a fully standalone app
 
-Each phase ends with something that runs. **Done means:** a stranger can open sentinel.rajpoot.app, sign up, install the agent, get an alert email from Sentinel's own domain, and manage everything in Sentinel's own UI, with no Example service running anywhere. On the dev stack that works end to end; production needs the server, DNS and accounts below.
+Each phase ends with something that runs. **Done means:** a stranger can open sentinel.rajpoot.app, sign up, install the agent, get an alert email from Sentinel's own domain, and manage everything in Sentinel's own UI, with no other company's service running anywhere. On the dev stack that works end to end; production needs the server, DNS and accounts below.
 
 ### Phase 1: Own infrastructure
 
@@ -180,7 +180,7 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - Backups: a real dump restores (`restore-check.sh`), a truncated one is caught, and the nightly loop runs both; `vm-backup.sh` brings back a series deleted after the backup.
 - The end-to-end scripts live in `e2e/` (`make e2e` runs the journey, extras and access matrix; it clears `pg:rl:*` and the journey's `superadmin@example.com` first). Don't run the API tests at the same time: they sign up accounts from the same address and trip the hourly sign-up limit.
 - Network, live (0.10.0): a real agent polled simulated Arista and FortiGate devices (snmpsim serving `netmon/testdata/walks`), a fake Proxmox API over HTTPS, and a discovery scan; the network UI passes in a browser (including cancelling a scan); the access matrix covers the network endpoints. Simulator data must be sorted by OID, one record a line: `e2e/api/snmpsim_data.py` prepares it from the recordings.
-- Network, real gear (2026-11-20, a temporary unprivileged poller on `notify` through an SSH tunnel, removed afterwards): a FortiGate and two Arista EOS switches identified, 280 interfaces with rates (both ends of a 40G link agree), LLDP resolved between the switches both ways, and a server NIC's MAC matched to its ToR port with the server's upstream set automatically. Proxmox wasn't tried on real gear: it needs an API token created on a company server.
+- Network, real gear (2026-11-20, a temporary unprivileged poller reaching a dev stack through an SSH tunnel, removed afterwards): a FortiGate and two Arista EOS switches identified, 280 interfaces with rates (both ends of a 40G link agree), LLDP resolved between the switches both ways, and a server NIC's MAC matched to its ToR port with the server's upstream set automatically. Proxmox wasn't tried on real gear.
 
 ### Not verified here
 
@@ -192,7 +192,7 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - **Keep test scripts in the repo.** The browser journey once lived in a scratch folder and was lost when it was cleaned up.
 - **The disk fills during image builds** and Docker Desktop then stops answering; `docker builder prune -af` and the Go/npm caches free several GB.
 - **CI can stop for billing:** when GitHub Actions refuses jobs ("recent account payments have failed"), every job fails in seconds with no logs. Run the CI steps locally (`make lint`, `go test -race ./...`, `uv run pytest`, `npm run build`) and hold the tag: the release workflow can't build images either.
-- **Fixtures from real devices** (`netmon/testdata/walks`) carry the company network's names and serials: the repo must stay private.
+- **Fixtures from real devices** (`netmon/testdata/walks`) are anonymised with `netmon/testdata/anonymise.py` (names, serials, IPs, MACs, customer words). Run it over every new recording and read the remaining strings before committing: the repo is public.
 
 ## Lessons from the production fleet
 

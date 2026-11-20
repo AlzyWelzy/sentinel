@@ -13,7 +13,8 @@ import (
 	"github.com/AlzyWelzy/pulsegrid-beyond/netmon/snmp"
 )
 
-// These expectations come from real devices recorded on 2026-11-16
+// These expectations come from real devices recorded on 2026-11-16, anonymised
+// by testdata/anonymise.py (names, serials and addresses are made up)
 // (testdata/walks, trimmed to the subtrees the profiles use).
 
 type expect struct {

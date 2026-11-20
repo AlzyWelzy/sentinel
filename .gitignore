@@ -19,3 +19,4 @@ deploy/*.env
 e2e/node_modules/
 e2e/shots/
 .impeccable/questions/
+.wrangler/

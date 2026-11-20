@@ -69,7 +69,7 @@ func TestLabelValuesEscaped(t *testing.T) {
 }
 
 func TestCheckSamplesRouted(t *testing.T) {
-	hc := &hostConfig{region: "region1", checks: map[string]checkDef{
+	hc := &hostConfig{region: "eu-west", checks: map[string]checkDef{
 		"own":    {Check: proto.Check{ID: "own"}, TenantID: "t1"},
 		"public": {Check: proto.Check{ID: "public"}, TenantID: "t2", OnProbes: true},
 	}}
@@ -85,7 +85,7 @@ func TestCheckSamplesRouted(t *testing.T) {
 	if got := string(bodies["t1"]); got != `sentinel_check_up{host_id="host-1",check_id="own"} 1 1700000000000`+"\n" {
 		t.Fatalf("t1: %q", got)
 	}
-	if got := string(bodies["t2"]); got != `sentinel_check_up{probe="region1",check_id="public"} 0 1700000000000`+"\n" {
+	if got := string(bodies["t2"]); got != `sentinel_check_up{probe="eu-west",check_id="public"} 0 1700000000000`+"\n" {
 		t.Fatalf("t2: %q", got)
 	}
 }

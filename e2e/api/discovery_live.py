@@ -36,7 +36,7 @@ try:
             break
         time.sleep(3)
     check("scan finished", d["status"] == "done", d)
-    check("found the switch", [f["sys_name"] for f in d["found"]] == ["host-redacted"], d["found"])
+    check("found the switch", [f["sys_name"] for f in d["found"]] == ["host-754862"], d["found"])
     check("vendor detected", d["found"] and d["found"][0]["vendor"] == "Arista", d["found"])
     addr = d["found"][0]["address"]
     r = c.post("/v1/network/devices", json={"addresses": [addr], "credential_id": cred["id"],

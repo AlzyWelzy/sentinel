@@ -28,12 +28,12 @@ signedIn = true;
 
 step("1. devices list shows both devices, named from sysName");
 await page.goto(`${BASE}/network`);
-await page.getByText("host-redacted").waitFor({ timeout: 120000 });
-await page.getByText("host-redacted").waitFor({ timeout: 60000 });
+await page.getByText("host-754862").waitFor({ timeout: 120000 });
+await page.getByText("host-c6cb35").waitFor({ timeout: 60000 });
 await page.screenshot({ path: "shots/network-list.png", fullPage: true });
 
 step("2. device page: interfaces, neighbours, system, traffic");
-await page.getByText("host-redacted").click();
+await page.getByText("host-754862").click();
 await page.getByText("Interfaces up").waitFor();
 await page.getByText("Neighbours (LLDP)").waitFor();
 await page.getByRole("cell", { name: /^Ethernet/ }).first().waitFor();
@@ -103,7 +103,7 @@ await page.goto(`${BASE}/servers`);
 await page.getByText("1 in this organisation").waitFor();
 await page.setViewportSize({ width: 360, height: 800 });
 await page.goto(`${BASE}/network`);
-await page.getByText("host-redacted").waitFor();
+await page.getByText("host-754862").waitFor();
 const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 if (wide) throw new Error("the network page scrolls sideways at 360px");
 await page.screenshot({ path: "shots/network-mobile.png", fullPage: true });

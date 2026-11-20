@@ -84,7 +84,7 @@ function CredentialForm({ edit, onDone }: { edit?: Credential; onDone: () => voi
         save.mutate();
       }}
     >
-      <Field label="Name" hint="For you: e.g. 'site1 switches'.">
+      <Field label="Name" hint="For you: e.g. 'Office switches'.">
         <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} />
       </Field>
       <Field label="SNMP version">
