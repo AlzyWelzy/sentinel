@@ -66,7 +66,33 @@ export default function Help() {
         check to a <b>status page</b> to show its uptime publicly, under a name you choose.
       </p>
 
-      <h2>4. Work as a team</h2>
+      <h2>4. Monitor the network</h2>
+      <p>
+        Switches, firewalls and Proxmox clusters are polled by one of your servers on the same
+        network, so install the agent there first.
+      </p>
+      <ul>
+        <li>
+          Under <b>Network › Credentials</b>, add the read-only SNMP community (v2c) or SNMPv3 user
+          your devices use, or a Proxmox API token (the PVEAuditor role is enough).
+        </li>
+        <li>
+          <b>Add devices</b> by address, or <b>Discover</b> a private range (up to /22) and pick
+          what it finds. The server must reach the devices on UDP 161 (Proxmox: TCP 8006).
+        </li>
+        <li>
+          Mark your core switch(es) with the role <i>Core</i>: upstreams are worked out from LLDP,
+          so when a switch fails the devices behind it are shown as affected instead of each
+          alerting.
+        </li>
+        <li>
+          Network alert rules (interfaces down, busy or with errors, and each vendor&apos;s own) are
+          added with your first device. Give customer ports a billing tag to see their
+          95th-percentile bandwidth.
+        </li>
+      </ul>
+
+      <h2>5. Work as a team</h2>
       <p>
         Invite people under <b>Organisation</b>. Admins change anything except API tokens and
         deleting the organisation; members acknowledge and resolve incidents and schedule
@@ -109,6 +135,17 @@ export default function Help() {
         <li>
           The server must reach <code>ingest.sentinel.rajpoot.app</code> on port 443. Behind a
           proxy, set <code>HTTPS_PROXY</code> for the service.
+        </li>
+      </ul>
+      <h3>A network device says &ldquo;No SNMP answer&rdquo;</h3>
+      <ul>
+        <li>
+          From the polling server: <code>snmpget -v2c -c COMMUNITY ADDRESS 1.3.6.1.2.1.1.5.0</code>.
+          No answer means a firewall in between, SNMP off on the device, or a device allow-list that
+          doesn&apos;t include the server.
+        </li>
+        <li>
+          An answer there but not in Sentinel: check the credential on the device&apos;s page.
         </li>
       </ul>
       <h3>An alert didn&apos;t arrive</h3>
