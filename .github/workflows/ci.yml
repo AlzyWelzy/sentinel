@@ -9,6 +9,26 @@ permissions:
   contents: read
 
 jobs:
+  # The release builds these images; a Dockerfile that misses a package
+  # should fail here, not at release time.
+  images:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        dockerfile: [api/Dockerfile, ingest/Dockerfile, alerter/Dockerfile, web/Dockerfile, deploy/agent-container/Dockerfile]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: false
+          build-args: AGENT_VERSION=ci
+          cache-from: type=gha,scope=ci-${{ matrix.dockerfile }}
+          cache-to: type=gha,mode=max,scope=ci-${{ matrix.dockerfile }}
+
   terraform-provider:
     runs-on: ubuntu-24.04
     defaults:
