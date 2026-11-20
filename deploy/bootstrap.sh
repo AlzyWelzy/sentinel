@@ -16,6 +16,7 @@ if ! command -v docker >/dev/null; then
   apt-get install -yq ca-certificates curl
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  # shellcheck disable=SC1091
   . /etc/os-release
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" \
     >/etc/apt/sources.list.d/docker.list
@@ -40,7 +41,10 @@ mkdir -p /srv/sentinel
 cp -R /srv/sentinel-src/deploy/. /srv/sentinel/
 cd /srv/sentinel
 [ -f prod.env ] || { echo "fill in /srv/sentinel/prod.env first" >&2; exit 1; }
-set -a; . ./prod.env; set +a
+set -a
+# shellcheck disable=SC1091
+. ./prod.env
+set +a
 
 cd /srv/sentinel-src
 for name in api ingest alerter web; do
@@ -51,9 +55,10 @@ docker build -q -f deploy/agent-container/Dockerfile --build-arg AGENT_VERSION="
   -t "$REGISTRY/sentinel-agent:$AGENT_VERSION" .
 
 cd /srv/sentinel
-export TEMPO_CONFIG=$(sha256sum tempo/tempo.yml | cut -c1-8)
-export BACKUP_SCRIPT=$(sha256sum postgres/backup.sh | cut -c1-8)
-export RESTORE_CHECK=$(sha256sum postgres/restore-check.sh | cut -c1-8)
+TEMPO_CONFIG="$(sha256sum tempo/tempo.yml | cut -c1-8)"
+BACKUP_SCRIPT="$(sha256sum postgres/backup.sh | cut -c1-8)"
+RESTORE_CHECK="$(sha256sum postgres/restore-check.sh | cut -c1-8)"
+export TEMPO_CONFIG BACKUP_SCRIPT RESTORE_CHECK
 docker stack deploy -c stack.yml --resolve-image never sentinel
 
 # Migrations once Postgres answers.
