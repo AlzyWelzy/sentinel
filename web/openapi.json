@@ -3251,6 +3251,100 @@
     }
    }
   },
+  "/v1/network/discoveries": {
+   "post": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Start Discovery",
+    "description": "Scan a range from one of your servers for devices answering SNMP with\nthis credential. The server starts within a minute; results stay a day.",
+    "operationId": "start_discovery_v1_network_discoveries_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DiscoveryIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DiscoveryOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/network/discoveries/{discovery_id}": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Get Discovery",
+    "operationId": "get_discovery_v1_network_discoveries__discovery_id__get",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "discovery_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Discovery Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DiscoveryOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/v1/channels": {
    "get": {
     "summary": "List Channels",
@@ -13929,6 +14023,171 @@
      "disabled"
     ],
     "title": "DisableIn"
+   },
+   "DiscoveredOut": {
+    "properties": {
+     "address": {
+      "type": "string",
+      "title": "Address"
+     },
+     "sys_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sys Name"
+     },
+     "sys_descr": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sys Descr"
+     },
+     "vendor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vendor"
+     },
+     "profile": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Profile"
+     },
+     "already_added": {
+      "type": "boolean",
+      "title": "Already Added",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "address"
+    ],
+    "title": "DiscoveredOut"
+   },
+   "DiscoveryIn": {
+    "properties": {
+     "cidr": {
+      "type": "string",
+      "title": "Cidr",
+      "description": "an IPv4 range of your own network, e.g. 10.0.10.0/24 (up to /22)"
+     },
+     "credential_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Credential Id"
+     },
+     "poller_host_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Poller Host Id"
+     },
+     "port": {
+      "type": "integer",
+      "maximum": 65535.0,
+      "minimum": 1.0,
+      "title": "Port",
+      "default": 161
+     }
+    },
+    "type": "object",
+    "required": [
+     "cidr",
+     "credential_id",
+     "poller_host_id"
+    ],
+    "title": "DiscoveryIn"
+   },
+   "DiscoveryOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "cidr": {
+      "type": "string",
+      "title": "Cidr"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "pending",
+       "running",
+       "done"
+      ],
+      "title": "Status"
+     },
+     "scanned": {
+      "type": "integer",
+      "title": "Scanned"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "credential_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Credential Id"
+     },
+     "poller_host_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Poller Host Id"
+     },
+     "found": {
+      "items": {
+       "$ref": "#/components/schemas/DiscoveredOut"
+      },
+      "type": "array",
+      "title": "Found"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "cidr",
+     "status",
+     "scanned",
+     "total",
+     "error",
+     "credential_id",
+     "poller_host_id",
+     "found"
+    ],
+    "title": "DiscoveryOut"
    },
    "DiskOut": {
     "properties": {

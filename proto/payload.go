@@ -54,6 +54,35 @@ type AgentConfig struct {
 	// Network devices this agent polls over SNMP for its site. Their
 	// credentials are in here: the agent keeps config in memory only.
 	Devices []NetworkDevice `json:"devices,omitempty"`
+	// Address ranges to scan once for SNMP devices.
+	Discoveries []NetworkDiscovery `json:"discoveries,omitempty"`
+}
+
+// NetworkDiscovery asks the agent to look for SNMP devices in a range.
+type NetworkDiscovery struct {
+	ID         string         `json:"id"`
+	CIDR       string         `json:"cidr"`
+	Port       int            `json:"port,omitempty"` // 161 unless given
+	Credential SNMPCredential `json:"credential"`
+}
+
+// DiscoveryResult is a scan's progress; Done marks the last one.
+type DiscoveryResult struct {
+	ID      string             `json:"id"`
+	Scanned int                `json:"scanned"`
+	Total   int                `json:"total"`
+	Done    bool               `json:"done,omitempty"`
+	Error   string             `json:"error,omitempty"`
+	Found   []DiscoveredDevice `json:"found,omitempty"`
+}
+
+type DiscoveredDevice struct {
+	Address  string `json:"address"`
+	SysName  string `json:"sys_name,omitempty"`
+	SysDescr string `json:"sys_descr,omitempty"`
+	ObjectID string `json:"object_id,omitempty"`
+	Profile  string `json:"profile,omitempty"`
+	Vendor   string `json:"vendor,omitempty"`
 }
 
 // NetworkDevice is a switch, firewall or other device this agent polls.
@@ -224,6 +253,8 @@ type Batch struct {
 	// Network device polls in this tick. Their samples are in Samples,
 	// labelled device_id; ingest files them under the device.
 	Network []NetworkPoll `json:"network,omitempty"`
+	// Progress of network discoveries.
+	Discoveries []DiscoveryResult `json:"discoveries,omitempty"`
 }
 
 // NetworkPoll is what one poll of a device found besides its samples.

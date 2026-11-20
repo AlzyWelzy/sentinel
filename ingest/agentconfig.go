@@ -107,6 +107,7 @@ func (s *server) loadHostConfig(ctx context.Context, id hostIdentity) (*hostConf
 		e.cfg = cfg
 		return e, err
 	}
+	cfg.Discoveries = s.discoveriesFor(ctx, id)
 	cfg.Version = configVersion(cfg)
 	e.cfg, e.region, e.loadedAt = cfg, region, time.Now()
 	s.configs.put(id.HostID, e)

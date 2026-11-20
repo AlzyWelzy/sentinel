@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -186,9 +186,205 @@ function AddDevices({ onDone }: { onDone: () => void }) {
   );
 }
 
+function Discover({ onDone }: { onDone: () => void }) {
+  const qc = useQueryClient();
+  const creds = useCredentials();
+  const pollers = usePollers();
+  const [cidr, setCidr] = useState("");
+  const [credential, setCredential] = useState("");
+  const [poller, setPoller] = useState("");
+  const [id, setId] = useState<string | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [added, setAdded] = useState<string | null>(null);
+  const snmpCreds = (creds.data ?? []).filter((c) => c.version !== "proxmox");
+  const start = useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await api.POST("/v1/network/discoveries", {
+          body: {
+            cidr,
+            credential_id: credential || snmpCreds[0]?.id || "",
+            poller_host_id:
+              poller || pollers.data?.find((p) => p.online)?.id || pollers.data?.[0]?.id || "",
+            port: 161,
+          },
+        }),
+      ),
+    onSuccess: (d) => {
+      setId(d.id);
+      setPicked(new Set());
+      setAdded(null);
+    },
+  });
+  const scan = useQuery({
+    queryKey: ["network", "discovery", id],
+    enabled: !!id,
+    refetchInterval: (q) => (q.state.data?.status === "done" ? false : 3000),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/network/discoveries/{discovery_id}", {
+          params: { path: { discovery_id: id! } },
+        }),
+      ),
+  });
+  const add = useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await api.POST("/v1/network/devices", {
+          body: {
+            addresses: [...picked],
+            credential_id: scan.data!.credential_id,
+            poller_host_id: scan.data!.poller_host_id,
+            tags: [],
+          },
+        }),
+      ),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["hosts"] });
+      qc.invalidateQueries({ queryKey: ["network", "discovery", id] });
+      setPicked(new Set());
+      setAdded(`Added ${r.created.length}.`);
+    },
+  });
+  if (creds.isLoading || pollers.isLoading) return <Loading />;
+  if (!snmpCreds.length || !pollers.data?.length) {
+    return (
+      <Notice tone="warn">
+        Discovery needs an SNMP credential and one of your servers to scan from. Add them first.
+      </Notice>
+    );
+  }
+  const d = scan.data;
+  const fresh = d?.found.filter((f) => !f.already_added) ?? [];
+  return (
+    <div className="space-y-4">
+      <form
+        className="grid gap-4 md:grid-cols-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          start.mutate();
+        }}
+      >
+        <Field label="Range" hint="A private IPv4 range, up to /22 (1024 addresses).">
+          <Input
+            value={cidr}
+            onChange={(e) => setCidr(e.target.value)}
+            placeholder="10.0.10.0/24"
+            required
+          />
+        </Field>
+        <Field label="Credential">
+          <Select value={credential} onChange={(e) => setCredential(e.target.value)}>
+            {snmpCreds.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} (v{c.version})
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Scan from">
+          <Select value={poller} onChange={(e) => setPoller(e.target.value)}>
+            {pollers.data.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.hostname}
+                {p.online ? "" : " (not reporting)"}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="flex items-end gap-2">
+          <Button type="submit" variant="primary" loading={start.isPending}>
+            Scan
+          </Button>
+          <Button type="button" onClick={onDone}>
+            Close
+          </Button>
+        </div>
+      </form>
+      {start.error && <p className="text-sm text-bad">{errorText(start.error)}</p>}
+      {d && (
+        <div className="space-y-3">
+          <p className="text-sm text-ink-2">
+            {d.status === "pending"
+              ? "Waiting for the server to start (within a minute)…"
+              : d.status === "running"
+                ? `Scanning ${d.cidr}: ${d.scanned} of ${d.total} addresses, ${d.found.length} found…`
+                : `Scanned ${d.total} addresses in ${d.cidr}: ${d.found.length} answered.`}
+            {d.error ? ` ${d.error}` : ""}
+          </p>
+          {d.found.length > 0 && (
+            <Table>
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      aria-label="Select all new"
+                      checked={fresh.length > 0 && fresh.every((f) => picked.has(f.address))}
+                      onChange={(e) =>
+                        setPicked(
+                          e.target.checked ? new Set(fresh.map((f) => f.address)) : new Set(),
+                        )
+                      }
+                    />
+                  </th>
+                  <th>Address</th>
+                  <th>Name</th>
+                  <th>Vendor</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.found.map((f) => (
+                  <tr key={f.address}>
+                    <td>
+                      {f.already_added ? (
+                        <Badge>added</Badge>
+                      ) : (
+                        <input
+                          type="checkbox"
+                          aria-label={`Add ${f.address}`}
+                          checked={picked.has(f.address)}
+                          onChange={(e) => {
+                            const next = new Set(picked);
+                            if (e.target.checked) next.add(f.address);
+                            else next.delete(f.address);
+                            setPicked(next);
+                          }}
+                        />
+                      )}
+                    </td>
+                    <td className="font-mono text-xs">{f.address}</td>
+                    <td className="max-w-[14rem] truncate font-medium">{f.sys_name || "—"}</td>
+                    <td className="text-ink-2">{f.vendor || f.profile || "—"}</td>
+                    <td
+                      className="max-w-[22rem] truncate text-xs text-ink-3"
+                      title={f.sys_descr ?? ""}
+                    >
+                      {f.sys_descr}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+          {picked.size > 0 && (
+            <Button variant="primary" loading={add.isPending} onClick={() => add.mutate()}>
+              Add {picked.size} device{picked.size === 1 ? "" : "s"}
+            </Button>
+          )}
+          {add.error && <p className="text-sm text-bad">{errorText(add.error)}</p>}
+          {added && <p className="text-sm text-ok">{added}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function NetworkPage() {
   const hosts = useHosts();
   const [adding, setAdding] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
   const [q, setQ] = useState("");
   const all = useMemo(() => (hosts.data ?? []).filter((h) => h.kind === "network"), [hosts.data]);
   const byId = useMemo(() => new Map((hosts.data ?? []).map((h) => [h.id, h])), [hosts.data]);
@@ -212,14 +408,24 @@ export default function NetworkPage() {
             : "Switches, firewalls and routers, polled over SNMP by your servers"
         }
         actions={
-          !adding && (
-            <Button variant="primary" onClick={() => setAdding(true)}>
-              Add devices
-            </Button>
-          )
+          <>
+            {!discovering && <Button onClick={() => setDiscovering(true)}>Discover</Button>}
+            {!adding && (
+              <Button variant="primary" onClick={() => setAdding(true)}>
+                Add devices
+              </Button>
+            )}
+          </>
         }
       />
       <NetworkTabs />
+      {discovering && (
+        <div className="mb-6">
+          <Card title="Discover devices">
+            <Discover onDone={() => setDiscovering(false)} />
+          </Card>
+        </div>
+      )}
       {adding && (
         <div className="mb-6">
           <Card title="Add devices">

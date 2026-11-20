@@ -1,5 +1,6 @@
 """Network devices: credentials, adding devices, pollers, topology."""
 
+import json
 import uuid
 
 import pytest
@@ -390,3 +391,69 @@ async def test_proxmox_tokens_are_credentials_too(alice: User):
     assert r.status_code in (200, 503)
     if r.status_code == 200:
         assert r.json()["resources"] == []
+
+
+async def test_discovery_scans_your_own_private_ranges(alice: User, bob: User):
+    from app.services import heartbeats
+
+    cred = (await alice.request("POST", "/v1/network/credentials", json=V2)).json()
+    poller = await insert_host(await alice.tenant_id(), "site")
+    base = {"credential_id": cred["id"], "poller_host_id": str(poller)}
+    for cidr in ("8.8.8.0/24", "10.0.0.0/21", "fd00::/120", "127.0.0.0/24", "nonsense"):
+        r = await alice.request("POST", "/v1/network/discoveries", json={**base, "cidr": cidr})
+        assert r.status_code == 422, cidr
+    r = await alice.request(
+        "POST", "/v1/network/discoveries", json={**base, "cidr": "10.20.30.7/24"}
+    )
+    assert r.status_code == 201, r.text
+    d = r.json()
+    assert d["cidr"] == "10.20.30.0/24" and d["status"] == "pending"
+    # Bob can't read it, or start one with Alice's credential.
+    assert (await bob.request("GET", f"/v1/network/discoveries/{d['id']}")).status_code == 404
+    assert (await alice.request("GET", "/v1/network/discoveries/not-an-id")).status_code == 404
+    # Results as ingest stores them: addresses already added are marked.
+    await alice.request("POST", "/v1/network/devices", json={**base, "addresses": ["10.20.30.2"]})
+    await heartbeats.redis.hset(
+        f"pg:netdisc:{d['id']}",
+        mapping={
+            "status": "done",
+            "scanned": 254,
+            "total": 254,
+            "found": json.dumps(
+                [
+                    {"address": "10.20.30.10", "sys_name": "sw10"},
+                    {"address": "10.20.30.2", "sys_name": "sw2"},
+                ]
+            ),
+        },
+    )
+    r = (await alice.request("GET", f"/v1/network/discoveries/{d['id']}")).json()
+    assert [(f["address"], f["already_added"]) for f in r["found"]] == [
+        ("10.20.30.2", True),
+        ("10.20.30.10", False),
+    ]
+    # A Proxmox token isn't an SNMP credential.
+    pve = await alice.request(
+        "POST",
+        "/v1/network/credentials",
+        json={
+            "name": "pve",
+            "version": "proxmox",
+            "token_user": "m@pve",
+            "token_name": "t",
+            "token_value": "v",
+        },
+    )
+    r = await alice.request(
+        "POST",
+        "/v1/network/discoveries",
+        json={**base, "credential_id": pve.json()["id"], "cidr": "10.1.1.0/24"},
+    )
+    assert r.status_code == 422
+    # At most three scans at once.
+    for i in range(3):
+        await alice.request(
+            "POST", "/v1/network/discoveries", json={**base, "cidr": f"10.5.{i}.0/24"}
+        )
+    r = await alice.request("POST", "/v1/network/discoveries", json={**base, "cidr": "10.6.0.0/24"})
+    assert r.status_code == 429

@@ -1173,6 +1173,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/network/discoveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Discovery
+         * @description Scan a range from one of your servers for devices answering SNMP with
+         *     this credential. The server starts within a minute; results stay a day.
+         */
+        post: operations["start_discovery_v1_network_discoveries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/network/discoveries/{discovery_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Discovery */
+        get: operations["get_discovery_v1_network_discoveries__discovery_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/channels": {
         parameters: {
             query?: never;
@@ -4224,6 +4262,77 @@ export interface components {
         DisableIn: {
             /** Disabled */
             disabled: boolean;
+        };
+        /** DiscoveredOut */
+        DiscoveredOut: {
+            /** Address */
+            address: string;
+            /** Sys Name */
+            sys_name?: string | null;
+            /** Sys Descr */
+            sys_descr?: string | null;
+            /** Vendor */
+            vendor?: string | null;
+            /** Profile */
+            profile?: string | null;
+            /**
+             * Already Added
+             * @default false
+             */
+            already_added: boolean;
+        };
+        /** DiscoveryIn */
+        DiscoveryIn: {
+            /**
+             * Cidr
+             * @description an IPv4 range of your own network, e.g. 10.0.10.0/24 (up to /22)
+             */
+            cidr: string;
+            /**
+             * Credential Id
+             * Format: uuid
+             */
+            credential_id: string;
+            /**
+             * Poller Host Id
+             * Format: uuid
+             */
+            poller_host_id: string;
+            /**
+             * Port
+             * @default 161
+             */
+            port: number;
+        };
+        /** DiscoveryOut */
+        DiscoveryOut: {
+            /** Id */
+            id: string;
+            /** Cidr */
+            cidr: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "running" | "done";
+            /** Scanned */
+            scanned: number;
+            /** Total */
+            total: number;
+            /** Error */
+            error: string | null;
+            /**
+             * Credential Id
+             * Format: uuid
+             */
+            credential_id: string;
+            /**
+             * Poller Host Id
+             * Format: uuid
+             */
+            poller_host_id: string;
+            /** Found */
+            found: components["schemas"]["DiscoveredOut"][];
         };
         /** DiskOut */
         DiskOut: {
@@ -9039,6 +9148,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PVEOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_discovery_v1_network_discoveries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscoveryIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_discovery_v1_network_discoveries__discovery_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryOut"];
                 };
             };
             /** @description Validation Error */

@@ -650,6 +650,7 @@ func (a *agent) refreshConfig(ctx context.Context) bool {
 	}
 	if a.net != nil {
 		a.net.set(ctx, cfg.Devices)
+		a.net.setDiscoveries(ctx, cfg.Discoveries)
 	}
 	next := a.st
 	next.IngestURL = orDefault(cfg.IngestURL, a.st.IngestURL)

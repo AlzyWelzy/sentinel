@@ -1273,3 +1273,177 @@ async def proxmox_resources(device_id: uuid.UUID, t: Tenant) -> PVEOut:
         quorate=quorum[0][1] == 1 if quorum else None,
         resources=out,
     )
+
+
+# ── Discovery ────────────────────────────────────────────────────────────────
+
+
+def _address_key(address: str) -> tuple:
+    """Sorts addresses numerically: 10.0.0.9 before 10.0.0.10."""
+    host = address.rsplit(":", 1)[0] if address.count(":") == 1 else address.strip("[]")
+    try:
+        return (0, int(ipaddress.ip_address(host)))
+    except ValueError:
+        return (1, address)
+
+
+def _status(value: str | None) -> Literal["pending", "running", "done"]:
+    if value == "running":
+        return "running"
+    return "done" if value == "done" else "pending"
+
+
+DISCOVERY_KEY = "pg:netdisc:"  # shared with ingest/discovery.go
+DISCOVERY_POLLER_KEY = "pg:netdisc:poller:"
+DISCOVERY_TTL = 86400
+MAX_DISCOVERY_ADDRESSES = 1024
+MAX_RUNNING_DISCOVERIES = 3
+
+
+class DiscoveryIn(BaseModel):
+    cidr: str = Field(
+        description="an IPv4 range of your own network, e.g. 10.0.10.0/24 (up to /22)"
+    )
+    credential_id: uuid.UUID
+    poller_host_id: uuid.UUID
+    port: int = Field(default=161, ge=1, le=65535)
+
+    @field_validator("cidr")
+    @classmethod
+    def _cidr(cls, v: str) -> str:
+        try:
+            net = ipaddress.ip_network(v.strip(), strict=False)
+        except ValueError:
+            raise ValueError("give a range like 10.0.10.0/24") from None
+        if net.version != 4:
+            raise ValueError("discovery scans IPv4 ranges")
+        if net.num_addresses > MAX_DISCOVERY_ADDRESSES:
+            raise ValueError("ranges are up to 1024 addresses (/22); scan larger ones in parts")
+        # Only your own network: scanning other people's addresses from a
+        # customer's server isn't something Sentinel does.
+        cgnat = isinstance(net, ipaddress.IPv4Network) and net.subnet_of(
+            ipaddress.IPv4Network("100.64.0.0/10")
+        )
+        if not (net.is_private or cgnat):
+            raise ValueError(
+                "discovery scans private ranges only (10/8, 172.16/12, 192.168/16, 100.64/10)"
+            )
+        if net.is_loopback or net.is_multicast or net.is_link_local:
+            raise ValueError("that range can't hold devices")
+        return str(net)
+
+
+class DiscoveredOut(BaseModel):
+    address: str
+    sys_name: str | None = None
+    sys_descr: str | None = None
+    vendor: str | None = None
+    profile: str | None = None
+    already_added: bool = False
+
+
+class DiscoveryOut(BaseModel):
+    id: str
+    cidr: str
+    status: Literal["pending", "running", "done"]
+    scanned: int
+    total: int
+    error: str | None
+    credential_id: uuid.UUID
+    poller_host_id: uuid.UUID
+    found: list[DiscoveredOut]
+
+
+@router.post("/discoveries", status_code=status.HTTP_201_CREATED)
+async def start_discovery(body: DiscoveryIn, t: Tenant) -> DiscoveryOut:
+    """Scan a range from one of your servers for devices answering SNMP with
+    this credential. The server starts within a minute; results stay a day."""
+    cred = await _get_credential(t, body.credential_id)
+    if cred.version == "proxmox":
+        raise HTTPException(422, "Discovery uses an SNMP credential")
+    await _check_poller(t, body.poller_host_id)
+    redis = heartbeats.redis
+    running = 0
+    async for key in redis.scan_iter(match=f"{DISCOVERY_KEY}*", count=500):
+        if key.startswith(DISCOVERY_POLLER_KEY):
+            continue
+        tenant, st = await redis.hmget(key, ["tenant", "status"])
+        if tenant == str(t.tenant_id) and st != "done":
+            running += 1
+    if running >= MAX_RUNNING_DISCOVERIES:
+        raise HTTPException(429, "Three scans are running already; wait for one to finish")
+    did = uuid.uuid4().hex
+    key = DISCOVERY_KEY + did
+    await redis.hset(
+        key,
+        mapping={
+            "tenant": str(t.tenant_id),
+            "poller": str(body.poller_host_id),
+            "cidr": body.cidr,
+            "port": body.port,
+            "credential": str(body.credential_id),
+            "status": "pending",
+            "scanned": 0,
+            "total": 0,
+            "found": "[]",
+            "created": int(datetime.now(UTC).timestamp()),
+        },
+    )
+    await redis.expire(key, DISCOVERY_TTL)
+    pk = DISCOVERY_POLLER_KEY + str(body.poller_host_id)
+    await redis.sadd(pk, did)
+    await redis.expire(pk, DISCOVERY_TTL)
+    return await get_discovery(did, t)
+
+
+@router.get("/discoveries/{discovery_id}")
+async def get_discovery(discovery_id: str, t: Tenant) -> DiscoveryOut:
+    import json
+
+    if not re.fullmatch(r"[0-9a-f]{32}", discovery_id):
+        raise HTTPException(404, "Discovery not found")
+    raw = await heartbeats.redis.hgetall(DISCOVERY_KEY + discovery_id)
+    h = {str(k): str(v) for k, v in raw.items()}
+    if not h or h.get("tenant") != str(t.tenant_id):
+        raise HTTPException(404, "Discovery not found (results are kept for a day)")
+    try:
+        found = json.loads(h.get("found") or "[]")
+    except ValueError:
+        found = []
+    have = set(
+        await t.db.scalars(
+            select(Host.address).where(
+                Host.tenant_id == t.tenant_id,
+                Host.kind == "network",
+                Host.poller_host_id == uuid.UUID(h["poller"]),
+            )
+        )
+    )
+    out = []
+    for f in found:
+        try:
+            addr = normalize_address(f.get("address", ""))
+        except ValueError:
+            continue
+        out.append(
+            DiscoveredOut(
+                address=addr,
+                sys_name=f.get("sys_name"),
+                sys_descr=f.get("sys_descr"),
+                vendor=f.get("vendor"),
+                profile=f.get("profile"),
+                already_added=addr in have,
+            )
+        )
+    out.sort(key=lambda d: _address_key(d.address))
+    return DiscoveryOut(
+        id=discovery_id,
+        cidr=h.get("cidr", ""),
+        status=_status(h.get("status")),
+        scanned=int(h.get("scanned") or 0),
+        total=int(h.get("total") or 0),
+        error=h.get("error") or None,
+        credential_id=uuid.UUID(h["credential"]),
+        poller_host_id=uuid.UUID(h["poller"]),
+        found=out,
+    )

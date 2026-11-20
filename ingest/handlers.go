@@ -228,6 +228,7 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	s.saveDiscoveries(r.Context(), id, req.Batches)
 	if req.Inventory != nil {
 		if err := s.store.saveInventory(r.Context(), id, req.Inventory); err != nil {
 			s.log.Warn("inventory not stored", "err", err, "host_id", id.HostID)

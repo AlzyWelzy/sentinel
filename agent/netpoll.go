@@ -46,8 +46,9 @@ type netPoller struct {
 	log  *slog.Logger
 	sem  chan struct{}
 
-	mu      sync.Mutex
-	running map[string]*netDevice
+	mu         sync.Mutex
+	running    map[string]*netDevice
+	discovered map[string]bool // discoveries started (each runs once)
 }
 
 type netDevice struct {
