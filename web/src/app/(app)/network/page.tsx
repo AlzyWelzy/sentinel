@@ -9,6 +9,7 @@ import {
   Badge,
   Button,
   Card,
+  cx,
   Dot,
   Empty,
   ErrorState,
@@ -211,11 +212,15 @@ function Discover({ onDone }: { onDone: () => void }) {
         }),
       ),
     onSuccess: (d) => {
-      setId(d.id);
-      setPicked(new Set());
-      setAdded(null);
+      open(d.id);
+      qc.invalidateQueries({ queryKey: ["network", "discoveries"] });
     },
   });
+  const open = (did: string) => {
+    setId(did);
+    setPicked(new Set());
+    setAdded(null);
+  };
   const scan = useQuery({
     queryKey: ["network", "discovery", id],
     enabled: !!id,
@@ -226,6 +231,23 @@ function Discover({ onDone }: { onDone: () => void }) {
           params: { path: { discovery_id: id! } },
         }),
       ),
+  });
+  const recent = useQuery({
+    queryKey: ["network", "discoveries"],
+    refetchInterval: 10_000,
+    queryFn: async () => unwrap(await api.GET("/v1/network/discoveries")),
+  });
+  const cancel = useMutation({
+    mutationFn: async (did: string) =>
+      unwrap(
+        await api.DELETE("/v1/network/discoveries/{discovery_id}", {
+          params: { path: { discovery_id: did } },
+        }),
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["network", "discovery"] });
+      qc.invalidateQueries({ queryKey: ["network", "discoveries"] });
+    },
   });
   const add = useMutation({
     mutationFn: async () =>
@@ -302,6 +324,27 @@ function Discover({ onDone }: { onDone: () => void }) {
         </div>
       </form>
       {start.error && <p className="text-sm text-bad">{errorText(start.error)}</p>}
+      {!!recent.data?.length && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-ink-3">Scans today:</span>
+          {recent.data.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => open(r.id)}
+              className={cx(
+                "rounded-md border px-2 py-0.5 hover:border-brand",
+                r.id === id ? "border-brand text-ink" : "border-line text-ink-2",
+              )}
+              title={r.error ?? undefined}
+            >
+              {r.cidr} ·{" "}
+              {r.status !== "done" ? r.status : r.total ? `${r.found} found` : "not scanned"} ·{" "}
+              {ago(r.created)}
+            </button>
+          ))}
+        </div>
+      )}
       {d && (
         <div className="space-y-3">
           <p className="text-sm text-ink-2">
@@ -309,9 +352,25 @@ function Discover({ onDone }: { onDone: () => void }) {
               ? "Waiting for the server to start (within a minute)…"
               : d.status === "running"
                 ? `Scanning ${d.cidr}: ${d.scanned} of ${d.total} addresses, ${d.found.length} found…`
-                : `Scanned ${d.total} addresses in ${d.cidr}: ${d.found.length} answered.`}
+                : d.total
+                  ? `Scanned ${d.scanned} of ${d.total} addresses in ${d.cidr}: ${d.found.length} answered.`
+                  : `${d.cidr}: not scanned.`}
             {d.error ? ` ${d.error}` : ""}
+            {d.status !== "done" && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  className="font-medium text-brand hover:underline disabled:opacity-50"
+                  disabled={cancel.isPending}
+                  onClick={() => cancel.mutate(d.id)}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
           </p>
+          {cancel.error && <p className="text-sm text-bad">{errorText(cancel.error)}</p>}
           {d.found.length > 0 && (
             <Table>
               <thead>

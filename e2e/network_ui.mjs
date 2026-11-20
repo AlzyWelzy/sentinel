@@ -1,6 +1,7 @@
 // The Network pages in a browser: every page renders with real (simulated)
 // devices and no console errors. Run api/network_setup.py first and pass
-// its EMAIL and PASSWORD.
+// its EMAIL and PASSWORD (and SCAN_IP, this machine's address, for the
+// discovery step).
 import { mkdirSync } from "node:fs";
 
 import { chromium } from "playwright";
@@ -81,7 +82,23 @@ await page.getByLabel("Threshold").fill("80");
 await page.getByRole("button", { name: "Create rule" }).click();
 await page.getByText(rule).waitFor();
 
-step("8. servers list doesn't list devices; phone width");
+step("8. discovery: a scan is listed and can be cancelled");
+// This machine's own address on port 161 (the simulator answers on 1161),
+// so nothing else on the network is probed.
+if (process.env.SCAN_IP) {
+  await page.goto(`${BASE}/network`);
+  await page.getByRole("button", { name: "Discover" }).click();
+  await page.getByLabel("Range").fill(`${process.env.SCAN_IP}/32`);
+  await page.getByRole("button", { name: "Scan", exact: true }).click();
+  await page.getByText(`${process.env.SCAN_IP}/32 ·`).waitFor();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByText(/Cancelled\./).waitFor();
+  await page.screenshot({ path: "shots/network-discovery.png", fullPage: true });
+} else {
+  console.log("  skipped: set SCAN_IP");
+}
+
+step("9. servers list doesn't list devices; phone width");
 await page.goto(`${BASE}/servers`);
 await page.getByText("1 in this organisation").waitFor();
 await page.setViewportSize({ width: 360, height: 800 });

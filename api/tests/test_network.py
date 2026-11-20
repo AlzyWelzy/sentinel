@@ -399,7 +399,16 @@ async def test_discovery_scans_your_own_private_ranges(alice: User, bob: User):
     cred = (await alice.request("POST", "/v1/network/credentials", json=V2)).json()
     poller = await insert_host(await alice.tenant_id(), "site")
     base = {"credential_id": cred["id"], "poller_host_id": str(poller)}
-    for cidr in ("8.8.8.0/24", "10.0.0.0/21", "fd00::/120", "127.0.0.0/24", "nonsense"):
+    for cidr in (
+        "8.8.8.0/24",
+        "10.0.0.0/21",
+        "fd00::/120",
+        "127.0.0.0/24",
+        "240.0.0.0/24",
+        "0.0.0.0/24",
+        "198.18.0.0/24",
+        "nonsense",
+    ):
         r = await alice.request("POST", "/v1/network/discoveries", json={**base, "cidr": cidr})
         assert r.status_code == 422, cidr
     r = await alice.request(
@@ -457,6 +466,58 @@ async def test_discovery_scans_your_own_private_ranges(alice: User, bob: User):
         )
     r = await alice.request("POST", "/v1/network/discoveries", json={**base, "cidr": "10.6.0.0/24"})
     assert r.status_code == 429
+
+
+async def test_a_stopped_scan_frees_its_slot_and_says_why(alice: User, bob: User):
+    """A scan sent to a server that's offline, or whose server stops
+    reporting midway, ends with the reason instead of holding one of the
+    three slots for a day; scans can be listed and cancelled."""
+    import time
+
+    from app.services import heartbeats
+
+    cred = (await alice.request("POST", "/v1/network/credentials", json=V2)).json()
+    poller = await insert_host(await alice.tenant_id(), "site")
+    base = {"credential_id": cred["id"], "poller_host_id": str(poller)}
+    ids = []
+    for i in range(3):
+        r = await alice.request(
+            "POST", "/v1/network/discoveries", json={**base, "cidr": f"10.7.{i}.0/24"}
+        )
+        ids.append(r.json()["id"])
+    now = int(time.time())
+    # Never picked up: created 11 minutes ago.
+    await heartbeats.redis.hset(f"pg:netdisc:{ids[0]}", "created", now - 660)
+    # Started, then silent for 3 minutes.
+    await heartbeats.redis.hset(
+        f"pg:netdisc:{ids[1]}",
+        mapping={"status": "running", "scanned": 40, "total": 254, "updated": now - 180},
+    )
+    listed = (await alice.request("GET", "/v1/network/discoveries")).json()
+    by_id = {d["id"]: d for d in listed}
+    assert set(by_id) >= set(ids)
+    assert by_id[ids[0]]["status"] == "done" and "didn't start" in by_id[ids[0]]["error"]
+    assert by_id[ids[1]]["status"] == "done" and "stopped reporting" in by_id[ids[1]]["error"]
+    assert by_id[ids[1]]["scanned"] == 40
+    assert by_id[ids[2]]["status"] == "pending"
+    # Ingest no longer hands the ended ones to the agent.
+    members = await heartbeats.redis.smembers(f"pg:netdisc:poller:{poller}")
+    assert set(members) == {ids[2]}
+    # Their slots are free again.
+    r = await alice.request("POST", "/v1/network/discoveries", json={**base, "cidr": "10.8.0.0/24"})
+    assert r.status_code == 201, r.text
+    # Cancel: only Alice's own, and it stays listed as cancelled.
+    assert (await bob.request("DELETE", f"/v1/network/discoveries/{ids[2]}")).status_code == 404
+    assert (await bob.request("GET", "/v1/network/discoveries")).json() == []
+    r = await alice.request("DELETE", f"/v1/network/discoveries/{ids[2]}")
+    assert r.status_code == 204
+    d = (await alice.request("GET", f"/v1/network/discoveries/{ids[2]}")).json()
+    assert d["status"] == "done" and d["error"] == "Cancelled."
+    # Cancelling a finished scan changes nothing.
+    r = await alice.request("DELETE", f"/v1/network/discoveries/{ids[0]}")
+    assert r.status_code == 204
+    d = (await alice.request("GET", f"/v1/network/discoveries/{ids[0]}")).json()
+    assert "didn't start" in d["error"]
 
 
 async def test_an_organisation_with_devices_exports_and_deletes(alice: User):

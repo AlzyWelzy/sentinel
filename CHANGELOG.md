@@ -39,6 +39,10 @@ probing the running stack before going live. New deployments need
   lost quorum, a stopped guest, node CPU and memory, and full storage.
 - **Discovery:** scan a private range (up to /22) from one of your servers
   for devices answering SNMP, see what each is, and add the ones you pick.
+  The day's scans are listed to reopen; a scan can be cancelled, and one
+  the server never starts (10 minutes) or stops reporting (2 minutes) ends
+  with the reason instead of holding one of the three slots all day. Only
+  RFC 1918 and 100.64/10 ranges are accepted.
 
 - **Sentinel's own outage doesn't page everyone.** When no server anywhere
   has reported for 90 seconds, and just before that servers in at least

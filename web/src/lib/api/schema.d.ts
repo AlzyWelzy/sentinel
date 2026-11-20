@@ -1180,7 +1180,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Discoveries
+         * @description This organisation's scans of the last day, newest first.
+         */
+        get: operations["list_discoveries_v1_network_discoveries_get"];
         put?: never;
         /**
          * Start Discovery
@@ -1205,7 +1209,12 @@ export interface paths {
         get: operations["get_discovery_v1_network_discoveries__discovery_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Cancel Discovery
+         * @description Stop waiting for a scan; what it found so far stays. A scan already
+         *     running on the server finishes there, but its results are ignored.
+         */
+        delete: operations["cancel_discovery_v1_network_discoveries__discovery_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4333,6 +4342,28 @@ export interface components {
             poller_host_id: string;
             /** Found */
             found: components["schemas"]["DiscoveredOut"][];
+        };
+        /** DiscoverySummary */
+        DiscoverySummary: {
+            /** Id */
+            id: string;
+            /** Cidr */
+            cidr: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "running" | "done";
+            /** Scanned */
+            scanned: number;
+            /** Total */
+            total: number;
+            /** Found */
+            found: number;
+            /** Error */
+            error: string | null;
+            /** Created */
+            created: number;
         };
         /** DiskOut */
         DiskOut: {
@@ -9167,6 +9198,26 @@ export interface operations {
             };
         };
     };
+    list_discoveries_v1_network_discoveries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySummary"][];
+                };
+            };
+        };
+    };
     start_discovery_v1_network_discoveries_post: {
         parameters: {
             query?: never;
@@ -9219,6 +9270,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DiscoveryOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_discovery_v1_network_discoveries__discovery_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

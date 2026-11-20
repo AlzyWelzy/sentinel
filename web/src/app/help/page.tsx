@@ -78,7 +78,8 @@ export default function Help() {
         </li>
         <li>
           <b>Add devices</b> by address, or <b>Discover</b> a private range (up to /22) and pick
-          what it finds. The server must reach the devices on UDP 161 (Proxmox: TCP 8006).
+          what it finds. The server must reach the devices on UDP 161 (Proxmox: TCP 8006). A scan
+          that doesn&apos;t start within 10 minutes means the server isn&apos;t reporting.
         </li>
         <li>
           Mark your core switch(es) with the role <i>Core</i>: upstreams are worked out from LLDP,

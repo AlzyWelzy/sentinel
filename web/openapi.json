@@ -3252,6 +3252,35 @@
    }
   },
   "/v1/network/discoveries": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "List Discoveries",
+    "description": "This organisation's scans of the last day, newest first.",
+    "operationId": "list_discoveries_v1_network_discoveries_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/DiscoverySummary"
+         },
+         "type": "array",
+         "title": "Response List Discoveries V1 Network Discoveries Get"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   },
    "post": {
     "tags": [
      "network"
@@ -3299,6 +3328,45 @@
    }
   },
   "/v1/network/discoveries/{discovery_id}": {
+   "delete": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Cancel Discovery",
+    "description": "Stop waiting for a scan; what it found so far stays. A scan already\nrunning on the server finishes there, but its results are ignored.",
+    "operationId": "cancel_discovery_v1_network_discoveries__discovery_id__delete",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "discovery_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Discovery Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
    "get": {
     "tags": [
      "network"
@@ -14188,6 +14256,66 @@
      "found"
     ],
     "title": "DiscoveryOut"
+   },
+   "DiscoverySummary": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "cidr": {
+      "type": "string",
+      "title": "Cidr"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "pending",
+       "running",
+       "done"
+      ],
+      "title": "Status"
+     },
+     "scanned": {
+      "type": "integer",
+      "title": "Scanned"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "found": {
+      "type": "integer",
+      "title": "Found"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "created": {
+      "type": "integer",
+      "title": "Created"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "cidr",
+     "status",
+     "scanned",
+     "total",
+     "found",
+     "error",
+     "created"
+    ],
+    "title": "DiscoverySummary"
    },
    "DiskOut": {
     "properties": {

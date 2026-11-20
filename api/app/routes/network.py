@@ -1298,6 +1298,19 @@ DISCOVERY_POLLER_KEY = "pg:netdisc:poller:"
 DISCOVERY_TTL = 86400
 MAX_DISCOVERY_ADDRESSES = 1024
 MAX_RUNNING_DISCOVERIES = 3
+# The agent picks a scan up with its next config (within a minute) and
+# reports every 5 seconds; past these, the scan has stopped (server offline,
+# agent restarted for good) and shouldn't hold a slot for the rest of the day.
+DISCOVERY_START_WITHIN = 600
+DISCOVERY_SILENT_AFTER = 120
+
+
+# RFC 1918 and carrier-grade NAT. Python's is_private also counts 0/8,
+# 198.18/15, 240/4 and the documentation ranges, which hold no devices.
+DISCOVERY_RANGES = tuple(
+    ipaddress.IPv4Network(r)
+    for r in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10")
+)
 
 
 class DiscoveryIn(BaseModel):
@@ -1321,15 +1334,13 @@ class DiscoveryIn(BaseModel):
             raise ValueError("ranges are up to 1024 addresses (/22); scan larger ones in parts")
         # Only your own network: scanning other people's addresses from a
         # customer's server isn't something Sentinel does.
-        cgnat = isinstance(net, ipaddress.IPv4Network) and net.subnet_of(
-            ipaddress.IPv4Network("100.64.0.0/10")
-        )
-        if not (net.is_private or cgnat):
+        if not (
+            isinstance(net, ipaddress.IPv4Network)
+            and any(net.subnet_of(r) for r in DISCOVERY_RANGES)
+        ):
             raise ValueError(
                 "discovery scans private ranges only (10/8, 172.16/12, 192.168/16, 100.64/10)"
             )
-        if net.is_loopback or net.is_multicast or net.is_link_local:
-            raise ValueError("that range can't hold devices")
         return str(net)
 
 
@@ -1354,6 +1365,104 @@ class DiscoveryOut(BaseModel):
     found: list[DiscoveredOut]
 
 
+async def _discovery(discovery_id: str, t: TenantContext) -> dict[str, str]:
+    """The scan's stored hash, settled first: one that never started or
+    stopped reporting is marked done with the reason."""
+    if not re.fullmatch(r"[0-9a-f]{32}", discovery_id):
+        raise HTTPException(404, "Discovery not found")
+    key = DISCOVERY_KEY + discovery_id
+    raw = await heartbeats.redis.hgetall(key)
+    h = {str(k): str(v) for k, v in raw.items()}
+    if not h or h.get("tenant") != str(t.tenant_id) or "poller" not in h:
+        raise HTTPException(404, "Discovery not found (results are kept for a day)")
+    now = int(datetime.now(UTC).timestamp())
+    reason = None
+    if h.get("status") == "pending" and now - int(h.get("created") or now) > DISCOVERY_START_WITHIN:
+        reason = "The server didn't start the scan within 10 minutes. Is it reporting?"
+    elif (
+        h.get("status") == "running"
+        and now - int(h.get("updated") or h.get("created") or now) > DISCOVERY_SILENT_AFTER
+    ):
+        reason = (
+            "The server stopped reporting progress (offline or restarted);"
+            " results so far are below."
+        )
+    if reason:
+        await _end_discovery(discovery_id, h, reason)
+    return h
+
+
+async def _end_discovery(discovery_id: str, h: dict[str, str], reason: str) -> None:
+    """Done, so ingest stops handing it out and ignores later results."""
+    h.update(status="done", error=reason)
+    await heartbeats.redis.hset(
+        DISCOVERY_KEY + discovery_id, mapping={"status": "done", "error": reason}
+    )
+    await heartbeats.redis.srem(DISCOVERY_POLLER_KEY + h["poller"], discovery_id)
+
+
+async def _discovery_ids(t: TenantContext) -> list[str]:
+    ids = []
+    async for key in heartbeats.redis.scan_iter(match=f"{DISCOVERY_KEY}*", count=500):
+        key = str(key)
+        if key.startswith(DISCOVERY_POLLER_KEY):
+            continue
+        if await heartbeats.redis.hget(key, "tenant") == str(t.tenant_id):
+            ids.append(key.removeprefix(DISCOVERY_KEY))
+    return ids
+
+
+class DiscoverySummary(BaseModel):
+    id: str
+    cidr: str
+    status: Literal["pending", "running", "done"]
+    scanned: int
+    total: int
+    found: int
+    error: str | None
+    created: int
+
+
+@router.get("/discoveries")
+async def list_discoveries(t: Tenant) -> list[DiscoverySummary]:
+    """This organisation's scans of the last day, newest first."""
+    import json
+
+    out = []
+    for did in await _discovery_ids(t):
+        try:
+            h = await _discovery(did, t)
+        except HTTPException:
+            continue  # expired meanwhile
+        try:
+            found = len(json.loads(h.get("found") or "[]"))
+        except ValueError:
+            found = 0
+        out.append(
+            DiscoverySummary(
+                id=did,
+                cidr=h.get("cidr", ""),
+                status=_status(h.get("status")),
+                scanned=int(h.get("scanned") or 0),
+                total=int(h.get("total") or 0),
+                found=found,
+                error=h.get("error") or None,
+                created=int(h.get("created") or 0),
+            )
+        )
+    out.sort(key=lambda d: d.created, reverse=True)
+    return out
+
+
+@router.delete("/discoveries/{discovery_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_discovery(discovery_id: str, t: Tenant) -> None:
+    """Stop waiting for a scan; what it found so far stays. A scan already
+    running on the server finishes there, but its results are ignored."""
+    h = await _discovery(discovery_id, t)
+    if h.get("status") != "done":
+        await _end_discovery(discovery_id, h, "Cancelled.")
+
+
 @router.post("/discoveries", status_code=status.HTTP_201_CREATED)
 async def start_discovery(body: DiscoveryIn, t: Tenant) -> DiscoveryOut:
     """Scan a range from one of your servers for devices answering SNMP with
@@ -1364,12 +1473,12 @@ async def start_discovery(body: DiscoveryIn, t: Tenant) -> DiscoveryOut:
     await _check_poller(t, body.poller_host_id)
     redis = heartbeats.redis
     running = 0
-    async for key in redis.scan_iter(match=f"{DISCOVERY_KEY}*", count=500):
-        if key.startswith(DISCOVERY_POLLER_KEY):
+    for did in await _discovery_ids(t):
+        try:
+            h = await _discovery(did, t)
+        except HTTPException:
             continue
-        tenant, st = await redis.hmget(key, ["tenant", "status"])
-        if tenant == str(t.tenant_id) and st != "done":
-            running += 1
+        running += h.get("status") != "done"
     if running >= MAX_RUNNING_DISCOVERIES:
         raise HTTPException(429, "Three scans are running already; wait for one to finish")
     did = uuid.uuid4().hex
@@ -1400,12 +1509,7 @@ async def start_discovery(body: DiscoveryIn, t: Tenant) -> DiscoveryOut:
 async def get_discovery(discovery_id: str, t: Tenant) -> DiscoveryOut:
     import json
 
-    if not re.fullmatch(r"[0-9a-f]{32}", discovery_id):
-        raise HTTPException(404, "Discovery not found")
-    raw = await heartbeats.redis.hgetall(DISCOVERY_KEY + discovery_id)
-    h = {str(k): str(v) for k, v in raw.items()}
-    if not h or h.get("tenant") != str(t.tenant_id):
-        raise HTTPException(404, "Discovery not found (results are kept for a day)")
+    h = await _discovery(discovery_id, t)
     try:
         found = json.loads(h.get("found") or "[]")
     except ValueError:

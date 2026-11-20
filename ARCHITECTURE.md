@@ -126,7 +126,9 @@ request; over that is 413.
    and evaluates `network` rules as filter expressions (no series means
    healthy).
 6. Discovery: the API records a scan in Redis (`pg:netdisc:*`, 24 h); ingest
-   hands it to the poller, which scans once and reports progress.
+   hands it to the poller, which scans once and reports progress. The API
+   ends a scan not started within 10 minutes, or silent for 2, or cancelled
+   (status done, with the reason), which also stops ingest handing it out.
 
 ## Delivery guarantees (agent → stores)
 
