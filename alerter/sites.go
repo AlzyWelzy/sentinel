@@ -191,8 +191,12 @@ func (s *store) resolveSite(ctx context.Context, o openSite, payload []byte) (bo
 		if err != nil {
 			return false, err
 		}
+		tags, err := incidentTags(ctx, tx, o.TenantID, o.ID)
+		if err != nil {
+			return false, err
+		}
 		var wanted []channel
-		for _, c := range chans {
+		for _, c := range forTags(chans, tags) {
 			if c.wants(o.Severity) {
 				wanted = append(wanted, c)
 			}

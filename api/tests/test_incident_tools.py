@@ -246,3 +246,22 @@ async def test_reminders_are_an_organisation_setting(alice: User):
         # Saved, not just echoed.
         saved = await alice.request("GET", "/v1/organisation/alerting")
         assert saved.json()["reminder_minutes"] == good
+
+
+async def test_a_contact_can_be_limited_to_a_customers_tag(alice: User):
+    r = await alice.request(
+        "POST",
+        "/v1/channels",
+        json={"type": "email", "target": "noc@acme.example", "only_tag": " Customer-Acme "},
+    )
+    assert r.status_code == 201, r.text
+    cid = r.json()["id"]
+    assert r.json()["only_tag"] == "customer-acme"
+    listed = [c for c in (await alice.request("GET", "/v1/channels")).json() if c["id"] == cid]
+    assert listed[0]["only_tag"] == "customer-acme"
+    bad = await alice.request("PATCH", f"/v1/channels/{cid}", json={"only_tag": "no spaces!"})
+    assert bad.status_code == 422
+    cleared = await alice.request("PATCH", f"/v1/channels/{cid}", json={"only_tag": None})
+    assert cleared.status_code == 200 and cleared.json()["only_tag"] is None
+    again = [c for c in (await alice.request("GET", "/v1/channels")).json() if c["id"] == cid]
+    assert again[0]["only_tag"] is None

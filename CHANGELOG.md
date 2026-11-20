@@ -28,6 +28,8 @@ probing the running stack before going live. New deployments need
   or unit; everything is listed on the device's Events. `install.sh
   --traps` lets the agent bind UDP 162 (systemd, OpenRC); otherwise it
   listens on 1162.
+- **Per-customer contacts.** A contact limited to a tag gets alerts for
+  that tag's servers and devices only.
 - **Reminders, affected hosts and site incidents.** Unacknowledged
   incidents are re-sent every 4 hours (an organisation setting). A "not
   reporting" alert names the hosts behind it that are quiet too. Five or

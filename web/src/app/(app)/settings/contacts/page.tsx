@@ -216,6 +216,11 @@ export default function ContactsPage() {
                         <Badge tone="warn">unverified</Badge>
                       )}
                       {c.is_default && <Badge tone="brand">default</Badge>}
+                      {c.only_tag && (
+                        <span title={`Only alerts for servers and devices tagged ${c.only_tag}`}>
+                          <Badge tone="idle">only {c.only_tag}</Badge>
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="text-right whitespace-nowrap">
@@ -262,6 +267,7 @@ export default function ContactsPage() {
                       <ContactSettings
                         severity={c.min_severity}
                         quiet={c.quiet_hours ?? null}
+                        onlyTag={c.only_tag ?? null}
                         onSave={(body) => patch.mutate([c.id, body])}
                       />
                     </td>
@@ -283,13 +289,16 @@ type Quiet = components["schemas"]["QuietHours"];
 function ContactSettings({
   severity,
   quiet,
+  onlyTag,
   onSave,
 }: {
   severity: string;
   quiet: Quiet | null;
+  onlyTag: string | null;
   onSave: (body: components["schemas"]["ChannelPatch"]) => void;
 }) {
   const [min, setMin] = useState(severity);
+  const [tag, setTag] = useState(onlyTag ?? "");
   const [on, setOn] = useState(!!quiet);
   const [q, setQ] = useState<Quiet>(
     quiet ?? {
@@ -307,6 +316,7 @@ function ContactSettings({
         onSave({
           min_severity: min as "critical" | "warning" | "info",
           quiet_hours: on ? q : null,
+          only_tag: tag.trim() || null,
         });
       }}
     >
@@ -316,6 +326,17 @@ function ContactSettings({
           <option value="warning">Warning and critical</option>
           <option value="critical">Critical only</option>
         </Select>
+      </Field>
+      <Field
+        label="Only for servers tagged"
+        hint="A customer's tag: they get alerts for their own servers and devices only."
+      >
+        <Input
+          className="w-48"
+          value={tag}
+          placeholder="Everything"
+          onChange={(e) => setTag(e.target.value)}
+        />
       </Field>
       <label className="flex h-9 items-center gap-2 text-sm">
         <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> Quiet hours

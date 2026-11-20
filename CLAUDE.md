@@ -168,13 +168,14 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - [x] Network rule kind with a catalog shared by the alerter (`alerter/network.go`) and the API (`services/netconditions.py`); a test on each side checks the keys match.
 - [x] 95th-percentile bandwidth per billing tag; Proxmox VE through its API; discovery of private ranges.
 - [x] SNMP traps: the agent receives v1/v2c/v3 traps itself (gosnmp) on 162 with `install.sh --traps` (CAP_NET_BIND_SERVICE) or 1162; catalog in `netmon/traps` shared by ingest and the alerter (trap conditions are network conditions, keys `trap_*`).
-- [ ] Still to port from Beacon (owner's decision 2026-11-20): IPDR per organisation (syslog, sFlow/NetFlow/IPFIX, MAC/ARP, ClickHouse, audit chain, seals, approved exports), per-customer alert channels, availability CSV, device insight.
+- [ ] Still to port from Beacon (owner's decision 2026-11-20): IPDR per organisation (syslog, sFlow/NetFlow/IPFIX, MAC/ARP, ClickHouse, audit chain, seals, approved exports), availability CSV, device insight.
+- [x] Per-customer contacts: notification_channels.only_tag, filtered by host tags (incident members' tags for site incidents) in the alerter.
 - [x] Reminders (tenants.reminder_minutes, alerter/reminders.go), affected hosts on a not-reporting incident (alerter/affected.go, IncidentDetail.affected), site incidents (alerter/sites.go: 5+ hosts behind one public IP or poller within 15 min, incidents.site_key). Live: `e2e/api/alerting_live.py`. Then every Uptime Kuma feature. Beacon's console tickets and JWT sign-on don't apply.
 
 ### Verified end to end (dev stack, real containers)
 
 - `deploy/stack.yml` resolves with every variable of `production.env.example` set; Caddy validates the production Caddyfile; actionlint and shellcheck are clean.
-- Migrations run up, down to base and up again; the API suite passes (228 tests); the typed web client matches the API.
+- Migrations run up, down to base and up again; the API suite passes (229 tests); the typed web client matches the API.
 - A browser journey (Playwright, scratch script, not in the repo) through the production web image behind Caddy's production routing: landing and legal pages, sign-up and the emailed link, onboarding, a real agent arriving, every screen, rule edit, preview and test, contacts and quiet hours, on-call, status pages (public, rendered on the server, no hostnames), dashboards, PDF report, API tokens, data export, invitations, roles, an outage with the alert and recovery emails, acknowledge, assign, notes, snooze, deliveries, two-factor, password reset signing other browsers out, superadmin impersonation, account deletion, mobile width and dark mode.
 - `install.sh` and `--uninstall` on Ubuntu 24.04 with systemd as PID 1: user, units, timers, autoconfig, registration, spool drained once ingest was reachable, then nothing left behind.
 - The `installers` workflow passes on Linux, Windows (`install.ps1` and `-Uninstall`), FreeBSD, OpenBSD and NetBSD: install, the service runs, a metrics push arrives, uninstall leaves nothing.

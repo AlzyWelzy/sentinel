@@ -180,6 +180,10 @@ a rollback or a pin can still download its version.
   its "not reporting" alert and incident name the hosts behind it that went
   quiet too (through the whole chain of upstreams, and the devices a poller
   watches).
+- **Per-customer contacts:** a contact can be limited to one tag (`only_tag`,
+  Contacts › Settings): an MSP adds its customer's address with the
+  customer's tag, and the customer gets alerts for their own servers and
+  devices only (escalations, reminders and site incidents too).
 - **Reminders:** an incident nobody has acknowledged is sent again to the
   rule's contacts every 4 hours (Organisation › Reminders: hourly to daily,
   or never). Acknowledging, snoozing, merging and maintenance stop them;

@@ -3817,6 +3817,11 @@ export interface components {
              * @enum {string}
              */
             min_severity: "critical" | "warning" | "info";
+            /**
+             * Only Tag
+             * @description only alerts for servers and devices with this tag (a customer's)
+             */
+            only_tag?: string | null;
         };
         /** ChannelOut */
         ChannelOut: {
@@ -3847,6 +3852,8 @@ export interface components {
             /** Min Severity */
             min_severity: string;
             quiet_hours?: components["schemas"]["QuietHours"] | null;
+            /** Only Tag */
+            only_tag?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -3859,6 +3866,11 @@ export interface components {
             label?: string | null;
             /** Min Severity */
             min_severity?: ("critical" | "warning" | "info") | null;
+            /**
+             * Only Tag
+             * @description only alerts for servers and devices with this tag (a customer's)
+             */
+            only_tag?: string | null;
             /** @description null to turn them off */
             quiet_hours?: components["schemas"]["QuietHours"] | null;
         };

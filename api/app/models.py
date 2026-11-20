@@ -164,6 +164,7 @@ class NotificationChannel(TenantScoped):
     config: Mapped[dict] = mapped_column(JSONB, server_default="{}", default=dict)
     min_severity: Mapped[str] = mapped_column(Text, default="info")
     quiet_hours: Mapped[dict | None] = mapped_column(JSONB)
+    only_tag: Mapped[str | None] = mapped_column(Text)  # only alerts for hosts with this tag
 
 
 class AlertRule(TenantScoped):

@@ -67,8 +67,12 @@ func (s *store) remind(ctx context.Context, rm reminder, payload []byte) (bool, 
 	if err != nil {
 		return false, err
 	}
+	tags, err := incidentTags(ctx, tx, rm.TenantID, rm.IncidentID)
+	if err != nil {
+		return false, err
+	}
 	var wanted []channel
-	for _, c := range chans {
+	for _, c := range forTags(chans, tags) {
 		if c.wants(rm.Sev) {
 			wanted = append(wanted, c)
 		}

@@ -75,6 +75,7 @@ type channel struct {
 	Config      map[string]string
 	MinSeverity string
 	Quiet       *quietHours // nil: no quiet hours
+	OnlyTag     *string     // only alerts for hosts with this tag
 }
 
 var severityRank = map[string]int{"info": 0, "warning": 1, "critical": 2}
@@ -221,7 +222,7 @@ func (s *store) channels(ctx context.Context, tx pgx.Tx, r rule) ([]channel, []s
 		return nil, nil, err
 	}
 	rows, err := tx.Query(ctx, `
-		SELECT c.id, c.type, c.target, c.config, c.min_severity, c.quiet_hours
+		SELECT c.id, c.type, c.target, c.config, c.min_severity, c.quiet_hours, c.only_tag
 		  FROM alert_rule_channels rc JOIN notification_channels c ON c.id = rc.channel_id
 		 WHERE rc.rule_id = $1 AND c.tenant_id = $2 AND c.verified_at IS NOT NULL`, r.ID, r.TenantID)
 	if err != nil {
@@ -236,7 +237,7 @@ func (s *store) channels(ctx context.Context, tx pgx.Tx, r rule) ([]channel, []s
 
 func (s *store) ruleChannels(ctx context.Context, tx pgx.Tx, r rule) ([]channel, error) {
 	rows, err := tx.Query(ctx, `
-		SELECT c.id, c.type, c.target, c.config, c.min_severity, c.quiet_hours
+		SELECT c.id, c.type, c.target, c.config, c.min_severity, c.quiet_hours, c.only_tag
 		  FROM alert_rule_channels rc JOIN notification_channels c ON c.id = rc.channel_id
 		 WHERE rc.rule_id = $1 AND c.tenant_id = $2 AND c.verified_at IS NOT NULL`, r.ID, r.TenantID)
 	if err != nil {
@@ -256,7 +257,7 @@ func (s *store) ruleChannels(ctx context.Context, tx pgx.Tx, r rule) ([]channel,
 	}
 	// No contacts chosen: the default one and the account's team members.
 	rows, err = tx.Query(ctx, `
-		SELECT id, type, target, config, min_severity, quiet_hours FROM notification_channels
+		SELECT id, type, target, config, min_severity, quiet_hours, only_tag FROM notification_channels
 		 WHERE tenant_id = $1 AND (is_default OR source = 'team') AND verified_at IS NOT NULL`, r.TenantID)
 	if err != nil {
 		return nil, err
@@ -266,8 +267,33 @@ func (s *store) ruleChannels(ctx context.Context, tx pgx.Tx, r rule) ([]channel,
 
 func scanChannel(row pgx.CollectableRow) (channel, error) {
 	var c channel
-	err := row.Scan(&c.ID, &c.Type, &c.Target, &c.Config, &c.MinSeverity, &c.Quiet)
+	err := row.Scan(&c.ID, &c.Type, &c.Target, &c.Config, &c.MinSeverity, &c.Quiet, &c.OnlyTag)
 	return c, err
+}
+
+// forTags drops contacts limited to a tag none of these hosts carry.
+func forTags(chans []channel, tags []string) []channel {
+	out := chans[:0:0]
+	for _, c := range chans {
+		if c.OnlyTag == nil || slices.Contains(tags, *c.OnlyTag) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// incidentTags are the tags of an incident's host, or of the hosts merged
+// into it (a site incident has none of its own).
+func incidentTags(ctx context.Context, tx pgx.Tx, tenantID, incidentID string) ([]string, error) {
+	var tags []string
+	err := tx.QueryRow(ctx, `
+		SELECT coalesce(array_agg(DISTINCT t), '{}')
+		  FROM hosts h, unnest(h.tags) t
+		 WHERE h.tenant_id = $1
+		   AND h.id IN (SELECT host_id FROM incidents WHERE id = $2 AND host_id IS NOT NULL
+		                UNION SELECT host_id FROM incidents WHERE merged_into = $2 AND host_id IS NOT NULL)`,
+		tenantID, incidentID).Scan(&tags)
+	return tags, err
 }
 
 // Flapping: an alert that opened this many times within flapWindow keeps
@@ -385,7 +411,7 @@ func (s *store) apply(
 			return err
 		}
 		var wanted []channel
-		for _, c := range chans {
+		for _, c := range forTags(chans, h.Tags) {
 			if c.wants(r.Severity) {
 				wanted = append(wanted, c)
 			}
@@ -611,7 +637,7 @@ func (s *store) escalate(ctx context.Context, e escalation, payload []byte) (boo
 		return false, err
 	}
 	rows, err := tx.Query(ctx, `
-		SELECT id, type, target, config, min_severity, quiet_hours FROM notification_channels
+		SELECT id, type, target, config, min_severity, quiet_hours, only_tag FROM notification_channels
 		 WHERE tenant_id = $1 AND id = ANY ($2::uuid[]) AND verified_at IS NOT NULL`, e.TenantID, e.ChannelIDs)
 	if err != nil {
 		return false, err
@@ -625,6 +651,11 @@ func (s *store) escalate(ctx context.Context, e escalation, payload []byte) (boo
 		return false, err
 	}
 	chans = mergeChannels(chans, onCall)
+	tags, err := incidentTags(ctx, tx, e.TenantID, e.IncidentID)
+	if err != nil {
+		return false, err
+	}
+	chans = forTags(chans, tags)
 	// Escalations are for when nobody answered: they go out even in quiet
 	// hours, like critical alerts.
 	if _, err := enqueue(ctx, tx, e.TenantID, chans, e.IncidentID, "alert_escalation", "critical", payload, 0); err != nil {

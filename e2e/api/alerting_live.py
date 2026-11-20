@@ -115,6 +115,24 @@ if tor:
     time.sleep(40)
     check("acknowledging stops reminders", len(mails(email, "STILL OPEN")) == 1, len(mails(email, "STILL OPEN")))
 
+# ── a contact limited to one customer's tag ─────────────────────────────────
+acme_inbox = f"noc-{uuid.uuid4().hex[:6]}@acme.example"
+acme = c.post("/v1/channels", json={"type": "email", "target": acme_inbox, "only_tag": "customer-acme"}).json()
+psql(f"UPDATE notification_channels SET verified_at = now() WHERE id = '{acme['id']}'")
+default = next(ch for ch in c.get("/v1/channels").json() if ch["is_default"])
+rule = c.post("/v1/alert-rules", json={"name": "Customer servers silent", "kind": "host_down", "duration_seconds": 60,
+                                        "tag": "customer-acme", "channel_ids": [default["id"], acme["id"]]})
+check("a rule can notify a tag-limited contact", rule.status_code == 201, rule.text)
+acme_web = host(tenant, "acme-web", public_ip="192.0.2.77")
+psql(f"UPDATE hosts SET tags = '{{customer-acme}}' WHERE id = '{acme_web}'")
+seen(acme_web, 3600)
+got = wait("acme's alert", lambda: mails(acme_inbox, "acme-web"), 180)
+check("the customer's contact gets its own server's alert", bool(got))
+others = [m["Subject"] for m in httpx.get(f"{MAIL}/search", params={"query": f"to:{acme_inbox}"}).json()["messages"]
+          if "acme-web" not in m["Subject"] and "verification code" not in m["Subject"]]
+check("and nothing about anyone else's", others == [], others)
+seen(acme_web, 0)
+
 # ── the site comes back ──────────────────────────────────────────────────────
 for h in site:
     seen(h, 0)

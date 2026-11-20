@@ -149,7 +149,7 @@ func onCallChannels(ctx context.Context, tx pgx.Tx, tenantID string, scheduleIDs
 		return nil, who, nil
 	}
 	rows, err := tx.Query(ctx, `
-		SELECT id, type, target, config, min_severity, quiet_hours FROM notification_channels
+		SELECT id, type, target, config, min_severity, quiet_hours, only_tag FROM notification_channels
 		 WHERE tenant_id = $1 AND id = ANY ($2::uuid[]) AND verified_at IS NOT NULL`, tenantID, ids)
 	if err != nil {
 		return nil, nil, err

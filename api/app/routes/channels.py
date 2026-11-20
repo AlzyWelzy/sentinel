@@ -10,7 +10,7 @@ import re
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, status
@@ -23,6 +23,7 @@ from app.models import NotificationChannel, OutboundMessage
 from app.services import oncall
 from app.services.secrets import hash_secret
 from app.tenancy import Tenant, TenantContext
+from app.validation import normalize_tag
 
 router = APIRouter(prefix="/v1/channels")
 
@@ -70,11 +71,23 @@ def _host_allowed(host: str, allowed: tuple[str, ...]) -> bool:
     return any(host == a.lstrip(".") or (a.startswith(".") and host.endswith(a)) for a in allowed)
 
 
+OnlyTag = Annotated[
+    str | None,
+    Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description="only alerts for servers and devices with this tag (a customer's)",
+    ),
+]
+
+
 class ChannelIn(BaseModel):
     type: ChannelType
     target: str = Field(min_length=3, max_length=500)
     label: str | None = Field(default=None, max_length=100)
     min_severity: Severity = "info"
+    only_tag: OnlyTag = None
 
     @model_validator(mode="after")
     def _validate_target(self) -> "ChannelIn":
@@ -163,12 +176,14 @@ class ChannelOut(BaseModel):
     undeliverable_reason: str | None = None
     min_severity: str
     quiet_hours: QuietHours | None = None
+    only_tag: str | None = None
     created_at: datetime
 
 
 class ChannelPatch(BaseModel):
     label: str | None = Field(default=None, max_length=100)
     min_severity: Severity | None = None
+    only_tag: OnlyTag = None
     quiet_hours: QuietHours | None = Field(default=None, description="null to turn them off")
 
 
@@ -215,6 +230,7 @@ def _out(c: NotificationChannel) -> ChannelOut:
         undeliverable_reason=c.undeliverable_reason,
         min_severity=c.min_severity,
         quiet_hours=QuietHours(**c.quiet_hours) if c.quiet_hours else None,
+        only_tag=c.only_tag,
         created_at=c.created_at,
     )
 
@@ -295,6 +311,7 @@ async def create_channel(body: ChannelIn, t: Tenant) -> ChannelOut:
         source="user",
         is_default=False,
         min_severity=body.min_severity,
+        only_tag=_tag(body.only_tag),
     )
     t.db.add(channel)
     await t.db.flush()
@@ -359,8 +376,20 @@ async def update_channel(channel_id: uuid.UUID, body: ChannelPatch, t: Tenant) -
         channel.min_severity = body.min_severity
     if "quiet_hours" in body.model_fields_set:
         channel.quiet_hours = body.quiet_hours.model_dump() if body.quiet_hours else None
+    if "only_tag" in body.model_fields_set:
+        channel.only_tag = _tag(body.only_tag)
     await t.db.flush()
     return _out(channel)
+
+
+def _tag(v: str | None) -> str | None:
+    """Tags are stored lower-case and trimmed (validation.normalize_tags)."""
+    if v is None:
+        return None
+    try:
+        return normalize_tag(v)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=f"only_tag: {e}") from None
 
 
 @router.post("/{channel_id}/verification", status_code=status.HTTP_202_ACCEPTED)

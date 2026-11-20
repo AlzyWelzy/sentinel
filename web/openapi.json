@@ -12565,6 +12565,20 @@
       ],
       "title": "Min Severity",
       "default": "info"
+     },
+     "only_tag": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 64,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Only Tag",
+      "description": "only alerts for servers and devices with this tag (a customer's)"
      }
     },
     "type": "object",
@@ -12642,6 +12656,17 @@
        }
       ]
      },
+     "only_tag": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Only Tag"
+     },
      "created_at": {
       "type": "string",
       "format": "date-time",
@@ -12691,6 +12716,20 @@
        }
       ],
       "title": "Min Severity"
+     },
+     "only_tag": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 64,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Only Tag",
+      "description": "only alerts for servers and devices with this tag (a customer's)"
      },
      "quiet_hours": {
       "anyOf": [
