@@ -78,6 +78,19 @@ if docker cp "$c:/deploy/." next/ 2>/dev/null && [ -s next/stack.yml ]; then
 fi
 docker rm "$c" >/dev/null
 rm -rf next
+# A release may need a new setting (0.10.0: CREDENTIALS_KEY). Without it the
+# stack can't deploy, so stay put, before migrating, and say what's missing.
+missing=""
+# shellcheck disable=SC2016 # the ${…:?} pattern is literal
+for v in $(grep -o '\${[A-Z_]*:?}' stack.yml | tr -d '${}:?' | sort -u); do
+	case $v in SENTINEL_VERSION | AGENT_VERSION | TEMPO_CONFIG | BACKUP_SCRIPT | RESTORE_CHECK) continue ;; esac
+	grep -q "^$v=..*" prod.env || missing="$missing $v"
+done
+if [ -n "$missing" ]; then
+	log "$newest needs these in prod.env:$missing (see DEPLOYMENT.md); staying on $current"
+	[ -f "deploy.bak-$current.tgz" ] && tar -xzf "deploy.bak-$current.tgz"
+	exit 1
+fi
 log "backup point before migrating"
 docker exec "$(docker ps -qf name=sentinel_postgres)" sh -c \
 	'pg_dump -U sentinel -Fc sentinel' >"backups/pre-$newest-$(date -u +%Y%m%dT%H%M%SZ).dump"

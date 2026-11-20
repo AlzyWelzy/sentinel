@@ -112,6 +112,10 @@ and rolls back to the previous version if the services don't settle within
 */5 * * * * cd /srv/sentinel && ./autoupdate.sh
 ```
 
+A release that needs a new setting waits, before migrating, until it's in
+`prod.env`; `autoupdate.log` names it. **Upgrading to 0.10.0** needs
+`CREDENTIALS_KEY` (`openssl rand -hex 32`, kept with your backups).
+
 `touch autoupdate.pause` skips runs; `autoupdate.log` says what happened. To
 roll back by hand: set `SENTINEL_VERSION` back in `prod.env` and deploy
 again (migrations are additive, so the old version runs on the new schema).
