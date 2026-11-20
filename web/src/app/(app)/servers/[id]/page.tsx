@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { TimeChart, type SeriesIn } from "@/components/chart";
 import { presetRange, RangePicker } from "@/components/range";
@@ -142,6 +142,11 @@ export default function ServerPage() {
     queryFn: async () =>
       unwrap(await api.GET("/v1/hosts/{host_id}", { params: { path: { host_id: id } } })),
   });
+  // Links to a host (incidents, alerts, the wall) lead here; devices have their own page.
+  const isDevice = host.data?.kind === "network";
+  useEffect(() => {
+    if (isDevice) router.replace(`/network/${id}`);
+  }, [isDevice, id, router]);
   const pause = useMutation({
     mutationFn: async (paused: boolean) =>
       unwrap(
@@ -159,6 +164,7 @@ export default function ServerPage() {
 
   if (host.isLoading) return <Loading />;
   if (host.error) return <ErrorState message={errorText(host.error, "Server not found")} />;
+  if (host.data?.kind === "network") return <Loading />;
   const h = host.data!;
   const health = overview.data?.servers.find((s) => s.id === id);
   const editable = canEdit(me.data?.role);

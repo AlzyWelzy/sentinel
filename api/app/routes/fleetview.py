@@ -36,6 +36,7 @@ class ServerHealth(BaseModel):
     open_incidents: int
     critical_incidents: int
     last_seen: int | None
+    kind: Literal["server", "network"] = "server"
 
 
 class FleetOverview(BaseModel):
@@ -133,10 +134,17 @@ async def servers_overview(t: Tenant) -> FleetOverview:
                 disk=r(disk.get(key)),
                 load1=r(load.get(key)) if o.online else None,
                 cpu_cores=h.cpu_cores,
-                uptime_seconds=uptime.get(key) if o.online else None,
+                uptime_seconds=(
+                    ((h.device or {}).get("system") or {}).get("uptime_sec")
+                    if h.kind == "network"
+                    else uptime.get(key)
+                )
+                if o.online
+                else None,
                 open_incidents=sum(sev.values()),
                 critical_incidents=sev.get("critical", 0),
                 last_seen=o.last_seen,
+                kind="network" if h.kind == "network" else "server",
             )
         )
     return FleetOverview(counts=counts, servers=servers, metrics_available=available)

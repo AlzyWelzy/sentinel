@@ -168,7 +168,7 @@ export default function OverviewPage() {
                 <tr key={s.id}>
                   <td>
                     <Link
-                      href={`/servers/${s.id}`}
+                      href={s.kind === "network" ? `/network/${s.id}` : `/servers/${s.id}`}
                       title={s.hostname}
                       className="block max-w-[18rem] truncate font-medium hover:text-brand"
                     >

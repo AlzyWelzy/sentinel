@@ -6114,6 +6114,12 @@ export interface components {
             critical_incidents: number;
             /** Last Seen */
             last_seen: number | null;
+            /**
+             * Kind
+             * @default server
+             * @enum {string}
+             */
+            kind: "server" | "network";
         };
         /** ServerSummary */
         ServerSummary: {
