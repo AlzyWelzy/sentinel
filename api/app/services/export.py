@@ -23,8 +23,10 @@ from app.models import (
     Incident,
     IncidentEvent,
     MaintenanceWindow,
+    NetworkInterface,
     NotificationChannel,
     OncallSchedule,
+    SNMPCredential,
     StatusPage,
     StatusPageItem,
     Tenant,
@@ -110,6 +112,16 @@ async def build(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
             for m in await _all(db, TenantMember, tenant_id)
         ],
         "servers": [_row(h) for h in await _all(db, Host, tenant_id)],
+        # Device credentials by name and version only: their secrets stay out.
+        "network_credentials": [
+            {"id": str(c.id), "name": c.name, "version": c.version}
+            for c in await _all(db, SNMPCredential, tenant_id)
+        ],
+        "network_billing_tags": [
+            {"device_id": str(i.host_id), "interface": i.name, "billing_tag": i.billing_tag}
+            for i in await _all(db, NetworkInterface, tenant_id)
+            if i.billing_tag
+        ],
         "alert_rules": [_row(r) for r in await _all(db, AlertRule, tenant_id)],
         "checks": [_row(c) for c in await _all(db, Check, tenant_id)],
         "contacts": channels,

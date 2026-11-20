@@ -457,3 +457,37 @@ async def test_discovery_scans_your_own_private_ranges(alice: User, bob: User):
         )
     r = await alice.request("POST", "/v1/network/discoveries", json={**base, "cidr": "10.6.0.0/24"})
     assert r.status_code == 429
+
+
+async def test_an_organisation_with_devices_exports_and_deletes(alice: User):
+    cred = (await alice.request("POST", "/v1/network/credentials", json=V2)).json()
+    poller = await insert_host(await alice.tenant_id(), "site")
+    dev = (
+        await alice.request(
+            "POST",
+            "/v1/network/devices",
+            json={
+                "addresses": ["10.3.0.1"],
+                "credential_id": cred["id"],
+                "poller_host_id": str(poller),
+            },
+        )
+    ).json()["created"][0]
+    r = await alice.request("GET", "/v1/organisation/export")
+    assert r.status_code == 200
+    body = r.text
+    assert "s3cret-community" not in body and '"secret"' not in body
+    exported = r.json()
+    assert exported["network_credentials"][0]["name"] == V2["name"]
+    assert any(s["id"] == dev["id"] for s in exported["servers"])
+    # Deleting the organisation takes the devices and credentials with it.
+    me = (await alice.request("GET", "/v1/me")).json()
+    name = me["display_name"] or me["email"] or ""
+    r = await alice.request("POST", "/v1/organisation/delete", json={"confirm_name": name})
+    assert r.status_code in (204, 503), r.text
+    if r.status_code == 204:
+        async with ServiceSession() as db:
+            left = await db.scalar(
+                text("SELECT count(*) FROM snmp_credentials WHERE id = :c"), {"c": cred["id"]}
+            )
+        assert left == 0

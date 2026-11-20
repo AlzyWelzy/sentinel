@@ -34,6 +34,18 @@ def seed(c):
         mk(f"/v1/oncall/schedules/{ids['schedule_id']}/overrides", {"name": "ov", "channel_ids": [ids["channel_id"]], "starts_at": "2030-01-01T00:00:00Z", "ends_at": "2030-01-02T00:00:00Z"}, "override_id")
     if "page_id" in ids:
         mk(f"/v1/status-pages/{ids['page_id']}/updates", {"title": "u", "body": "b", "status": "investigating"}, "update_id")
+    r = c.post("/v1/network/credentials", json={"name": "c" + secrets.token_hex(3), "version": "2c", "community": "public"})
+    if r.status_code == 201:
+        ids["credential_id"] = r.json()["id"]
+        r = c.post("/v1/network/devices", json={"addresses": ["10.77.0.1"], "credential_id": ids["credential_id"],
+                                                "poller_host_id": ids["host_id"]})
+        if r.status_code == 201:
+            ids["device_id"] = r.json()["created"][0]["id"]
+        r = c.post("/v1/network/discoveries", json={"cidr": "10.77.0.0/30", "credential_id": ids["credential_id"],
+                                                    "poller_host_id": ids["host_id"]})
+        if r.status_code == 201:
+            ids["discovery_id"] = r.json()["id"]
+    ids["ifindex"] = 1
     tid = c.headers["X-Sentinel-Account"]
     import subprocess
     out = subprocess.run(["docker", "exec", "beyond-dev-postgres-1", "sh", "-c",
