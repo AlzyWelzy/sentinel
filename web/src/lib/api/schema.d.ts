@@ -2607,6 +2607,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/status-pages/{page_id}/domain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Domain
+         * @description Set (or clear) the page's own domain. A new domain starts unverified,
+         *     with a fresh token for its TXT record.
+         */
+        put: operations["set_domain_v1_status_pages__page_id__domain_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/status-pages/{page_id}/domain/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Domain */
+        post: operations["verify_domain_v1_status_pages__page_id__domain_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/public/status/{slug}": {
         parameters: {
             query?: never;
@@ -2616,6 +2654,27 @@ export interface paths {
         };
         /** Public Status */
         get: operations["public_status_public_status__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/status/{slug}/badge.svg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status Badge
+         * @description A badge for a published status page or one item on it. Only what the
+         *     page itself shows: uptime and response time need the page's values on.
+         */
+        get: operations["status_badge_public_status__slug__badge_svg_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4583,6 +4642,27 @@ export interface components {
             /** Findings */
             findings: components["schemas"]["Finding"][];
         };
+        /** DomainIn */
+        DomainIn: {
+            /**
+             * Domain
+             * @description null removes it
+             */
+            domain?: string | null;
+        };
+        /** DomainOut */
+        DomainOut: {
+            /** Domain */
+            domain: string;
+            /** Verified */
+            verified: boolean;
+            /** Txt Name */
+            txt_name: string;
+            /** Txt Value */
+            txt_value: string;
+            /** Cname */
+            cname: string;
+        };
         /** EmailIn */
         EmailIn: {
             /**
@@ -5619,6 +5699,7 @@ export interface components {
             id: string;
             /** Slug */
             slug: string;
+            domain?: components["schemas"]["DomainOut"] | null;
             /** Title */
             title: string;
             /** Description */
@@ -5790,6 +5871,11 @@ export interface components {
         };
         /** PublicItem */
         PublicItem: {
+            /**
+             * Id
+             * @description for badges: ?item=<id>
+             */
+            id: string;
             /** Label */
             label: string;
             /**
@@ -12680,6 +12766,72 @@ export interface operations {
             };
         };
     };
+    set_domain_v1_status_pages__page_id__domain_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_domain_v1_status_pages__page_id__domain_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     public_status_public_status__slug__get: {
         parameters: {
             query?: never;
@@ -12699,6 +12851,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PublicPage"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_badge_public_status__slug__badge_svg_get: {
+        parameters: {
+            query?: {
+                /** @description an item id from the page; none: the page */
+                item?: string | null;
+                show?: "status" | "uptime" | "response";
+                label?: string | null;
+                style?: "flat" | "flat-square" | "for-the-badge";
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

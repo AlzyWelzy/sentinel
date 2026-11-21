@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import {
   Badge,
@@ -19,6 +19,8 @@ import {
 import { api, errorText } from "@/lib/api/client";
 import { unwrap, useHosts } from "@/lib/queries";
 import { canEdit, useMe } from "@/lib/session";
+
+import { PageExtras } from "./PageExtras";
 
 export default function StatusPagesPage() {
   const qc = useQueryClient();
@@ -39,6 +41,7 @@ export default function StatusPagesPage() {
     Record<string, { label: string; host_id?: string; check_id?: string }>
   >({});
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   const create = useMutation({
     mutationFn: async () =>
       unwrap(
@@ -200,31 +203,45 @@ export default function StatusPagesPage() {
             </thead>
             <tbody>
               {pages.data.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <a
-                      href={`/status/${p.slug}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-medium hover:text-brand"
-                    >
-                      {p.title}
-                    </a>
-                    <p className="text-xs text-ink-3">/status/{p.slug}</p>
-                  </td>
-                  <td className="text-ink-2">{p.items.length} items</td>
-                  <td>{p.published ? <Badge tone="ok">public</Badge> : <Badge>draft</Badge>}</td>
-                  <td className="text-right">
-                    {editable && (
-                      <Button
-                        variant="ghost"
-                        onClick={() => confirm(`Delete ${p.title}?`) && remove.mutate(p.id)}
+                <Fragment key={p.id}>
+                  <tr>
+                    <td>
+                      <a
+                        href={`/status/${p.slug}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium hover:text-brand"
                       >
-                        Delete
+                        {p.title}
+                      </a>
+                      <p className="text-xs text-ink-3">
+                        {p.domain?.verified ? p.domain.domain : `/status/${p.slug}`}
+                      </p>
+                    </td>
+                    <td className="text-ink-2">{p.items.length} items</td>
+                    <td>{p.published ? <Badge tone="ok">public</Badge> : <Badge>draft</Badge>}</td>
+                    <td className="whitespace-nowrap text-right">
+                      <Button variant="ghost" onClick={() => setOpen(open === p.id ? null : p.id)}>
+                        Domain and badges
                       </Button>
-                    )}
-                  </td>
-                </tr>
+                      {editable && (
+                        <Button
+                          variant="ghost"
+                          onClick={() => confirm(`Delete ${p.title}?`) && remove.mutate(p.id)}
+                        >
+                          Delete
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                  {open === p.id && (
+                    <tr>
+                      <td colSpan={4}>
+                        <PageExtras page={p} editable={editable} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </Table>

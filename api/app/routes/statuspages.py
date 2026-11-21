@@ -10,17 +10,23 @@ uptime percentages and incident summaries; never hostnames, IPs or targets.
 """
 
 import html
+import re
+import secrets
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal, cast
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException, status
+import dns.asyncresolver
+import dns.exception
+from fastapi import APIRouter, Header, HTTPException, Query, Response, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
+from app.config import settings
 from app.db import ServiceSession
 from app.models import (
     AlertRule,
@@ -32,7 +38,7 @@ from app.models import (
     StatusPageItem,
     StatusPageUpdate,
 )
-from app.services import checkresults
+from app.services import badges, checkresults
 from app.services.heartbeats import is_online, last_seen
 from app.services.metrics import MetricsUnavailable, query_instant, query_series
 from app.tenancy import Tenant, TenantContext
@@ -46,6 +52,10 @@ MAX_ITEMS = 50
 DAYS = 90
 # Hosts push every 30 s.
 PUSH_SECONDS = 30
+TXT_PREFIX = "_sentinel"
+DOMAIN_RE = re.compile(
+    r"^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$"
+)
 
 
 class ItemIn(BaseModel):
@@ -67,9 +77,20 @@ class ItemOut(ItemIn):
     id: uuid.UUID
 
 
+class DomainOut(BaseModel):
+    domain: str
+    verified: bool
+    # Add this TXT record to prove the domain, and point the domain itself
+    # (CNAME) at cname.
+    txt_name: str
+    txt_value: str
+    cname: str
+
+
 class PageOut(BaseModel):
     id: uuid.UUID
     slug: str
+    domain: DomainOut | None = None
     title: str
     description: str | None
     show_values: bool
@@ -77,6 +98,22 @@ class PageOut(BaseModel):
     items: list[ItemOut]
     created_at: datetime
     updated_at: datetime
+
+
+def _app_host() -> str:
+    return urlparse(settings.PUBLIC_APP_URL).hostname or "localhost"
+
+
+def _domain_out(p: StatusPage) -> DomainOut | None:
+    if not p.domain or not p.domain_token:
+        return None
+    return DomainOut(
+        domain=p.domain,
+        verified=p.domain_verified_at is not None,
+        txt_name=f"{TXT_PREFIX}.{p.domain}",
+        txt_value=f"sentinel-verify={p.domain_token}",
+        cname=_app_host(),
+    )
 
 
 async def _page_out(t: TenantContext, p: StatusPage) -> PageOut:
@@ -92,6 +129,7 @@ async def _page_out(t: TenantContext, p: StatusPage) -> PageOut:
         description=p.description,
         show_values=p.show_values,
         published=p.published,
+        domain=_domain_out(p),
         items=[
             ItemOut(
                 id=i.id,
@@ -349,6 +387,7 @@ class PublicDay(BaseModel):
 
 
 class PublicItem(BaseModel):
+    id: str = Field(description="for badges: ?item=<id>")
     label: str
     status: ItemStatus
     uptime_90d: float | None
@@ -552,6 +591,7 @@ async def build_public(slug: str) -> PublicPage | None:
         known = [d.uptime for d in days if d.uptime is not None]
         out_items.append(
             PublicItem(
+                id=str(i.id),
                 label=i.label,
                 status=st,
                 uptime_90d=round(sum(known) / len(known), 3)
@@ -746,3 +786,216 @@ footer{{margin-top:24px;color:var(--muted);font-size:12px;text-align:center}}</s
 {f"<h3>Past updates</h3>{history}" if history else ""}
 <footer>Updated {page.updated_at:%d %b %Y %H:%M} UTC · Powered by Sentinel</footer></main></body></html>"""
     return HTMLResponse(body, headers={"Cache-Control": f"public, max-age={CACHE_SECONDS}"})
+
+
+# --- The page on the owner's own domain -----------------------------------
+
+
+class DomainIn(BaseModel):
+    domain: str | None = Field(default=None, max_length=253, description="null removes it")
+
+
+def _clean_domain(raw: str) -> str:
+    d = raw.strip().lower().rstrip(".")
+    if d.startswith(("http://", "https://")):
+        d = urlparse(d).hostname or ""
+    if not DOMAIN_RE.match(d):
+        raise HTTPException(status_code=422, detail="Enter a domain name, like status.example.com")
+    ours = {
+        h
+        for u in (settings.PUBLIC_APP_URL, settings.PUBLIC_INGEST_URL, settings.PUBLIC_DOWNLOAD_URL)
+        if (h := urlparse(u).hostname)
+    }
+    base = {".".join(h.split(".")[-2:]) for h in ours if "." in h}
+    if any(d == h or d.endswith("." + h) for h in ours | base):
+        raise HTTPException(status_code=422, detail="That domain is Sentinel's own")
+    return d
+
+
+@router.put("/{page_id}/domain")
+async def set_domain(page_id: uuid.UUID, body: DomainIn, t: Tenant) -> PageOut:
+    """Set (or clear) the page's own domain. A new domain starts unverified,
+    with a fresh token for its TXT record."""
+    page = await _get(t, page_id)
+    if body.domain is None or not body.domain.strip():
+        page.domain = page.domain_token = page.domain_verified_at = None
+    else:
+        d = _clean_domain(body.domain)
+        if d != page.domain:
+            page.domain, page.domain_token = d, secrets.token_hex(16)
+            page.domain_verified_at = None
+    page.updated_at = datetime.now(UTC)
+    await t.db.flush()
+    return await _page_out(t, page)
+
+
+async def txt_records(name: str) -> list[str]:
+    """TXT strings at name; empty when there are none or DNS fails."""
+    try:
+        answer = await dns.asyncresolver.resolve(name, "TXT", lifetime=5)
+    except (dns.exception.DNSException, OSError):
+        return []
+    return [b"".join(r.strings).decode(errors="replace") for r in answer]
+
+
+@router.post("/{page_id}/domain/verify")
+async def verify_domain(page_id: uuid.UUID, t: Tenant) -> PageOut:
+    page = await _get(t, page_id)
+    info = _domain_out(page)
+    if info is None or page.domain is None:
+        raise HTTPException(status_code=422, detail="Set a domain first")
+    if info.verified:
+        return await _page_out(t, page)
+    if info.txt_value not in await txt_records(info.txt_name):
+        raise HTTPException(
+            status_code=422,
+            detail=f"No TXT record {info.txt_value} at {info.txt_name} yet."
+            " DNS changes can take a few minutes.",
+        )
+    async with ServiceSession() as db:
+        taken = await db.scalar(
+            select(StatusPage.id).where(
+                StatusPage.domain == page.domain,
+                StatusPage.domain_verified_at.is_not(None),
+                StatusPage.id != page.id,
+            )
+        )
+    if taken:
+        raise HTTPException(status_code=409, detail="Another status page already uses that domain")
+    page.domain_verified_at = datetime.now(UTC)
+    try:
+        await t.db.flush()
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409, detail="Another status page already uses that domain"
+        ) from None
+    return await _page_out(t, page)
+
+
+async def _slug_for_domain(domain: str) -> str | None:
+    d = domain.strip().lower().rstrip(".").split(":")[0]
+    if not DOMAIN_RE.match(d):
+        return None
+    async with ServiceSession() as db:
+        return await db.scalar(
+            select(StatusPage.slug).where(
+                StatusPage.domain == d,
+                StatusPage.domain_verified_at.is_not(None),
+                StatusPage.published,
+            )
+        )
+
+
+@public.get("/public/domain-check", include_in_schema=False)
+async def domain_check(domain: str = Query(max_length=253)) -> Response:
+    """Caddy's on-demand TLS asks this before getting a certificate: only
+    verified domains of published pages get one."""
+    if await _slug_for_domain(domain) is None:
+        return Response(status_code=404)
+    return Response(status_code=200)
+
+
+@public.get("/public/host/{rest:path}", include_in_schema=False)
+async def by_host(
+    rest: str,
+    item: str | None = None,
+    show: Literal["status", "uptime", "response"] = "status",
+    label: str | None = Query(default=None, max_length=60),
+    style: Literal["flat", "flat-square", "for-the-badge"] = "flat",
+    x_status_host: str = Header(default=""),
+) -> Response:
+    """A page on its own domain: Caddy rewrites every request for a domain
+    it doesn't otherwise serve to /public/host/<path> with the domain in
+    X-Status-Host."""
+    slug = await _slug_for_domain(x_status_host)
+    if slug is None:
+        return HTMLResponse("<h1>Status page not found</h1>", status_code=404)
+    if rest in ("", "index.html"):
+        return await public_status_html(slug)
+    if rest == "badge.svg":
+        return await status_badge(slug, item, show, label, style)
+    if rest == "status.json":
+        return Response(
+            (await public_status(slug)).model_dump_json(), media_type="application/json"
+        )
+    return HTMLResponse("<h1>Not found</h1>", status_code=404)
+
+
+# --- Badges -----------------------------------------------------------------
+
+PAGE_BADGE = {
+    "operational": ("operational", "green"),
+    "degraded": ("degraded", "orange"),
+    "outage": ("outage", "red"),
+    "maintenance": ("maintenance", "blue"),
+}
+ITEM_BADGE = {"up": ("up", "green"), "down": ("down", "red"), "unknown": ("no data", "grey")}
+
+
+def _svg(svg: str, status_code: int = 200) -> Response:
+    return Response(
+        svg,
+        status_code=status_code,
+        media_type="image/svg+xml",
+        headers={
+            "Cache-Control": "public, max-age=60",
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+        },
+    )
+
+
+@public.get("/public/status/{slug}/badge.svg", tags=["public"], response_class=Response)
+async def status_badge(
+    slug: str,
+    item: str | None = Query(default=None, description="an item id from the page; none: the page"),
+    show: Literal["status", "uptime", "response"] = "status",
+    label: str | None = Query(default=None, max_length=60),
+    style: Literal["flat", "flat-square", "for-the-badge"] = "flat",
+) -> Response:
+    """A badge for a published status page or one item on it. Only what the
+    page itself shows: uptime and response time need the page's values on."""
+    page = await build_public(slug)
+    if page is None:
+        return _svg(
+            badges.render(label or "status", "not found", badges.COLOURS["grey"], style), 404
+        )
+    if item is None:
+        if show != "status":
+            return _svg(
+                badges.render(label or "status", "pick an item", badges.COLOURS["grey"], style), 422
+            )
+        value, colour = PAGE_BADGE[page.status]
+        return _svg(
+            badges.render(
+                label if label is not None else page.title, value, badges.COLOURS[colour], style
+            )
+        )
+    it = next((i for i in page.items if i.id == item), None)
+    if it is None:
+        return _svg(
+            badges.render(label or "status", "not found", badges.COLOURS["grey"], style), 404
+        )
+    name = label if label is not None else it.label
+    if show == "status":
+        value, colour = ITEM_BADGE[it.status]
+        return _svg(badges.render(name, value, badges.COLOURS[colour], style))
+    if show == "uptime":
+        pct = it.uptime_90d
+        text = "hidden" if pct is None else f"{pct:.2f}%".replace(".00%", "%")
+        return _svg(
+            badges.render(
+                name if label is not None else f"{it.label} uptime",
+                text,
+                badges.uptime_colour(pct),
+                style,
+            )
+        )
+    ms = it.response_ms
+    return _svg(
+        badges.render(
+            name if label is not None else f"{it.label} response",
+            "hidden" if ms is None else f"{ms:.0f} ms",
+            badges.COLOURS["blue"] if ms is not None else badges.COLOURS["grey"],
+            style,
+        )
+    )

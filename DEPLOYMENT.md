@@ -37,6 +37,13 @@ address, so the per-IP limits on sign-up and sign-in would be shared by
 strangers; agent pushes would also meet Cloudflare's body limits and bot
 checks.
 
+Status pages on customers' own domains need nothing more from you. The
+customer adds a TXT record (`_sentinel.<their domain>`) and a CNAME to
+`sentinel.rajpoot.app`, then presses Verify. Caddy gets a certificate for the
+domain on its first visit, and only for domains a published page has verified
+(`on_demand_tls` asks `/public/domain-check`). Keep port 80 open for those
+challenges too.
+
 ## 3. Email
 
 Pick an SMTP server or a provider with an SMTP relay (Amazon SES, Postmark,

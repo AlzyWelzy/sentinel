@@ -8873,6 +8873,107 @@
     }
    }
   },
+  "/v1/status-pages/{page_id}/domain": {
+   "put": {
+    "summary": "Set Domain",
+    "description": "Set (or clear) the page's own domain. A new domain starts unverified,\nwith a fresh token for its TXT record.",
+    "operationId": "set_domain_v1_status_pages__page_id__domain_put",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "page_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Page Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DomainIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PageOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/status-pages/{page_id}/domain/verify": {
+   "post": {
+    "summary": "Verify Domain",
+    "operationId": "verify_domain_v1_status_pages__page_id__domain_verify_post",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "page_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Page Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PageOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/public/status/{slug}": {
    "get": {
     "tags": [
@@ -8901,6 +9002,107 @@
         }
        }
       }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/public/status/{slug}/badge.svg": {
+   "get": {
+    "tags": [
+     "public"
+    ],
+    "summary": "Status Badge",
+    "description": "A badge for a published status page or one item on it. Only what the\npage itself shows: uptime and response time need the page's values on.",
+    "operationId": "status_badge_public_status__slug__badge_svg_get",
+    "parameters": [
+     {
+      "name": "slug",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Slug"
+      }
+     },
+     {
+      "name": "item",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "an item id from the page; none: the page",
+       "title": "Item"
+      },
+      "description": "an item id from the page; none: the page"
+     },
+     {
+      "name": "show",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "status",
+        "uptime",
+        "response"
+       ],
+       "type": "string",
+       "default": "status",
+       "title": "Show"
+      }
+     },
+     {
+      "name": "label",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 60
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Label"
+      }
+     },
+     {
+      "name": "style",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "flat",
+        "flat-square",
+        "for-the-badge"
+       ],
+       "type": "string",
+       "default": "flat",
+       "title": "Style"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response"
      },
      "422": {
       "description": "Validation Error",
@@ -14926,6 +15128,58 @@
     ],
     "title": "DoctorOut"
    },
+   "DomainIn": {
+    "properties": {
+     "domain": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 253
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Domain",
+      "description": "null removes it"
+     }
+    },
+    "type": "object",
+    "title": "DomainIn"
+   },
+   "DomainOut": {
+    "properties": {
+     "domain": {
+      "type": "string",
+      "title": "Domain"
+     },
+     "verified": {
+      "type": "boolean",
+      "title": "Verified"
+     },
+     "txt_name": {
+      "type": "string",
+      "title": "Txt Name"
+     },
+     "txt_value": {
+      "type": "string",
+      "title": "Txt Value"
+     },
+     "cname": {
+      "type": "string",
+      "title": "Cname"
+     }
+    },
+    "type": "object",
+    "required": [
+     "domain",
+     "verified",
+     "txt_name",
+     "txt_value",
+     "cname"
+    ],
+    "title": "DomainOut"
+   },
    "EmailIn": {
     "properties": {
      "email": {
@@ -18152,6 +18406,16 @@
       "type": "string",
       "title": "Slug"
      },
+     "domain": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/DomainOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
      "title": {
       "type": "string",
       "title": "Title"
@@ -18684,6 +18948,11 @@
    },
    "PublicItem": {
     "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id",
+      "description": "for badges: ?item=<id>"
+     },
      "label": {
       "type": "string",
       "title": "Label"
@@ -18729,6 +18998,7 @@
     },
     "type": "object",
     "required": [
+     "id",
      "label",
      "status",
      "uptime_90d",

@@ -1,5 +1,10 @@
 {
 	email {$ACME_EMAIL}
+	# Certificates for status pages on customers' own domains, only for
+	# domains a published page has verified (TXT record).
+	on_demand_tls {
+		ask http://api:8000/public/domain-check
+	}
 }
 
 # The web app, with the API under /api on the same origin: the sign-in
@@ -40,4 +45,22 @@
 		reverse_proxy api:8000
 	}
 	respond 404
+}
+
+# Status pages on customers' own domains (a CNAME to {$APP_HOST}): any
+# other name gets its page from the API, chosen by the Host header.
+https:// {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+	rewrite * /public/host{uri}
+	reverse_proxy api:8000 {
+		header_up X-Status-Host {host}
+	}
 }
