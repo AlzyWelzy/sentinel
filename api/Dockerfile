@@ -62,6 +62,7 @@ COPY deploy/stack.yml /deploy/stack.yml
 COPY deploy/caddy /deploy/caddy
 COPY deploy/postgres /deploy/postgres
 COPY deploy/tempo /deploy/tempo
+COPY deploy/clickhouse /deploy/clickhouse
 # Vendor profiles, to list them in the UI (the agent embeds its own copy).
 COPY netmon/profiles /app/netmon-profiles
 

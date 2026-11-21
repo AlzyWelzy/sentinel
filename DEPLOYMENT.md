@@ -1,6 +1,6 @@
 # Deployment
 
-Sentinel on one VPS: Docker Swarm with a single node, Caddy for TLS,
+Sentinel on one VPS: Docker Swarm with a single node, a Cloudflare Tunnel in front, Caddy routing,
 nightly backups that are restored to prove they work. The same stack scales
 to more nodes later (the stateless services take `replicas`; the stores stay
 on the node labelled `sentinel.db`).
@@ -10,7 +10,7 @@ on the node labelled `sentinel.db`).
 - Ubuntu 24.04 LTS or Debian 13, 4 vCPU / 8 GB RAM / 80 GB SSD is enough
   for a few hundred servers at 30 s; metrics take roughly 1 GB per 100
   servers per month at 90 days' retention.
-- Open 80 and 443 only. SSH by key.
+- No inbound ports but SSH (by key): traffic arrives through the tunnel.
 - Install Docker Engine, then:
 
 ```sh
@@ -18,9 +18,11 @@ docker swarm init
 docker node update --label-add sentinel.db=true "$(docker node ls -q)"
 ```
 
-## 2. DNS
+## 2. The way in: a Cloudflare Tunnel
 
-All three hostnames point at the server (A and AAAA):
+The server publishes no ports. `cloudflared` (in the stack) keeps an
+outbound connection to Cloudflare, and Cloudflare sends the three hostnames
+down it to Caddy:
 
 | Name | Serves |
 |---|---|
@@ -28,21 +30,40 @@ All three hostnames point at the server (A and AAAA):
 | `ingest.sentinel.rajpoot.app` | agents |
 | `get.sentinel.rajpoot.app` | `install.sh`, `install.ps1`, agent binaries |
 
-Caddy gets certificates for them on first start (HTTP-01), so DNS must
-resolve before deploying.
+Set it up once (Cloudflare dashboard › Zero Trust › Networks › Tunnels, or
+the API with a token that may edit tunnels and the zone's DNS):
 
-Keep the records **DNS only** if the domain is on Cloudflare (grey cloud, not
-proxied). Behind Cloudflare's proxy, every visitor arrives from a Cloudflare
-address, so the per-IP limits on sign-up and sign-in would be shared by
-strangers; agent pushes would also meet Cloudflare's body limits and bot
-checks.
+1. Create a tunnel (`sentinel`, managed in Cloudflare) and copy its token
+   into `TUNNEL_TOKEN`.
+2. Public hostnames: each of the three, and `customers.sentinel.rajpoot.app`,
+   to `http://caddy:80`; a catch-all rule to `http://caddy:80` too, for
+   customers' status page domains.
+3. DNS: each hostname a **proxied** CNAME to `<tunnel id>.cfargotunnel.com`
+   (the dashboard does this when you add a public hostname).
+4. The server's firewall needs nothing open but SSH.
 
-Status pages on customers' own domains need nothing more from you. The
-customer adds a TXT record (`_sentinel.<their domain>`) and a CNAME to
-`sentinel.rajpoot.app`, then presses Verify. Caddy gets a certificate for the
-domain on its first visit, and only for domains a published page has verified
-(`on_demand_tls` asks `/public/domain-check`). Keep port 80 open for those
-challenges too.
+Cloudflare terminates TLS. Caddy (`caddy/Caddyfile.tunnel`) takes the
+visitor's address from `CF-Connecting-IP` (only cloudflared can reach it)
+and hands the services that address alone, so sign-up limits and lockouts
+count real visitors. Agents' pushes stay under Cloudflare's 100 MB request
+limit (ingest takes 34 MB at most). Keep Bot Fight Mode off for the
+ingest and get hostnames: agents and installers aren't browsers.
+
+**Status pages on customers' own domains** go through Cloudflare for SaaS:
+enable it on the zone (SSL/TLS › Custom Hostnames), set the fallback origin
+to `customers.sentinel.rajpoot.app`, and give Sentinel `CF_API_TOKEN` (SSL
+and Certificates: Edit on the zone), `CF_ZONE_ID` and
+`STATUS_DOMAIN_TARGET=customers.sentinel.rajpoot.app`. A customer adds a TXT
+record (`_sentinel.<their domain>`) and a CNAME to that target, then presses
+Verify; Sentinel adds the custom hostname and Cloudflare issues its
+certificate. (The first 100 custom hostnames are free.)
+
+**Without a tunnel:** point A/AAAA records at the server, set
+`CADDYFILE=Caddyfile`, publish 80 and 443 on the `caddy` service, and keep
+the records DNS only (grey cloud): behind Cloudflare's proxy without the
+tunnel, every visitor would arrive from a Cloudflare address. Caddy then
+gets certificates itself, customers' domains included (on-demand TLS, only
+for domains a published page has verified).
 
 ## 3. Email
 
@@ -70,7 +91,8 @@ cp production.env.example prod.env && chmod 600 prod.env
 
 Fill in `prod.env`. Generate every secret with `openssl rand -hex 32`:
 `AUTH_SECRET`, `CREDENTIALS_KEY`, `POSTGRES_PASSWORD`, `SENTINEL_APP_PASSWORD`,
-`SENTINEL_SERVICE_PASSWORD`, `WEBHOOK_SIGNING_SECRET`, `ACK_SIGNING_SECRET`.
+`SENTINEL_SERVICE_PASSWORD`, `WEBHOOK_SIGNING_SECRET`, `ACK_SIGNING_SECRET`,
+`CLICKHOUSE_PASSWORD`.
 Keep a copy of `CREDENTIALS_KEY` with your backups: the network device
 credentials in a database dump can't be read without it.
 Then:
@@ -92,6 +114,8 @@ set -a; . ./prod.env; set +a
 export TEMPO_CONFIG=$(sha256sum tempo/tempo.yml | cut -c1-8)
 export BACKUP_SCRIPT=$(sha256sum postgres/backup.sh | cut -c1-8)
 export RESTORE_CHECK=$(sha256sum postgres/restore-check.sh | cut -c1-8)
+export CADDY_CONFIG=$(sha256sum caddy/${CADDYFILE:-Caddyfile.tunnel} | cut -c1-8)
+export CLICKHOUSE_CONFIG=$(sha256sum clickhouse/small.xml | cut -c1-8)
 docker stack deploy -c stack.yml --with-registry-auth sentinel
 
 # Migrations, before relying on a new release's code:
@@ -148,6 +172,19 @@ docker exec -i "$(docker ps -qf name=sentinel_postgres)" \
   pg_restore -U sentinel -d sentinel --clean --if-exists < sentinel-YYYYmmdd-HHMM.dump
 docker stack deploy -c stack.yml --with-registry-auth sentinel   # scales back up
 ```
+
+**IPDR evidence** (ClickHouse): `clickhouse-backup.sh` takes a full backup on
+Sundays and an incremental on top of it the other days, keeps two full
+chains in the `sentinel_clickhouse-backups` volume, and restores each new
+backup into a scratch database to compare row counts:
+
+```sh
+15 2 * * * cd /srv/sentinel && ./clickhouse-backup.sh >>clickhouse-backup.log 2>&1
+```
+
+Restore for real: `RESTORE DATABASE sentinel FROM Disk('backups', 'incr-YYYYMMDD')`
+(it follows the chain to its full backup) with ingest scaled to 0, then
+"Re-check the last 30 days of evidence" under IPDR › Audit and seals.
 
 **Metrics** (VictoriaMetrics raw and long-term): `vm-backup.sh` takes an
 instant snapshot of each and copies it with `vmbackup`:

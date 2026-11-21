@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     # Long-term store of hourly rollups (written by the jobs worker). Empty:
     # no rollups, and charts only reach back as far as raw retention.
     VICTORIAMETRICS_LONG_URL: str = ""
+    # Status pages on customers' domains behind a Cloudflare Tunnel: each
+    # verified domain becomes a Cloudflare for SaaS custom hostname in this
+    # zone, and customers point a CNAME at STATUS_DOMAIN_TARGET (the zone's
+    # fallback origin). Empty: Caddy's on-demand TLS serves them instead.
+    CF_API_TOKEN: str = ""
+    CF_ZONE_ID: str = ""
+    STATUS_DOMAIN_TARGET: str = ""
     # IPDR evidence store; empty turns IPDR off.
     CLICKHOUSE_URL: str = ""
     CLICKHOUSE_USER: str = "default"

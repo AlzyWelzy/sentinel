@@ -1,0 +1,76 @@
+# Behind a Cloudflare Tunnel: cloudflared is the only thing that reaches
+# Caddy (no published ports), Cloudflare terminates TLS, and the visitor's
+# address is CF-Connecting-IP. Caddy puts it in X-Forwarded-For for the
+# services, so sign-up limits and lockouts count real visitors.
+{
+	auto_https off
+	servers {
+		trusted_proxies static private_ranges
+		client_ip_headers CF-Connecting-IP
+	}
+}
+
+# The visitor's address alone (not cloudflared's appended after it): the
+# services rate-limit and record the last X-Forwarded-For hop.
+(client) {
+	header_up X-Forwarded-For {client_ip}
+	header_up X-Forwarded-Proto https
+}
+
+(common) {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
+
+http://{$APP_HOST} {
+	import common
+	handle_path /api/* {
+		request_body {
+			max_size 5MB
+		}
+		reverse_proxy api:8000 {
+			import client
+		}
+	}
+	handle {
+		reverse_proxy web:3000 {
+			import client
+		}
+	}
+}
+
+# Agent registration and metric pushes.
+http://{$INGEST_HOST} {
+	request_body {
+		max_size 34MB
+	}
+	reverse_proxy ingest:8080 {
+		import client
+	}
+}
+
+http://{$DOWNLOAD_HOST} {
+	@download path /install.sh /install.ps1 /agent/*
+	handle @download {
+		reverse_proxy api:8000 {
+			import client
+		}
+	}
+	respond 404
+}
+
+# Status pages on customers' own domains (Cloudflare custom hostnames
+# pointing at this tunnel): the page is chosen by the Host header.
+http:// {
+	import common
+	rewrite * /public/host{uri}
+	reverse_proxy api:8000 {
+		import client
+		header_up X-Status-Host {host}
+	}
+}

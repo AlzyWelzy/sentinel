@@ -1,0 +1,35 @@
+<!-- ClickHouse on a small shared server: bounded memory, fewer background
+     threads, no system log tables growing on their own. -->
+<clickhouse>
+    <max_server_memory_usage_to_ram_ratio>0.25</max_server_memory_usage_to_ram_ratio>
+    <mark_cache_size>268435456</mark_cache_size>
+    <background_pool_size>4</background_pool_size>
+    <background_schedule_pool_size>4</background_schedule_pool_size>
+    <merge_tree>
+        <merge_max_block_size>1024</merge_max_block_size>
+        <max_bytes_to_merge_at_max_space_in_pool>1073741824</max_bytes_to_merge_at_max_space_in_pool>
+    </merge_tree>
+    <query_log remove="1"/>
+    <query_thread_log remove="1"/>
+    <part_log remove="1"/>
+    <trace_log remove="1"/>
+    <metric_log remove="1"/>
+    <asynchronous_metric_log remove="1"/>
+    <text_log remove="1"/>
+    <processors_profile_log remove="1"/>
+    <opentelemetry_span_log remove="1"/>
+    <logger><level>warning</level></logger>
+    <!-- Backups (clickhouse-backup.sh) go to their own volume. -->
+    <storage_configuration>
+        <disks>
+            <backups>
+                <type>local</type>
+                <path>/backups/</path>
+            </backups>
+        </disks>
+    </storage_configuration>
+    <backups>
+        <allowed_disk>backups</allowed_disk>
+        <allowed_path>/backups/</allowed_path>
+    </backups>
+</clickhouse>

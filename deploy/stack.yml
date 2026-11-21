@@ -9,9 +9,12 @@
 # so two deployments with one name share a Postgres data directory.
 #
 # Migrations run as a one-off job before the services start (DEPLOYMENT.md).
-# Public traffic enters through Caddy, which gets TLS certificates for the
-# three hostnames automatically: APP_HOST (the web app, and the API under
-# /api), INGEST_HOST (agents) and DOWNLOAD_HOST (installers and binaries).
+# Public traffic arrives through a Cloudflare Tunnel (cloudflared, outbound
+# only: the server publishes no ports) and goes to Caddy, which routes
+# APP_HOST (the web app, and the API under /api), INGEST_HOST (agents),
+# DOWNLOAD_HOST (installers and binaries) and customers' status page
+# domains. Cloudflare terminates TLS. Without a tunnel, set
+# CADDYFILE=Caddyfile and publish 80/443 on Caddy instead (DEPLOYMENT.md).
 
 x-pg-app-url: &app_db postgresql+asyncpg://sentinel_app:${SENTINEL_APP_PASSWORD:?}@postgres:5432/sentinel
 x-pg-service-url: &service_db_py postgresql+asyncpg://sentinel_service:${SENTINEL_SERVICE_PASSWORD:?}@postgres:5432/sentinel
@@ -31,13 +34,6 @@ x-deploy: &rolling
 services:
   caddy:
     image: caddy:2.8.4-alpine
-    ports:
-      - target: 80
-        published: 80
-        mode: host
-      - target: 443
-        published: 443
-        mode: host
     environment:
       APP_HOST: ${APP_HOST:?}
       INGEST_HOST: ${INGEST_HOST:?}
@@ -51,6 +47,39 @@ services:
     networks: [edge]
     deploy: *rolling
 
+  # The way in: an outbound connection to Cloudflare, nothing listening.
+  # The tunnel's routes (hostnames to http://caddy:80) live in Cloudflare.
+  cloudflared:
+    image: cloudflare/cloudflared:2025.11.1
+    command: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?}
+    networks: [edge]
+    deploy:
+      <<: *rolling
+      replicas: 2
+
+  # IPDR evidence (firewall sessions, flows, syslog, MAC tables).
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8.11.66
+    environment:
+      CLICKHOUSE_USER: sentinel
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "0"
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    configs:
+      - source: clickhouse_small
+        target: /etc/clickhouse-server/config.d/small.xml
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-backups:/backups
+    networks: [backend]
+    deploy:
+      restart_policy:
+        condition: any
+        delay: 5s
+
   api:
     image: ${REGISTRY:-ghcr.io/alzywelzy}/sentinel-api:${SENTINEL_VERSION:?}
     environment:
@@ -62,6 +91,9 @@ services:
       VICTORIALOGS_URL: http://victorialogs:9428
       TEMPO_URL: http://tempo:3200
       VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: sentinel
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
       API_ROOT_PATH: /api
       PUBLIC_APP_URL: https://${APP_HOST}
       PUBLIC_API_URL: https://${APP_HOST}/api
@@ -82,6 +114,9 @@ services:
       PROBE_ACCOUNT_IDS: ${PROBE_ACCOUNT_IDS:-}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       ACK_SIGNING_SECRET: ${ACK_SIGNING_SECRET:-}
+      CF_API_TOKEN: ${CF_API_TOKEN:-}
+      CF_ZONE_ID: ${CF_ZONE_ID:-}
+      STATUS_DOMAIN_TARGET: ${STATUS_DOMAIN_TARGET:-}
     networks: [edge, backend]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
@@ -104,6 +139,9 @@ services:
       PUBLIC_DOWNLOAD_URL: https://${DOWNLOAD_HOST}
       AGENT_VERSION: ${AGENT_VERSION:?}
       CREDENTIALS_KEY: ${CREDENTIALS_KEY:?}
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: sentinel
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
     networks: [edge, backend]
     deploy:
       <<: *rolling
@@ -152,6 +190,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
       VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: sentinel
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
       PUBLIC_APP_URL: https://${APP_HOST}
       AUTH_SECRET: ${AUTH_SECRET:?}
       CREDENTIALS_KEY: ${CREDENTIALS_KEY:?}
@@ -295,7 +336,11 @@ configs:
     name: sentinel-tempo-${TEMPO_CONFIG:-v1}
     file: ./tempo/tempo.yml
   caddyfile:
-    file: ./caddy/Caddyfile
+    name: sentinel-caddyfile-${CADDY_CONFIG:-v1}
+    file: ./caddy/${CADDYFILE:-Caddyfile.tunnel}
+  clickhouse_small:
+    name: sentinel-clickhouse-${CLICKHOUSE_CONFIG:-v1}
+    file: ./clickhouse/small.xml
   init_roles:
     file: ./postgres/init-roles.sh
 
@@ -308,6 +353,8 @@ volumes:
   vm-long-data:
   vlogs-data:
   tempo-data:
+  clickhouse-data:
+  clickhouse-backups:
 
 networks:
   edge:

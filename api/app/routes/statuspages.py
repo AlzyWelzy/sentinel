@@ -38,7 +38,7 @@ from app.models import (
     StatusPageItem,
     StatusPageUpdate,
 )
-from app.services import badges, checkresults
+from app.services import badges, cfsaas, checkresults
 from app.services.heartbeats import is_online, last_seen
 from app.services.metrics import MetricsUnavailable, query_instant, query_series
 from app.tenancy import Tenant, TenantContext
@@ -112,7 +112,7 @@ def _domain_out(p: StatusPage) -> DomainOut | None:
         verified=p.domain_verified_at is not None,
         txt_name=f"{TXT_PREFIX}.{p.domain}",
         txt_value=f"sentinel-verify={p.domain_token}",
-        cname=_app_host(),
+        cname=settings.STATUS_DOMAIN_TARGET or _app_host(),
     )
 
 
@@ -818,10 +818,14 @@ async def set_domain(page_id: uuid.UUID, body: DomainIn, t: Tenant) -> PageOut:
     with a fresh token for its TXT record."""
     page = await _get(t, page_id)
     if body.domain is None or not body.domain.strip():
+        if page.domain and page.domain_verified_at:
+            await cfsaas.remove(page.domain)
         page.domain = page.domain_token = page.domain_verified_at = None
     else:
         d = _clean_domain(body.domain)
         if d != page.domain:
+            if page.domain and page.domain_verified_at:
+                await cfsaas.remove(page.domain)
             page.domain, page.domain_token = d, secrets.token_hex(16)
             page.domain_verified_at = None
     page.updated_at = datetime.now(UTC)
@@ -862,6 +866,8 @@ async def verify_domain(page_id: uuid.UUID, t: Tenant) -> PageOut:
         )
     if taken:
         raise HTTPException(status_code=409, detail="Another status page already uses that domain")
+    if why := await cfsaas.add(page.domain):
+        raise HTTPException(status_code=502, detail=f"Couldn't set the domain up: {why}")
     page.domain_verified_at = datetime.now(UTC)
     try:
         await t.db.flush()

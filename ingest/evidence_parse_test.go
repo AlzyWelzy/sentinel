@@ -37,7 +37,7 @@ func TestBuildEvidenceRows(t *testing.T) {
 	at := time.Now().UTC()
 	vpn := `<189>logid="0101039947" type="event" subtype="vpn" devname="FG-EDGE" action="tunnel-up" user="grace" remip=198.51.100.20 tunnelip=10.212.134.200`
 	b := proto.EvidenceBatch{
-		Logs: []proto.LogRecord{{At: at, Src: "192.0.2.1", Line: fortiTraffic}, {At: at, Src: "192.0.2.1", Line: vpn}, {At: at, Src: "192.0.2.9", Line: "<13>hello"}},
+		Logs:  []proto.LogRecord{{At: at, Src: "192.0.2.1", Line: fortiTraffic}, {At: at, Src: "192.0.2.1", Line: vpn}, {At: at, Src: "192.0.2.9", Line: "<13>hello"}},
 		Flows: []proto.FlowRecord{{At: at, Exporter: "192.0.2.1", Type: "ipfix", SrcIP: "10.0.0.5", DstIP: "1.1.1.1", Bytes: 9}},
 		FDB:   []proto.FDBEntry{{At: at, DeviceID: "dev-a", MAC: "AA:BB:CC:00:11:22", IP: "10.0.0.5", Source: "arp"}, {At: at, DeviceID: "other", MAC: "x"}},
 	}

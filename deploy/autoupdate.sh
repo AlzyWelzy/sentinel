@@ -58,7 +58,9 @@ deploy() {
 	TEMPO_CONFIG="$(sha256sum tempo/tempo.yml | cut -c1-8)"
 	BACKUP_SCRIPT="$(sha256sum postgres/backup.sh | cut -c1-8)"
 	RESTORE_CHECK="$(sha256sum postgres/restore-check.sh | cut -c1-8)"
-	export TEMPO_CONFIG BACKUP_SCRIPT RESTORE_CHECK
+	CADDY_CONFIG="$(sha256sum "caddy/${CADDYFILE:-Caddyfile.tunnel}" | cut -c1-8)"
+	CLICKHOUSE_CONFIG="$(sha256sum clickhouse/small.xml | cut -c1-8)"
+	export TEMPO_CONFIG BACKUP_SCRIPT RESTORE_CHECK CADDY_CONFIG CLICKHOUSE_CONFIG
 	docker stack deploy -q -c stack.yml --with-registry-auth sentinel >>autoupdate.log 2>&1
 }
 settled() {
@@ -73,6 +75,7 @@ rm -rf next && mkdir next
 c=$(docker create "ghcr.io/$REPO/$IMG-api:$newest")
 if docker cp "$c:/deploy/." next/ 2>/dev/null && [ -s next/stack.yml ]; then
 	tar -czf "deploy.bak-$current.tgz" stack.yml postgres tempo caddy
+	[ -d clickhouse ] && tar -czf "deploy-ch.bak-$current.tgz" clickhouse
 	cp -R next/. .
 	log "stack files from $newest"
 fi
@@ -83,7 +86,7 @@ rm -rf next
 missing=""
 # shellcheck disable=SC2016 # the ${…:?} pattern is literal
 for v in $(grep -o '\${[A-Z_]*:?}' stack.yml | tr -d '${}:?' | sort -u); do
-	case $v in SENTINEL_VERSION | AGENT_VERSION | TEMPO_CONFIG | BACKUP_SCRIPT | RESTORE_CHECK) continue ;; esac
+	case $v in SENTINEL_VERSION | AGENT_VERSION | TEMPO_CONFIG | BACKUP_SCRIPT | RESTORE_CHECK | CADDY_CONFIG | CLICKHOUSE_CONFIG) continue ;; esac
 	grep -q "^$v=..*" prod.env || missing="$missing $v"
 done
 if [ -n "$missing" ]; then

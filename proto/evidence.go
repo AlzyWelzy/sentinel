@@ -77,8 +77,8 @@ type FDBEntry struct {
 // EvidenceStats is the receiver's health since the last batch.
 type EvidenceStats struct {
 	Listening []string `json:"listening,omitempty"`
-	Dropped   uint64   `json:"dropped,omitempty"`  // full spool (UDP) or unknown senders
-	Refused   uint64   `json:"refused,omitempty"`  // senders not allowed
+	Dropped   uint64   `json:"dropped,omitempty"` // full spool (UDP) or unknown senders
+	Refused   uint64   `json:"refused,omitempty"` // senders not allowed
 	FlowErrs  uint64   `json:"flow_errs,omitempty"`
 	SpoolMB   float64  `json:"spool_mb,omitempty"` // waiting for ingest
 }
