@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     # Long-term store of hourly rollups (written by the jobs worker). Empty:
     # no rollups, and charts only reach back as far as raw retention.
     VICTORIAMETRICS_LONG_URL: str = ""
+    # IPDR evidence store; empty turns IPDR off.
+    CLICKHOUSE_URL: str = ""
+    CLICKHOUSE_USER: str = "default"
+    CLICKHOUSE_PASSWORD: str = ""
+    CLICKHOUSE_DB: str = "sentinel"
     # Raw samples are kept this long (VictoriaMetrics -retentionPeriod);
     # older ranges are read from the rollups.
     RAW_RETENTION_DAYS: int = 90

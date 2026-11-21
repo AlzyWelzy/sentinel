@@ -9800,6 +9800,548 @@
     }
    }
   },
+  "/v1/ipdr/settings": {
+   "get": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "Get Settings",
+    "operationId": "get_settings_v1_ipdr_settings_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SettingsOut"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   },
+   "put": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "Put Settings",
+    "operationId": "put_settings_v1_ipdr_settings_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SettingsIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SettingsOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/ipdr/search": {
+   "post": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "Search",
+    "operationId": "search_v1_ipdr_search_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SearchIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SearchOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/ipdr/ip-history": {
+   "post": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "Ip History",
+    "operationId": "ip_history_v1_ipdr_ip_history_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/HistoryIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SearchOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/ipdr/sources": {
+   "get": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "Sources",
+    "description": "Who has sent evidence in the last 7 days, and how much today.",
+    "operationId": "sources_v1_ipdr_sources_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SourceOut"
+         },
+         "type": "array",
+         "title": "Response Sources V1 Ipdr Sources Get"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/ipdr/exports": {
+   "get": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "List Exports",
+    "operationId": "list_exports_v1_ipdr_exports_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ExportOut"
+         },
+         "type": "array",
+         "title": "Response List Exports V1 Ipdr Exports Get"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   },
+   "post": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "Create Export",
+    "description": "Small exports are built at once; above the organisation's threshold\nan owner or admin other than the requester has to approve first.",
+    "operationId": "create_export_v1_ipdr_exports_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ExportIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ExportOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/ipdr/exports/{export_id}/decision": {
+   "post": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "Decide Export",
+    "operationId": "decide_export_v1_ipdr_exports__export_id__decision_post",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "export_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Export Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DecisionIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ExportOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/ipdr/exports/{export_id}/download": {
+   "get": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "Download Export",
+    "operationId": "download_export_v1_ipdr_exports__export_id__download_get",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "export_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Export Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/zip": {}
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/ipdr/audit": {
+   "get": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "Audit Log",
+    "operationId": "audit_log_v1_ipdr_audit_get",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "before",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer",
+         "minimum": 1
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Before"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/AuditRow"
+         },
+         "title": "Response Audit Log V1 Ipdr Audit Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/ipdr/audit/verify": {
+   "post": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "Verify Audit",
+    "operationId": "verify_audit_v1_ipdr_audit_verify_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "type": "object",
+         "title": "Response Verify Audit V1 Ipdr Audit Verify Post"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/ipdr/seals": {
+   "get": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "Seals",
+    "operationId": "seals_v1_ipdr_seals_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SealOut"
+         },
+         "type": "array",
+         "title": "Response Seals V1 Ipdr Seals Get"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/ipdr/seals/verify": {
+   "post": {
+    "tags": [
+     "ipdr"
+    ],
+    "summary": "Verify Seals",
+    "operationId": "verify_seals_v1_ipdr_seals_verify_post",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "days",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 400,
+       "minimum": 1,
+       "default": 14,
+       "title": "Days"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "additionalProperties": true
+         },
+         "title": "Response Verify Seals V1 Ipdr Seals Verify Post"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/install.sh": {
    "get": {
     "summary": "Install Script",
@@ -12390,6 +12932,63 @@
     ],
     "title": "AuditEventOut"
    },
+   "AuditRow": {
+    "properties": {
+     "seq": {
+      "type": "integer",
+      "title": "Seq"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     },
+     "actor": {
+      "type": "string",
+      "title": "Actor"
+     },
+     "action": {
+      "type": "string",
+      "title": "Action"
+     },
+     "reason": {
+      "type": "string",
+      "title": "Reason"
+     },
+     "params": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Params"
+     },
+     "result_rows": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Result Rows"
+     },
+     "hash": {
+      "type": "string",
+      "title": "Hash"
+     }
+    },
+    "type": "object",
+    "required": [
+     "seq",
+     "at",
+     "actor",
+     "action",
+     "reason",
+     "params",
+     "result_rows",
+     "hash"
+    ],
+    "title": "AuditRow"
+   },
    "AuthConfig": {
     "properties": {
      "signup_enabled": {
@@ -14316,6 +14915,26 @@
     ],
     "title": "DashboardOut"
    },
+   "DecisionIn": {
+    "properties": {
+     "approve": {
+      "type": "boolean",
+      "title": "Approve"
+     },
+     "reason": {
+      "type": "string",
+      "maxLength": 500,
+      "minLength": 5,
+      "title": "Reason"
+     }
+    },
+    "type": "object",
+    "required": [
+     "approve",
+     "reason"
+    ],
+    "title": "DecisionIn"
+   },
    "DeleteAccountIn": {
     "properties": {
      "password": {
@@ -15382,6 +16001,193 @@
     ],
     "title": "EscalationStepOut"
    },
+   "ExportIn": {
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "sessions",
+       "flows",
+       "syslog",
+       "identity",
+       "mac"
+      ],
+      "title": "Kind"
+     },
+     "reason": {
+      "type": "string",
+      "maxLength": 500,
+      "minLength": 5,
+      "title": "Reason"
+     },
+     "start": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Start"
+     },
+     "end": {
+      "type": "string",
+      "format": "date-time",
+      "title": "End"
+     },
+     "ip": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 64
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ip"
+     },
+     "port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Port"
+     },
+     "user": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User"
+     },
+     "mac": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 32
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Mac"
+     },
+     "text": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Text"
+     }
+    },
+    "type": "object",
+    "required": [
+     "kind",
+     "reason",
+     "start",
+     "end"
+    ],
+    "title": "ExportIn"
+   },
+   "ExportOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "requester": {
+      "type": "string",
+      "title": "Requester"
+     },
+     "reason": {
+      "type": "string",
+      "title": "Reason"
+     },
+     "params": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Params"
+     },
+     "row_count": {
+      "type": "integer",
+      "title": "Row Count"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "decided_by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decided By"
+     },
+     "decided_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decided At"
+     },
+     "sha256": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sha256"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Expires At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "requester",
+     "reason",
+     "params",
+     "row_count",
+     "status",
+     "decided_by",
+     "decided_at",
+     "sha256",
+     "created_at",
+     "expires_at"
+    ],
+    "title": "ExportOut"
+   },
    "Finding": {
     "properties": {
      "level": {
@@ -15745,6 +16551,39 @@
     },
     "type": "object",
     "title": "HTTPValidationError"
+   },
+   "HistoryIn": {
+    "properties": {
+     "ip": {
+      "type": "string",
+      "maxLength": 64,
+      "title": "Ip"
+     },
+     "reason": {
+      "type": "string",
+      "maxLength": 500,
+      "minLength": 5,
+      "title": "Reason"
+     },
+     "start": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Start"
+     },
+     "end": {
+      "type": "string",
+      "format": "date-time",
+      "title": "End"
+     }
+    },
+    "type": "object",
+    "required": [
+     "ip",
+     "reason",
+     "start",
+     "end"
+    ],
+    "title": "HistoryIn"
    },
    "HistoryItem": {
     "properties": {
@@ -17983,7 +18822,9 @@
       "enum": [
        "viewer",
        "operator",
-       "admin"
+       "admin",
+       "investigator",
+       "auditor"
       ],
       "title": "Role",
       "default": "viewer"
@@ -18093,7 +18934,9 @@
       "enum": [
        "viewer",
        "operator",
-       "admin"
+       "admin",
+       "investigator",
+       "auditor"
       ],
       "title": "Role"
      }
@@ -20427,6 +21270,40 @@
     ],
     "title": "ScheduleOut"
    },
+   "SealOut": {
+    "properties": {
+     "day": {
+      "type": "string",
+      "title": "Day"
+     },
+     "table": {
+      "type": "string",
+      "title": "Table"
+     },
+     "rows": {
+      "type": "integer",
+      "title": "Rows"
+     },
+     "hash": {
+      "type": "string",
+      "title": "Hash"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "day",
+     "table",
+     "rows",
+     "hash",
+     "created_at"
+    ],
+    "title": "SealOut"
+   },
    "SearchHit": {
     "properties": {
      "kind": {
@@ -20469,6 +21346,145 @@
      "title"
     ],
     "title": "SearchHit"
+   },
+   "SearchIn": {
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "sessions",
+       "flows",
+       "syslog",
+       "identity",
+       "mac"
+      ],
+      "title": "Kind"
+     },
+     "reason": {
+      "type": "string",
+      "maxLength": 500,
+      "minLength": 5,
+      "title": "Reason"
+     },
+     "start": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Start"
+     },
+     "end": {
+      "type": "string",
+      "format": "date-time",
+      "title": "End"
+     },
+     "ip": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 64
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ip"
+     },
+     "port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Port"
+     },
+     "user": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User"
+     },
+     "mac": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 32
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Mac"
+     },
+     "text": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Text"
+     },
+     "limit": {
+      "type": "integer",
+      "maximum": 1000.0,
+      "minimum": 1.0,
+      "title": "Limit",
+      "default": 200
+     },
+     "offset": {
+      "type": "integer",
+      "maximum": 100000.0,
+      "minimum": 0.0,
+      "title": "Offset",
+      "default": 0
+     }
+    },
+    "type": "object",
+    "required": [
+     "kind",
+     "reason",
+     "start",
+     "end"
+    ],
+    "title": "SearchIn"
+   },
+   "SearchOut": {
+    "properties": {
+     "rows": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Rows"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "audit_hash": {
+      "type": "string",
+      "title": "Audit Hash"
+     }
+    },
+    "type": "object",
+    "required": [
+     "rows",
+     "total",
+     "audit_hash"
+    ],
+    "title": "SearchOut"
    },
    "Segment": {
     "properties": {
@@ -20975,6 +21991,126 @@
     ],
     "title": "SessionRow"
    },
+   "SettingsIn": {
+    "properties": {
+     "enabled": {
+      "type": "boolean",
+      "title": "Enabled"
+     },
+     "retention_days": {
+      "type": "integer",
+      "maximum": 2000.0,
+      "minimum": 30.0,
+      "title": "Retention Days"
+     },
+     "collector_host_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Collector Host Id"
+     },
+     "allow": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "maxItems": 50,
+      "title": "Allow"
+     },
+     "export_approval_rows": {
+      "type": "integer",
+      "maximum": 5000000.0,
+      "minimum": 1000.0,
+      "title": "Export Approval Rows",
+      "default": 100000
+     }
+    },
+    "type": "object",
+    "required": [
+     "enabled",
+     "retention_days"
+    ],
+    "title": "SettingsIn"
+   },
+   "SettingsOut": {
+    "properties": {
+     "available": {
+      "type": "boolean",
+      "title": "Available",
+      "description": "the server has an evidence store"
+     },
+     "enabled": {
+      "type": "boolean",
+      "title": "Enabled"
+     },
+     "retention_days": {
+      "type": "integer",
+      "title": "Retention Days"
+     },
+     "collector_host_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Collector Host Id"
+     },
+     "allow": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Allow"
+     },
+     "export_approval_rows": {
+      "type": "integer",
+      "title": "Export Approval Rows"
+     },
+     "ports": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Ports",
+      "description": "where the collector listens"
+     },
+     "collector": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Collector",
+      "description": "the collector's latest report"
+     }
+    },
+    "type": "object",
+    "required": [
+     "available",
+     "enabled",
+     "retention_days",
+     "collector_host_id",
+     "allow",
+     "export_approval_rows",
+     "ports",
+     "collector"
+    ],
+    "title": "SettingsOut"
+   },
    "ShiftOut": {
     "properties": {
      "starts_at": {
@@ -21108,6 +22244,56 @@
      "minutes"
     ],
     "title": "SnoozeIn"
+   },
+   "SourceOut": {
+    "properties": {
+     "source": {
+      "type": "string",
+      "title": "Source"
+     },
+     "device_id": {
+      "type": "string",
+      "title": "Device Id"
+     },
+     "device": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Device"
+     },
+     "table": {
+      "type": "string",
+      "title": "Table"
+     },
+     "records_24h": {
+      "type": "integer",
+      "title": "Records 24H"
+     },
+     "last_received": {
+      "type": "string",
+      "title": "Last Received"
+     },
+     "unparsed_24h": {
+      "type": "integer",
+      "title": "Unparsed 24H",
+      "default": 0
+     }
+    },
+    "type": "object",
+    "required": [
+     "source",
+     "device_id",
+     "device",
+     "table",
+     "records_24h",
+     "last_received"
+    ],
+    "title": "SourceOut"
    },
    "Span": {
     "properties": {

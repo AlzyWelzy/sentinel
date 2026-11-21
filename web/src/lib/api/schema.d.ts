@@ -2851,6 +2851,202 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ipdr/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_v1_ipdr_settings_get"];
+        /** Put Settings */
+        put: operations["put_settings_v1_ipdr_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ipdr/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search */
+        post: operations["search_v1_ipdr_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ipdr/ip-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ip History */
+        post: operations["ip_history_v1_ipdr_ip_history_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ipdr/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sources
+         * @description Who has sent evidence in the last 7 days, and how much today.
+         */
+        get: operations["sources_v1_ipdr_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ipdr/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Exports */
+        get: operations["list_exports_v1_ipdr_exports_get"];
+        put?: never;
+        /**
+         * Create Export
+         * @description Small exports are built at once; above the organisation's threshold
+         *     an owner or admin other than the requester has to approve first.
+         */
+        post: operations["create_export_v1_ipdr_exports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ipdr/exports/{export_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Export */
+        post: operations["decide_export_v1_ipdr_exports__export_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ipdr/exports/{export_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Export */
+        get: operations["download_export_v1_ipdr_exports__export_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ipdr/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit Log */
+        get: operations["audit_log_v1_ipdr_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ipdr/audit/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Audit */
+        post: operations["verify_audit_v1_ipdr_audit_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ipdr/seals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Seals */
+        get: operations["seals_v1_ipdr_seals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ipdr/seals/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Seals */
+        post: operations["verify_seals_v1_ipdr_seals_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/install.sh": {
         parameters: {
             query?: never;
@@ -3780,6 +3976,30 @@ export interface components {
              */
             created_at: string;
         };
+        /** AuditRow */
+        AuditRow: {
+            /** Seq */
+            seq: number;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Actor */
+            actor: string;
+            /** Action */
+            action: string;
+            /** Reason */
+            reason: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Result Rows */
+            result_rows: number | null;
+            /** Hash */
+            hash: string;
+        };
         /** AuthConfig */
         AuthConfig: {
             /** Signup Enabled */
@@ -4403,6 +4623,13 @@ export interface components {
              */
             updated_at: string;
         };
+        /** DecisionIn */
+        DecisionIn: {
+            /** Approve */
+            approve: boolean;
+            /** Reason */
+            reason: string;
+        };
         /** DeleteAccountIn */
         DeleteAccountIn: {
             /** Password */
@@ -4744,6 +4971,72 @@ export interface components {
              */
             schedule_ids?: string[];
         };
+        /** ExportIn */
+        ExportIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "sessions" | "flows" | "syslog" | "identity" | "mac";
+            /** Reason */
+            reason: string;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Ip */
+            ip?: string | null;
+            /** Port */
+            port?: number | null;
+            /** User */
+            user?: string | null;
+            /** Mac */
+            mac?: string | null;
+            /** Text */
+            text?: string | null;
+        };
+        /** ExportOut */
+        ExportOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Requester */
+            requester: string;
+            /** Reason */
+            reason: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Row Count */
+            row_count: number;
+            /** Status */
+            status: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /** Sha256 */
+            sha256: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
         /** Finding */
         Finding: {
             /**
@@ -4855,6 +5148,23 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HistoryIn */
+        HistoryIn: {
+            /** Ip */
+            ip: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
         };
         /** HistoryItem */
         HistoryItem: {
@@ -5567,7 +5877,7 @@ export interface components {
              * @default viewer
              * @enum {string}
              */
-            role: "viewer" | "operator" | "admin";
+            role: "viewer" | "operator" | "admin" | "investigator" | "auditor";
         };
         /** MemberOut */
         MemberOut: {
@@ -5604,7 +5914,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "viewer" | "operator" | "admin";
+            role: "viewer" | "operator" | "admin" | "investigator" | "auditor";
         };
         /** MergeIn */
         MergeIn: {
@@ -6438,6 +6748,22 @@ export interface components {
             /** Used By Rules */
             used_by_rules: number;
         };
+        /** SealOut */
+        SealOut: {
+            /** Day */
+            day: string;
+            /** Table */
+            table: string;
+            /** Rows */
+            rows: number;
+            /** Hash */
+            hash: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** SearchHit */
         SearchHit: {
             /**
@@ -6454,6 +6780,57 @@ export interface components {
             title: string;
             /** Subtitle */
             subtitle?: string | null;
+        };
+        /** SearchIn */
+        SearchIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "sessions" | "flows" | "syslog" | "identity" | "mac";
+            /** Reason */
+            reason: string;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Ip */
+            ip?: string | null;
+            /** Port */
+            port?: number | null;
+            /** User */
+            user?: string | null;
+            /** Mac */
+            mac?: string | null;
+            /** Text */
+            text?: string | null;
+            /**
+             * Limit
+             * @default 200
+             */
+            limit: number;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+        };
+        /** SearchOut */
+        SearchOut: {
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+            /** Total */
+            total: number;
+            /** Audit Hash */
+            audit_hash: string;
         };
         /** Segment */
         Segment: {
@@ -6612,6 +6989,54 @@ export interface components {
             /** Current */
             current: boolean;
         };
+        /** SettingsIn */
+        SettingsIn: {
+            /** Enabled */
+            enabled: boolean;
+            /** Retention Days */
+            retention_days: number;
+            /** Collector Host Id */
+            collector_host_id?: string | null;
+            /** Allow */
+            allow?: string[];
+            /**
+             * Export Approval Rows
+             * @default 100000
+             */
+            export_approval_rows: number;
+        };
+        /** SettingsOut */
+        SettingsOut: {
+            /**
+             * Available
+             * @description the server has an evidence store
+             */
+            available: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Retention Days */
+            retention_days: number;
+            /** Collector Host Id */
+            collector_host_id: string | null;
+            /** Allow */
+            allow: string[];
+            /** Export Approval Rows */
+            export_approval_rows: number;
+            /**
+             * Ports
+             * @description where the collector listens
+             */
+            ports: {
+                [key: string]: number;
+            };
+            /**
+             * Collector
+             * @description the collector's latest report
+             */
+            collector: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** ShiftOut */
         ShiftOut: {
             /**
@@ -6666,6 +7091,26 @@ export interface components {
             minutes: number;
             /** Reason */
             reason?: string | null;
+        };
+        /** SourceOut */
+        SourceOut: {
+            /** Source */
+            source: string;
+            /** Device Id */
+            device_id: string;
+            /** Device */
+            device: string | null;
+            /** Table */
+            table: string;
+            /** Records 24H */
+            records_24h: number;
+            /** Last Received */
+            last_received: string;
+            /**
+             * Unparsed 24H
+             * @default 0
+             */
+            unparsed_24h: number;
         };
         /** Span */
         Span: {
@@ -13379,6 +13824,370 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_v1_ipdr_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+        };
+    };
+    put_settings_v1_ipdr_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_v1_ipdr_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ip_history_v1_ipdr_ip_history_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistoryIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sources_v1_ipdr_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceOut"][];
+                };
+            };
+        };
+    };
+    list_exports_v1_ipdr_exports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportOut"][];
+                };
+            };
+        };
+    };
+    create_export_v1_ipdr_exports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_export_v1_ipdr_exports__export_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                export_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_export_v1_ipdr_exports__export_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                export_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_log_v1_ipdr_audit_get: {
+        parameters: {
+            query?: {
+                before?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditRow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_audit_v1_ipdr_audit_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    seals_v1_ipdr_seals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SealOut"][];
+                };
+            };
+        };
+    };
+    verify_seals_v1_ipdr_seals_verify_post: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
             };
             /** @description Validation Error */
             422: {

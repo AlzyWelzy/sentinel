@@ -3,6 +3,7 @@
 #   curl -fsSL __DOWNLOAD_URL__/install.sh | sh -s -- --key <install key> [--tags web,production]
 #   (FreeBSD without curl: fetch -qo - ... | sh -s -- ...; OpenBSD: ftp -o - ... | sh -s -- ...)
 #   ... | sh -s -- --uninstall [--keep-config]   removes the agent again
+#   --evidence (IPDR collector) does the same for syslog on 514 and 601.
 #   --traps lets the agent receive SNMP traps on UDP 162 (systemd and OpenRC:
 #   the service gets only CAP_NET_BIND_SERVICE); without it, traps arrive on
 #   1162. The choice is kept when the script runs again; --no-traps undoes it.
@@ -47,13 +48,13 @@ while [ $# -gt 0 ]; do
         --no-autoconfig) AUTO=0; shift ;;
         --uninstall) UNINSTALL=1; shift ;;
         --keep-config) KEEP_CONFIG=1; shift ;;
-        --traps) TRAPS=1; shift ;;
+        --traps | --evidence) TRAPS=1; shift ;;
         --no-traps) TRAPS=0; shift ;;
         *) die "unknown option: $1" ;;
     esac
 done
 [ -n "$KEY" ] || [ "$UNINSTALL" = 1 ] ||
-    die "usage: install.sh --key <install key> [--tags a,b] [--no-logs] [--no-autoconfig] [--traps] | --uninstall [--keep-config]"
+    die "usage: install.sh --key <install key> [--tags a,b] [--no-logs] [--no-autoconfig] [--traps] [--evidence] | --uninstall [--keep-config]"
 
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case "$os" in
@@ -252,7 +253,7 @@ install_systemd() {
     # Keep an earlier --traps unless told otherwise.
     if [ -z "$TRAPS" ] && grep -q CAP_NET_BIND_SERVICE "$unit" 2>/dev/null; then TRAPS=1; fi
     caps=""
-    [ "$TRAPS" = 1 ] && caps="# SNMP traps on UDP 162 (install.sh --traps): this one capability only.
+    [ "$TRAPS" = 1 ] && caps="# SNMP traps on 162, syslog on 514/601 (--traps, --evidence): this one capability only.
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE"
     cat >"$unit" <<EOF
@@ -491,6 +492,6 @@ if [ "$TRAPS" = 1 ]; then
     case "$os" in
         freebsd | openbsd | netbsd)
             echo "SNMP traps: on $os the agent can't bind UDP 162 unprivileged; point devices at UDP 1162." ;;
-        *) echo "SNMP traps: received on UDP 162 (open it in this server's firewall for your devices)." ;;
+        *) echo "Low ports allowed: SNMP traps on UDP 162, and on an IPDR collector syslog on 514 (UDP) and 601 (TCP); open them in this server's firewall for your devices." ;;
     esac
 fi

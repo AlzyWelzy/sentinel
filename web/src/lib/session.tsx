@@ -160,6 +160,8 @@ export const ROLE_LABELS: Record<string, string> = {
   admin: "Admin",
   operator: "Member",
   viewer: "Read-only",
+  investigator: "Investigator",
+  auditor: "Auditor",
   staff: "Superadmin",
 };
 

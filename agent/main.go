@@ -230,6 +230,7 @@ type agent struct {
 	doneActions   []string
 	refreshNow    chan struct{}
 	net           *netPoller // network devices this agent polls for its site
+	ev            *evidence  // IPDR receivers, on the evidence collector
 	// Pushes refused (401/403) in a row, and when to try again. Used only by
 	// flush, which runs on the tick goroutine.
 	refusedPushes int
@@ -266,6 +267,17 @@ func (a *agent) loop(ctx context.Context) {
 		a.log.Error("network polling unavailable", "err", err)
 	} else {
 		a.net = n
+	}
+	if ev, err := newEvidence(a.stateDir, a.log, func(ctx context.Context, b proto.EvidenceBatch) error {
+		a.mu.Lock()
+		url, token := a.st.IngestURL, a.st.HostToken
+		a.mu.Unlock()
+		return a.client.evidence(ctx, url, token, b)
+	}); err != nil {
+		a.log.Error("evidence receivers unavailable", "err", err)
+	} else {
+		a.ev = ev
+		ev.start(ctx)
 	}
 	a.refreshConfig(ctx)
 	go a.checkLoop(ctx)
@@ -647,6 +659,9 @@ func (a *agent) refreshConfig(ctx context.Context) bool {
 	if err != nil {
 		a.log.Warn("config refresh failed", "err", err)
 		return false
+	}
+	if a.ev != nil {
+		a.ev.set(ctx, cfg.Evidence, cfg.Devices)
 	}
 	if a.net != nil {
 		a.net.set(ctx, cfg.Devices)

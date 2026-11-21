@@ -23,6 +23,7 @@ const NAV: { title: string; items: Item[] }[] = [
       { href: "/fleet", label: "Fleet wall", icon: "fleet" },
       { href: "/checks", label: "Uptime checks", icon: "checks" },
       { href: "/logs", label: "Logs", icon: "logs" },
+      { href: "/ipdr", label: "IPDR", icon: "evidence" },
       { href: "/apm", label: "APM", icon: "apm" },
     ],
   },

@@ -52,5 +52,18 @@ async def delete(db: AsyncSession, tenant_id: uuid.UUID) -> None:
         raise HTTPException(
             status_code=503, detail="Metrics store unavailable, try again"
         ) from None
+    # IPDR evidence goes too (the organisation's own records end with it).
+    from app.services import clickhouse, ipdr
+
+    try:
+        for tbl in ipdr.SEALED_TABLES:
+            await clickhouse.command(
+                f"DELETE FROM {tbl} WHERE tenant_id = {{t:UUID}}",  # noqa: S608 (constant)
+                {"t": tenant_id},
+            )
+    except (clickhouse.EvidenceUnavailable, httpx.HTTPError):
+        raise HTTPException(
+            status_code=503, detail="Evidence store unavailable, try again"
+        ) from None
     tenant = await _get(db, tenant_id)
     await db.delete(tenant)

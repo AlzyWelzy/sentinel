@@ -17,6 +17,7 @@ others stand by.
 """
 
 import asyncio
+import json
 import logging
 import time
 from datetime import UTC, datetime, timedelta
@@ -285,6 +286,76 @@ async def rollouts(now: datetime) -> None:
         await rollout.health_gate(db, now)
 
 
+IPDR_KEY = "pg:jobs:ipdr-day"
+IPDR_SEAL_LAG = 2  # days: evidence from a spool replay can arrive a day late
+
+
+async def ipdr_daily(now: datetime) -> None:
+    """For every organisation with IPDR: seal each evidence table for the
+    days 2 to 16 back that aren't sealed yet, re-verify the last 14 days,
+    apply a shortened retention, and drop expired export files."""
+    from app.services import clickhouse, ipdr
+
+    if not clickhouse.enabled():
+        return
+    async with ServiceSession() as db:
+        tenants = (
+            await db.execute(
+                text(
+                    "SELECT id, ipdr_retention_days FROM tenants"
+                    " WHERE ipdr_enabled AND status = 'active'"
+                )
+            )
+        ).all()
+    for t in tenants:
+        try:
+            async with ServiceSession() as db, db.begin():
+                await db.execute(
+                    text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(t.id)}
+                )
+                for back in range(IPDR_SEAL_LAG + 14, IPDR_SEAL_LAG - 1, -1):
+                    await ipdr.seal_day(db, t.id, (now - timedelta(days=back)).date())
+            async with ServiceSession() as db:
+                await db.execute(
+                    text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(t.id)}
+                )
+                checks = await ipdr.verify_seals(db, t.id, 14)
+                chain = await ipdr.verify_audit(db, t.id)
+            bad = [c for c in checks if not c["chain_ok"] or c["data_ok"] is False]
+            await redis.set(
+                f"pg:ipdr:verify:{t.id}",
+                json.dumps({"at": now.isoformat(), "seals_failed": bad[:20], "audit": chain}),
+                ex=8 * 86400,
+            )
+            if bad or not chain["ok"]:
+                log.error(
+                    "IPDR integrity check failed for %s: %d seal(s), audit ok=%s",
+                    t.id,
+                    len(bad),
+                    chain["ok"],
+                )
+            cutoff = (now - timedelta(days=t.ipdr_retention_days)).strftime("%Y-%m-%d %H:%M:%S")
+            for tbl in ipdr.SEALED_TABLES:
+                # Rows got their expiry when stored; a shortened retention
+                # removes the older ones too.
+                await clickhouse.command(
+                    f"DELETE FROM {tbl} WHERE tenant_id = {{t:UUID}}"  # noqa: S608 (constant)
+                    " AND received_at < {c:DateTime64(3)}",
+                    {"t": t.id, "c": cutoff},
+                )
+        except Exception:
+            log.exception("IPDR daily work failed for %s", t.id)
+    async with ServiceSession() as db, db.begin():
+        await db.execute(
+            text(
+                "UPDATE ipdr_exports SET file = NULL WHERE expires_at < now() AND file IS NOT NULL"
+            )
+        )
+        await db.execute(
+            text("DELETE FROM ipdr_exports WHERE created_at < now() - interval '400 days'")
+        )
+
+
 async def tick() -> None:
     now = datetime.now(UTC)
     try:
@@ -331,6 +402,13 @@ async def tick() -> None:
     except Exception:
         log.exception("digests failed")
     today = now.date().isoformat()
+    if now.hour >= 1 and await redis.get(IPDR_KEY) != today:
+        try:
+            await ipdr_daily(now)
+            await redis.set(IPDR_KEY, today)
+            log.info("IPDR seals and retention done")
+        except Exception:
+            log.exception("IPDR daily work failed")
     if await redis.get(CLEANUP_KEY) != today:
         try:
             await cleanup(now)

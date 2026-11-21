@@ -22,7 +22,7 @@ import { ago } from "@/lib/format";
 import { unwrap } from "@/lib/queries";
 import { ROLE_LABELS, orgName, useMe } from "@/lib/session";
 
-type Role = "viewer" | "operator" | "admin";
+type Role = "viewer" | "operator" | "admin" | "investigator" | "auditor";
 
 function Organisation() {
   const qc = useQueryClient();
@@ -226,6 +226,8 @@ function Organisation() {
                 <option value="admin">Admin</option>
                 <option value="operator">Member</option>
                 <option value="viewer">Read-only</option>
+                <option value="investigator">Investigator</option>
+                <option value="auditor">Auditor</option>
               </Select>
               <Button type="submit" variant="primary" loading={invite.isPending}>
                 Send invitation
@@ -264,6 +266,8 @@ function Organisation() {
                           <option value="admin">Admin</option>
                           <option value="operator">Member</option>
                           <option value="viewer">Read-only</option>
+                          <option value="investigator">Investigator (member + IPDR search)</option>
+                          <option value="auditor">Auditor (read-only + IPDR audit)</option>
                         </Select>
                       ) : (
                         <span className="text-ink-2">{ROLE_LABELS[m.role] ?? m.role}</span>

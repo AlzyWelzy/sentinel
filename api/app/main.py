@@ -22,6 +22,7 @@ from app.routes import (
     hostops,
     insights,
     install,
+    ipdr,
     logs,
     maintenance,
     members,
@@ -87,6 +88,7 @@ app.include_router(statuspages.public)
 app.include_router(reports.router)
 app.include_router(insights.router)
 app.include_router(maintenance.router)
+app.include_router(ipdr.router)
 app.include_router(ack.router)
 app.include_router(install.router)
 app.include_router(admin.router)

@@ -131,6 +131,11 @@ func (c *client) traces(ctx context.Context, baseURL, token, contentType string,
 	return nil
 }
 
+func (c *client) evidence(ctx context.Context, baseURL, token string, b proto.EvidenceBatch) error {
+	var out proto.EvidenceResponse
+	return c.do(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/v1/evidence", token, b, &out)
+}
+
 func (c *client) config(ctx context.Context, baseURL, token string) (proto.AgentConfig, error) {
 	var cfg proto.AgentConfig
 	err := c.do(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/agent/config", token, nil, &cfg)

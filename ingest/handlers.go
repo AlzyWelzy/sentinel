@@ -35,8 +35,9 @@ type server struct {
 	store   *store
 	cache   *cache
 	vm      *victoriaMetrics
-	vlogs   *vlogs // nil when log search is off
-	tempo   *tempo // nil when APM is off
+	vlogs   *vlogs      // nil when log search is off
+	tempo   *tempo      // nil when APM is off
+	ch      *clickhouse // nil when IPDR is off
 	log     *slog.Logger
 	configs *configCache
 	rollout rolloutCache
@@ -52,7 +53,8 @@ var rateLimits = map[string][2]int{
 	"config":   {20, 30},
 	"logs":     {60, 200},
 	"traces":   {120, 300},
-	"push":     {30, 30}, // per push token
+	"push":     {30, 30},   // per push token
+	"evidence": {600, 600}, // a busy site's collector delivers every 2 s
 }
 
 func newLimits() map[string]*limiter {
@@ -94,6 +96,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /v1/agent/config", s.limited("config", s.handleAgentConfig))
 	mux.HandleFunc("POST /v1/logs", s.limited("logs", s.handleLogs))
 	mux.HandleFunc("POST /v1/traces", s.limited("traces", s.handleTraces))
+	mux.HandleFunc("POST /v1/evidence", s.limited("evidence", s.handleEvidence))
 	mux.HandleFunc("GET /push/{token}", s.handlePush)
 	mux.HandleFunc("POST /push/{token}", s.handlePush)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {

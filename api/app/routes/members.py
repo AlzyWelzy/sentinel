@@ -33,7 +33,7 @@ from app.validation import Trimmed
 router = APIRouter(prefix="/v1")
 
 MAX_MEMBERS = 50
-Role = Literal["viewer", "operator", "admin"]
+Role = Literal["viewer", "operator", "admin", "investigator", "auditor"]
 
 
 class MemberIn(BaseModel):

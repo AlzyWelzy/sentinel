@@ -73,6 +73,24 @@ services:
     ports:
       - "127.0.0.1:${VLOGS_PORT:-9438}:9428"
 
+  # IPDR evidence (firewall sessions, flows, syslog, MAC tables).
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8.11.66
+    environment:
+      CLICKHOUSE_USER: sentinel
+      CLICKHOUSE_PASSWORD: sentinel
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    ports:
+      - "127.0.0.1:${CLICKHOUSE_PORT:-8133}:8123"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8123/ping"]
+      interval: 5s
+      retries: 20
+
   tempo:
     image: grafana/tempo:3.1.1
     user: "0"
@@ -120,6 +138,9 @@ services:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
       SUPERADMIN_EMAILS: ${SUPERADMIN_EMAILS:-}
       VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: sentinel
+      CLICKHOUSE_PASSWORD: sentinel
       VICTORIALOGS_URL: http://victorialogs:9428
       TEMPO_URL: http://tempo:3200
       ENABLED_CHANNEL_TYPES: ${ENABLED_CHANNEL_TYPES:-email,push,webhook}
@@ -152,6 +173,9 @@ services:
       PUBLIC_DOWNLOAD_URL: ${PUBLIC_DOWNLOAD_URL:-http://localhost:8010}
       AGENT_VERSION: ${AGENT_VERSION:-dev}
       CREDENTIALS_KEY: dev-only-credentials-key-change-me-in-production
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: sentinel
+      CLICKHOUSE_PASSWORD: sentinel
     ports:
       - "${INGEST_PORT:-8090}:8080"
     depends_on:
@@ -202,6 +226,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       VICTORIAMETRICS_URL: http://victoriametrics:8428
       VICTORIAMETRICS_LONG_URL: http://victoriametrics-long:8428
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: sentinel
+      CLICKHOUSE_PASSWORD: sentinel
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
       AUTH_SECRET: dev-only-auth-secret-change-me-in-production
       CREDENTIALS_KEY: dev-only-credentials-key-change-me-in-production
@@ -223,3 +250,4 @@ volumes:
   vm-long-data:
   vlogs-data:
   tempo-data:
+  clickhouse-data:

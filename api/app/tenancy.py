@@ -44,7 +44,7 @@ ACCOUNT_HEADER = "X-Sentinel-Account"
 
 # Stored role names; the web app shows operator as "member" and viewer as
 # "read-only".
-ROLES = ("viewer", "operator", "admin", "owner")
+ROLES = ("viewer", "operator", "admin", "owner", "investigator", "auditor")
 
 # What a member may change, by route. Viewers only read; everyone may
 # register their own browser for push; admins change everything except API
@@ -74,6 +74,9 @@ OPERATOR_WRITES = frozenset(
     }
 )
 OWNER_ONLY_PREFIXES = ("/v1/api-tokens", "/v1/organisation/delete")
+# IPDR routes check their own roles (searches are POSTs, and investigators
+# and auditors aren't admins).
+IPDR_PREFIX = "/v1/ipdr/"
 OWNER_ONLY_PATHS = frozenset({"/v1/members/{member_id}/make-owner"})
 
 
@@ -233,7 +236,11 @@ def check_member_write(request: Request, role: str) -> None:
         )
     if request.method.upper() in READ_ONLY_METHODS or path in ANY_MEMBER_WRITES:
         return
-    if role == "admin" or (role == "operator" and path in OPERATOR_WRITES):
+    if path.startswith(IPDR_PREFIX):
+        return
+    # An investigator is a member who may also search IPDR; an auditor
+    # reads like a read-only member.
+    if role == "admin" or (role in ("operator", "investigator") and path in OPERATOR_WRITES):
         return
     labels = {"operator": "member", "viewer": "read-only"}
     raise HTTPException(

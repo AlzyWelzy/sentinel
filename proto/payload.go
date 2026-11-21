@@ -56,6 +56,8 @@ type AgentConfig struct {
 	Devices []NetworkDevice `json:"devices,omitempty"`
 	// Address ranges to scan once for SNMP devices.
 	Discoveries []NetworkDiscovery `json:"discoveries,omitempty"`
+	// IPDR receivers, on the organisation's evidence collector only.
+	Evidence *EvidenceConfig `json:"evidence,omitempty"`
 }
 
 // NetworkDiscovery asks the agent to look for SNMP devices in a range.
