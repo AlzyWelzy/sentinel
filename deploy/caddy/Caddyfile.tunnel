@@ -17,7 +17,15 @@
 	header_up X-Forwarded-Proto https
 }
 
+# Cloudflare says which scheme the visitor used; plain http goes to https
+# (the zone's "Always Use HTTPS" isn't relied on).
+(https_only) {
+	@plainhttp header X-Forwarded-Proto http
+	redir @plainhttp https://{host}{uri} 308
+}
+
 (common) {
+	import https_only
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -55,6 +63,7 @@ http://{$INGEST_HOST} {
 }
 
 http://{$DOWNLOAD_HOST} {
+	import https_only
 	@download path /install.sh /install.ps1 /agent/*
 	handle @download {
 		reverse_proxy api:8000 {
