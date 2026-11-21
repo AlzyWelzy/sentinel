@@ -58,6 +58,7 @@ POST /v1/channels/{channel_id}/verify contact.verify Verified an alert contact
 POST /v1/checks check.create Created check {name}
 PUT /v1/checks/{check_id} check.update Changed check {name}
 DELETE /v1/checks/{check_id} check.delete Deleted a check
+POST /v1/checks/{check_id}/push-token check.push_token Made a new push URL for a check
 PATCH /v1/hosts/{host_id} server.update Changed a server's settings
 DELETE /v1/hosts/{host_id} server.delete Removed a server
 POST /v1/hosts/bulk server.bulk Changed several servers at once

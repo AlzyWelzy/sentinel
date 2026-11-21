@@ -13,7 +13,7 @@ export type ParamField = {
 export type CheckType = {
   value: string;
   label: string;
-  group: "Web" | "Network" | "Databases and brokers" | "On the server";
+  group: "Web" | "Network" | "Databases and brokers" | "On the server" | "Heartbeat";
   placeholder: string;
   probes: boolean;
   fields: ParamField[];
@@ -35,6 +35,21 @@ const TLS: ParamField[] = [
 ];
 
 export const CHECK_TYPES: CheckType[] = [
+  {
+    value: "push",
+    label: "Push (heartbeat URL)",
+    group: "Heartbeat",
+    placeholder: "",
+    probes: false,
+    fields: [
+      {
+        key: "grace_seconds",
+        label: "Grace (seconds)",
+        kind: "number",
+        hint: "Extra wait after a missed push before alerting",
+      },
+    ],
+  },
   {
     value: "http",
     label: "HTTP(S)",

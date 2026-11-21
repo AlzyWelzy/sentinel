@@ -317,6 +317,7 @@ class Check(TenantScoped):
     min_failing: Mapped[int] = mapped_column(default=1)
     enabled: Mapped[bool] = mapped_column(default=True)
     slo_target: Mapped[float] = mapped_column(Numeric(6, 3), default=99.9)
+    push_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

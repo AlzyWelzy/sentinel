@@ -42,6 +42,7 @@ SKIP = {"tenant_id", "token_hash", "key_hash", "machine_id", "invite_hash"}
 def _check_row(c: Check) -> dict:
     row = _row(c)
     row["target"], row["params"] = mask_check(c.type, c.target, dict(c.params or {}))
+    row.pop("push_token", None)
     return row
 
 

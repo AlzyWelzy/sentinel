@@ -5297,6 +5297,52 @@
     ]
    }
   },
+  "/v1/checks/{check_id}/push-token": {
+   "post": {
+    "summary": "Rotate Push Token",
+    "description": "A new push URL; the old one stops working at once.",
+    "operationId": "rotate_push_token_v1_checks__check_id__push_token_post",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "check_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Check Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/app__routes__checks__CheckOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/v1/hosts/{host_id}/actions": {
    "get": {
     "summary": "List Actions",
@@ -12806,15 +12852,16 @@
        "game",
        "snmp",
        "docker",
-       "service"
+       "service",
+       "push"
       ],
       "title": "Type"
      },
      "target": {
       "type": "string",
       "maxLength": 2048,
-      "minLength": 1,
-      "title": "Target"
+      "title": "Target",
+      "default": ""
      },
      "params": {
       "additionalProperties": {
@@ -12825,9 +12872,10 @@
      },
      "interval_seconds": {
       "type": "integer",
-      "maximum": 3600.0,
+      "maximum": 604800.0,
       "minimum": 10.0,
       "title": "Interval Seconds",
+      "description": "up to 3600; push checks up to a week",
       "default": 60
      },
      "host_id": {
@@ -12906,8 +12954,7 @@
     "type": "object",
     "required": [
      "name",
-     "type",
-     "target"
+     "type"
     ],
     "title": "CheckIn"
    },
@@ -23017,6 +23064,18 @@
        }
       ],
       "title": "Open Incident Id"
+     },
+     "push_url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Push Url",
+      "description": "push checks: call this (GET or POST) ?status=up|down&msg=&ping="
      }
     },
     "type": "object",

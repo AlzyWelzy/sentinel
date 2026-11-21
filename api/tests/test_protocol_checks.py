@@ -138,3 +138,39 @@ async def test_secrets_are_masked_and_kept(alice: User):
     assert "hunter2" not in export and "tok-123" not in export
     log = (await alice.request("GET", "/v1/audit-log")).text
     assert "hunter2" not in log and "tok-123" not in log
+
+
+async def test_push_checks(alice: User, bob: User):
+    r = await alice.request(
+        "POST",
+        "/v1/checks",
+        json={"name": "nightly backup", "type": "push", "target": "", "interval_seconds": 3600},
+    )
+    assert r.status_code == 201, r.text
+    c = r.json()
+    assert c["push_url"].startswith("http") and "/push/" in c["push_url"]
+    assert c["status"] == "pending" and c["target"] == "push"
+    rule = (await alice.request("GET", f"/v1/alert-rules/{c['rule_id']}")).json()
+    assert rule["duration_seconds"] == 0
+
+    # It runs nowhere.
+    r = await alice.request(
+        "POST", "/v1/checks", json={"name": "x", "type": "push", "target": "", "on_probes": True}
+    )
+    assert r.status_code == 422
+
+    # A new URL replaces the old one; someone else can't rotate it.
+    r = await alice.request("POST", f"/v1/checks/{c['id']}/push-token")
+    assert r.status_code == 200 and r.json()["push_url"] != c["push_url"]
+    assert (await bob.request("POST", f"/v1/checks/{c['id']}/push-token")).status_code == 404
+
+    # An edit keeps the URL.
+    body = {"name": "backup", "type": "push", "target": "push", "interval_seconds": 7200}
+    body["params"] = {"grace_seconds": "600"}
+    r2 = await alice.request("PUT", f"/v1/checks/{c['id']}", json=body)
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["push_url"] == r.json()["push_url"]
+
+    # The token isn't in the export.
+    token = r.json()["push_url"].rsplit("/", 1)[1]
+    assert token not in (await alice.request("GET", "/v1/organisation/export")).text

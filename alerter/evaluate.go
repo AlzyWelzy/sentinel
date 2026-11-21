@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -101,6 +102,8 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 		// Silence for duration_seconds is itself the condition, already
 		// measured, so fire as soon as it's observed.
 		duration = 0
+	case r.Kind == "check" && r.Check != nil && r.Check.Type == "push":
+		obs, err = e.pushObservations(ctx, r, time.Now())
 	case r.Kind == "check" && r.Check != nil && r.Check.OnProbes:
 		obs, err = e.probeCheckObservations(ctx, r)
 	case r.Kind == "logs":
@@ -122,7 +125,7 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 	// back (the "not reporting" alert covers it). Uptime checks run by the
 	// probes don't depend on any host.
 	var silent map[string]bool
-	if r.Kind != "host_down" && !(r.Check != nil && r.Check.OnProbes) {
+	if r.Kind != "host_down" && !(r.Check != nil && r.Check.standalone()) {
 		if silent, err = e.silentHosts(ctx, hosts); err != nil {
 			return err
 		}
@@ -159,7 +162,11 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 			continue
 		}
 		if act != actionNone {
-			o.Detail = e.checkDetail(ctx, r, h)
+			if missed := o.Detail; missed != "" && r.Check != nil && r.Check.Type == "push" {
+				o.Detail = missed // what silence means, not the last push's text
+			} else {
+				o.Detail = e.checkDetail(ctx, r, h)
+			}
 			if r.Kind == "host_down" && act == actionOpen {
 				if a := e.affectedDetail(ctx, r.TenantID, h); a != "" {
 					o.Detail = strings.TrimSpace(o.Detail + "\n" + a)
@@ -200,7 +207,7 @@ func (e *evaluator) subjects(ctx context.Context, r rule) ([]host, error) {
 	if r.Check == nil {
 		return nil, nil // the check was deleted; the rule goes with it
 	}
-	if r.Check.OnProbes {
+	if r.Check.standalone() {
 		return []host{{ID: r.Check.ID, Hostname: r.Check.Name, IsCheck: true, CreatedAt: r.Check.CreatedAt}}, nil
 	}
 	scoped := r
@@ -227,6 +234,45 @@ func (e *evaluator) silentHosts(ctx context.Context, hosts []host) (map[string]b
 		}
 	}
 	return out, nil
+}
+
+// pushObservations: a push check is down when its last push said down,
+// or when nothing has called in for its interval plus grace (counted from
+// creation until the first push).
+func (e *evaluator) pushObservations(ctx context.Context, r rule, now time.Time) (map[string]observation, error) {
+	c := r.Check
+	limit := time.Duration(c.Interval+c.Grace) * time.Second
+	raw, err := e.rdb.HGet(ctx, checkResultKey+c.ID, c.ID).Result()
+	if errors.Is(err, redis.Nil) {
+		if now.Sub(c.CreatedAt) < limit {
+			return map[string]observation{}, nil
+		}
+		return map[string]observation{c.ID: {HasData: true, Breached: true,
+			Detail: fmt.Sprintf("no push received in the %s since it was created", fmtAge(now.Sub(c.CreatedAt)))}}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var last struct {
+		OK bool  `json:"ok"`
+		Ts int64 `json:"ts"`
+	}
+	if json.Unmarshal([]byte(raw), &last) != nil {
+		return map[string]observation{}, nil
+	}
+	age := now.Sub(time.UnixMilli(last.Ts))
+	if age > limit {
+		return map[string]observation{c.ID: {HasData: true, Breached: true, Value: age.Seconds(),
+			Detail: fmt.Sprintf("no push for %s (expected every %s)", fmtAge(age), fmtAge(time.Duration(c.Interval)*time.Second))}}, nil
+	}
+	return map[string]observation{c.ID: {HasData: true, Breached: !last.OK, Value: age.Seconds()}}, nil
+}
+
+func fmtAge(d time.Duration) string {
+	if d < time.Minute {
+		return d.Round(time.Second).String()
+	}
+	return strings.TrimSuffix(d.Round(time.Minute).String(), "0s")
 }
 
 // probeCheckObservations: an uptime check is down when at least

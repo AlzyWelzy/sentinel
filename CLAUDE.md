@@ -172,7 +172,8 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - [x] Per-customer contacts: notification_channels.only_tag, filtered by host tags (incident members' tags for site incidents) in the alerter.
 - [x] Reminders (tenants.reminder_minutes, alerter/reminders.go), affected hosts on a not-reporting incident (alerter/affected.go, IncidentDetail.affected), site incidents (alerter/sites.go: 5+ hosts behind one public IP or poller within 15 min, incidents.site_key). Live: `e2e/api/alerting_live.py`.
 - [x] Protocol checks (agent 0.11.0, `agent/checks/protocols.go`): WebSocket, SMTP, NTP, Redis, PostgreSQL, MySQL, MongoDB, Kafka, MQTT, gRPC health, SIP, RADIUS, game servers (A2S, Minecraft), SNMP value, Docker container, system service; HTTP methods, headers, basic/bearer auth, JSON value comparisons, redirect limit; any check upside down (`invert`). Secrets in params and URL targets are answered as a mask (sending the mask back keeps them), and stay out of the export and audit log.
-- [ ] Rest of Uptime Kuma (owner's decision 2026-11-21: our own engine, every notifier): push monitors, groups, real browser, badges, status page domains, proxies, notification providers. Kuma's source was read for lessons, not copied. Beacon's console tickets and JWT sign-on don't apply.
+- [x] Push checks: `<ingest>/push/<token>` (GET/POST, status, msg, ping), down on a down push or silence past interval + grace (intervals up to a week), token rotation (`POST /v1/checks/{id}/push-token`). Live: `e2e/api/push_live.py`.
+- [ ] Rest of Uptime Kuma (owner's decision 2026-11-21: our own engine, every notifier): groups, real browser, badges, status page domains, proxies, notification providers. Kuma's source was read for lessons, not copied. Beacon's console tickets and JWT sign-on don't apply.
 
 ### Verified end to end (dev stack, real containers)
 

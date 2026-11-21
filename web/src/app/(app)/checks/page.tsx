@@ -25,7 +25,9 @@ import { canEdit, useMe } from "@/lib/session";
 
 type CheckIn = components["schemas"]["CheckIn"];
 
-const GROUPS = ["Web", "Network", "Databases and brokers", "On the server"] as const;
+const GROUPS = ["Web", "Network", "Databases and brokers", "On the server", "Heartbeat"] as const;
+const every = (s: number) =>
+  s < 60 ? `${s}s` : s < 3600 ? `${s / 60}m` : s < 86400 ? `${s / 3600}h` : `${s / 86400}d`;
 const INVERT: ParamField = {
   key: "invert",
   label: "Upside down (up when unreachable)",
@@ -62,9 +64,16 @@ export default function ChecksPage() {
   const hosts = useHosts();
   const [where, setWhere] = useState("probes");
   const kind = checkType(form.type);
+  const isPush = form.type === "push";
   const pickType = (value: string) => {
     const next = checkType(value);
-    setForm({ ...form, type: value as CheckIn["type"], target: "", params: {} });
+    setForm({
+      ...form,
+      type: value as CheckIn["type"],
+      target: "",
+      params: {},
+      interval_seconds: value === "push" ? 86400 : 60,
+    });
     if (!next.probes && where === "probes" && hosts.data?.length)
       setWhere(hosts.data[0]?.id ?? "probes");
   };
@@ -80,9 +89,11 @@ export default function ChecksPage() {
       unwrap(
         await api.POST("/v1/checks", {
           body:
-            where === "probes"
-              ? { ...form, on_probes: true, host_id: null }
-              : { ...form, on_probes: false, host_id: where },
+            form.type === "push"
+              ? { ...form, target: "push", on_probes: false, host_id: null }
+              : where === "probes"
+                ? { ...form, on_probes: true, host_id: null }
+                : { ...form, on_probes: false, host_id: where },
         }),
       ),
     onSuccess: () => {
@@ -140,37 +151,45 @@ export default function ChecksPage() {
                   placeholder="Website"
                 />
               </Field>
-              <Field
-                label={
-                  kind.group === "On the server" && kind.value !== "file" && kind.value !== "log"
-                    ? "Name on the server"
-                    : "Target"
-                }
-              >
-                <Input
-                  required
-                  value={form.target}
-                  onChange={(e) => setForm({ ...form, target: e.target.value })}
-                  placeholder={kind.placeholder}
-                  spellCheck={false}
-                  autoCapitalize="off"
-                />
-              </Field>
-              <Field label="Every">
+              {isPush ? (
+                <p className="self-end pb-2 text-[13px] text-ink-2">
+                  You get a URL to call from your job after it&apos;s added.
+                </p>
+              ) : (
+                <Field
+                  label={
+                    kind.group === "On the server" && kind.value !== "file" && kind.value !== "log"
+                      ? "Name on the server"
+                      : "Target"
+                  }
+                >
+                  <Input
+                    required
+                    value={form.target}
+                    onChange={(e) => setForm({ ...form, target: e.target.value })}
+                    placeholder={kind.placeholder}
+                    spellCheck={false}
+                    autoCapitalize="off"
+                  />
+                </Field>
+              )}
+              <Field label={isPush ? "Expect a push every" : "Every"}>
                 <Select
                   value={form.interval_seconds}
                   onChange={(e) => setForm({ ...form, interval_seconds: Number(e.target.value) })}
                   className="w-full"
                 >
-                  {[30, 60, 300, 900].map((s) => (
-                    <option key={s} value={s}>
-                      {s < 60 ? `${s}s` : `${s / 60}m`}
-                    </option>
-                  ))}
+                  {(isPush ? [60, 300, 900, 3600, 21600, 86400, 604800] : [30, 60, 300, 900]).map(
+                    (s) => (
+                      <option key={s} value={s}>
+                        {every(s)}
+                      </option>
+                    ),
+                  )}
                 </Select>
               </Field>
             </div>
-            <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
+            <div className={isPush ? "hidden" : "grid gap-3 sm:grid-cols-[12rem_1fr]"}>
               <Field label="Runs from">
                 <Select value={where} onChange={(e) => setWhere(e.target.value)} className="w-full">
                   {kind.probes && <option value="probes">Probe locations</option>}
@@ -286,8 +305,18 @@ export default function ChecksPage() {
                   <td>
                     <span className="font-medium">{c.name}</span>
                     <p className="font-mono text-xs text-ink-3">
-                      {c.type} · {c.target}
+                      {c.type === "push" ? "push" : `${c.type} · ${c.target}`}
                     </p>
+                    {c.push_url && (
+                      <button
+                        type="button"
+                        className="mt-1 max-w-xs truncate font-mono text-xs text-accent underline-offset-2 hover:underline"
+                        title="Copy the push URL"
+                        onClick={() => navigator.clipboard?.writeText(c.push_url ?? "")}
+                      >
+                        {c.push_url}
+                      </button>
+                    )}
                   </td>
                   <td>
                     <Badge tone={c.status === "up" ? "ok" : c.status === "down" ? "bad" : "idle"}>

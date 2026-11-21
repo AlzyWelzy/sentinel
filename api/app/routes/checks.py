@@ -12,6 +12,7 @@ common case ("tell me when my site is down") is one request.
 import ipaddress
 import json
 import re
+import secrets
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Literal
@@ -21,6 +22,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete, func, select, update
 
+from app.config import settings
 from app.db import ServiceSession
 from app.models import AlertRule, AlertState, Check, Host, Incident
 from app.routes.ranges import RANGES, Range
@@ -58,10 +60,11 @@ CheckType = Literal[
     "snmp",
     "docker",
     "service",
+    "push",
 ]
 # What can run on the public probes: anything over the network. Files, logs,
 # containers and services are only on the server itself.
-LOCAL_TYPES = {"file", "log", "docker", "service"}
+LOCAL_TYPES = {"file", "log", "docker", "service", "push"}
 PROBE_TYPES = set(CheckType.__args__) - LOCAL_TYPES
 # Answered as this placeholder, never in the clear; sending it back on an
 # update keeps the stored value.
@@ -107,6 +110,10 @@ def _target_host(t: str, target: str) -> str | None:
             raise ValueError("the port must be 1-65535")
         return _hostname(host.strip("[]"))
     return _hostname(target.strip("[]"))
+
+
+def push_url(token: str) -> str:
+    return f"{settings.PUBLIC_INGEST_URL.rstrip('/')}/push/{token}"
 
 
 def mask(c_type: str, target: str, params: dict[str, str]) -> tuple[str, dict[str, str]]:
@@ -209,6 +216,7 @@ PARAMS: dict[str, set[str]] = {
     "snmp": {"oid", "community", "version", "op", "expect", "timeout_seconds"},
     "docker": {"socket"},
     "service": set(),
+    "push": {"grace_seconds"},
     "dns": {"record_type", "expect", "server", "timeout_seconds"},
     "file": {"mode", "value"},
     "log": {"pattern", "threshold"},
@@ -246,9 +254,11 @@ def _is_private(host: str) -> bool:
 class CheckIn(BaseModel):
     name: Annotated[str, Trimmed, Field(min_length=1, max_length=100)]
     type: CheckType
-    target: Annotated[str, Trimmed, Field(min_length=1, max_length=2048)]
+    target: Annotated[str, Trimmed, Field(max_length=2048)] = ""
     params: dict[str, str] = Field(default_factory=dict)
-    interval_seconds: int = Field(default=60, ge=10, le=3600)
+    interval_seconds: int = Field(
+        default=60, ge=10, le=604800, description="up to 3600; push checks up to a week"
+    )
     host_id: uuid.UUID | None = None
     tag: str | None = None
     on_probes: bool = False
@@ -278,7 +288,18 @@ class CheckIn(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> "CheckIn":
-        if sum([self.host_id is not None, self.tag is not None, self.on_probes]) != 1:
+        if self.type == "push":
+            # Nothing runs it: something calls in.
+            if self.host_id or self.tag or self.on_probes:
+                raise ValueError("a push check runs nowhere: leave host_id, tag and on_probes out")
+            self.target = "push"
+            if self.interval_seconds < 60:
+                raise ValueError("a push check expects a push at least a minute apart")
+        elif self.interval_seconds > 3600:
+            raise ValueError("interval_seconds is at most 3600 (push checks: a week)")
+        elif not self.target.strip():
+            raise ValueError("a target is required")
+        elif sum([self.host_id is not None, self.tag is not None, self.on_probes]) != 1:
             raise ValueError("a check runs on one server (host_id), a tag, or the probes")
         if self.on_probes:
             if self.type not in PROBE_TYPES:
@@ -347,6 +368,8 @@ class CheckIn(BaseModel):
                     raise ValueError(
                         "lookarounds and other (? constructs aren't supported, except (?i)"
                     )
+        elif t == "push":
+            pass
         elif t in ("docker", "service"):
             if not SERVICE_RE.match(self.target) or self.target.startswith("-"):
                 raise ValueError(
@@ -395,7 +418,7 @@ class CheckIn(BaseModel):
                 raise ValueError("metadata must be a JSON object")
         if p.get("invert") not in (None, "true", "false"):
             raise ValueError("invert is true or false")
-        for key in ("max_offset_ms", "max_stratum", "max_redirects"):
+        for key in ("max_offset_ms", "max_stratum", "max_redirects", "grace_seconds"):
             if key in p and not p[key].isdigit():
                 raise ValueError(f"{key} must be a whole number")
         for key in ("timeout_seconds", "tls_expiry_days", "threshold"):
@@ -444,6 +467,9 @@ class CheckOut(BaseModel):
     last_failure: CheckResultOut | None
     rule_id: uuid.UUID | None
     open_incident_id: uuid.UUID | None
+    push_url: str | None = Field(
+        default=None, description="push checks: call this (GET or POST) ?status=up|down&msg=&ping="
+    )
 
 
 def _status(c: Check, results: list[dict]) -> CheckStatus:
@@ -451,6 +477,13 @@ def _status(c: Check, results: list[dict]) -> CheckStatus:
         return "paused"
     if not results:
         return "pending"
+    if c.type == "push":
+        # Silence is down too: the alerter counts it the same way.
+        grace = c.params.get("grace_seconds", "0") if c.params else "0"
+        limit = (c.interval_seconds + (int(grace) if str(grace).isdigit() else 0)) * 1000
+        last = results[0]
+        stale = datetime.now(UTC).timestamp() * 1000 - last.get("ts", 0) > limit
+        return "down" if stale or not last.get("ok") else "up"
     failing = sum(1 for r in results if not r.get("ok"))
     need = min(c.min_failing, len(results)) if c.on_probes else 1
     return "down" if failing >= max(need, 1) else "up"
@@ -510,6 +543,7 @@ async def _out(t: TenantContext, checks: list[Check]) -> list[CheckOut]:
                 last_failure=CheckResultOut(**failures[c.id]) if c.id in failures else None,
                 rule_id=rules.get(str(c.id)),
                 open_incident_id=open_incidents.get(c.id),
+                push_url=push_url(c.push_token) if c.type == "push" and c.push_token else None,
             )
         )
     return out
@@ -560,6 +594,8 @@ async def create_check(body: CheckIn, t: Tenant) -> CheckOut:
     if MASK in body.target or MASK in body.params.values():
         raise HTTPException(status_code=422, detail="enter the password or token itself")
     check = Check(tenant_id=t.tenant_id, **body.model_dump(exclude={"alert", "severity"}))
+    if body.type == "push":
+        check.push_token = secrets.token_urlsafe(24)
     t.db.add(check)
     await t.db.flush()
     if body.alert:
@@ -571,7 +607,10 @@ async def create_check(body: CheckIn, t: Tenant) -> CheckOut:
                 target=str(check.id),
                 # A one-off failure (a dropped packet) shouldn't page: wait
                 # for it to persist across two runs.
-                duration_seconds=0 if _event_like(body) else min(body.interval_seconds * 2, 600),
+                # A push check's grace is its wait; a down push is news.
+                duration_seconds=0
+                if _event_like(body) or body.type == "push"
+                else min(body.interval_seconds * 2, 600),
                 severity=body.severity,
             )
         )
@@ -590,6 +629,10 @@ async def update_check(check_id: uuid.UUID, body: CheckIn, t: Tenant) -> CheckOu
     check = await _get(t, check_id)
     await _check_host(t, body.host_id)
     body.target, body.params = unmask(body.type, body.target, body.params, check)
+    if body.type == "push" and not check.push_token:
+        check.push_token = secrets.token_urlsafe(24)
+    elif body.type != "push":
+        check.push_token = None
     for field, value in body.model_dump(exclude={"alert", "severity"}).items():
         setattr(check, field, value)
     check.updated_at = datetime.now(UTC)
@@ -716,3 +759,14 @@ async def list_probe_regions(t: Tenant) -> list[ProbeRegion]:
         p.probes += 1
         p.online += int(is_online(seen.get(r.id)))
     return sorted(regions.values(), key=lambda p: p.region)
+
+
+@router.post("/checks/{check_id}/push-token")
+async def rotate_push_token(check_id: uuid.UUID, t: Tenant) -> CheckOut:
+    """A new push URL; the old one stops working at once."""
+    check = await _get(t, check_id)
+    if check.type != "push":
+        raise HTTPException(status_code=422, detail="only push checks have a push URL")
+    check.push_token = secrets.token_urlsafe(24)
+    await t.db.flush()
+    return (await _out(t, [check]))[0]

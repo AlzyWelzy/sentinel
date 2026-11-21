@@ -52,7 +52,13 @@ type checkInfo struct {
 	Tag        *string
 	MinFailing int
 	CreatedAt  time.Time
+	// Push checks: how long without a push before it counts as down.
+	Interval, Grace int
 }
+
+// standalone checks are their own subject, not run on a host: uptime
+// checks on the probes, and push checks (something else calls in).
+func (c *checkInfo) standalone() bool { return c.OnProbes || c.Type == "push" }
 
 // host is what a rule is evaluated for. For a probe-run uptime check it's
 // the check itself (IsCheck): ID and Hostname are the check's id and name.
@@ -105,7 +111,10 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 		       r.labels, coalesce(r.description, ''),
 		       c.id, coalesce(c.name, ''), coalesce(c.type, ''), coalesce(c.params->>'mode', ''),
 		       coalesce(c.on_probes, false), c.host_id, c.tag,
-		       coalesce(c.min_failing, 1), coalesce(c.created_at, now()), t.logs_account_id,
+		       coalesce(c.min_failing, 1), coalesce(c.created_at, now()),
+		       coalesce(c.interval_seconds, 60),
+		       CASE WHEN c.params->>'grace_seconds' ~ '^[0-9]{1,6}$' THEN (c.params->>'grace_seconds')::int ELSE 0 END,
+		       t.logs_account_id,
 		       coalesce(t.digest_timezone, 'UTC')
 		  FROM alert_rules r
 		  JOIN tenants t ON t.id = r.tenant_id
@@ -125,7 +134,7 @@ func (s *store) rules(ctx context.Context, partition, partitions int) ([]rule, e
 			&r.Aggregation, &r.WindowSeconds, &r.RecoveryThreshold, &r.Severity, &r.ActionName,
 			&r.Labels, &r.Description,
 			&checkID, &c.Name, &c.Type, &c.Mode, &c.OnProbes, &c.HostID, &c.Tag, &c.MinFailing, &c.CreatedAt,
-			&r.LogsAccount, &r.Timezone)
+			&c.Interval, &c.Grace, &r.LogsAccount, &r.Timezone)
 		if checkID != nil {
 			c.ID = *checkID
 			r.Check = &c

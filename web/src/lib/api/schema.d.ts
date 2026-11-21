@@ -1785,6 +1785,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/checks/{check_id}/push-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Push Token
+         * @description A new push URL; the old one stops working at once.
+         */
+        post: operations["rotate_push_token_v1_checks__check_id__push_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/hosts/{host_id}/actions": {
         parameters: {
             query?: never;
@@ -3893,8 +3913,11 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "tcp" | "http" | "tls" | "dns" | "file" | "log" | "ping" | "websocket" | "smtp" | "ntp" | "redis" | "postgres" | "mysql" | "mongodb" | "kafka" | "mqtt" | "grpc" | "sip" | "radius" | "game" | "snmp" | "docker" | "service";
-            /** Target */
+            type: "tcp" | "http" | "tls" | "dns" | "file" | "log" | "ping" | "websocket" | "smtp" | "ntp" | "redis" | "postgres" | "mysql" | "mongodb" | "kafka" | "mqtt" | "grpc" | "sip" | "radius" | "game" | "snmp" | "docker" | "service" | "push";
+            /**
+             * Target
+             * @default
+             */
             target: string;
             /** Params */
             params?: {
@@ -3902,6 +3925,7 @@ export interface components {
             };
             /**
              * Interval Seconds
+             * @description up to 3600; push checks up to a week
              * @default 60
              */
             interval_seconds: number;
@@ -7290,6 +7314,11 @@ export interface components {
             rule_id: string | null;
             /** Open Incident Id */
             open_incident_id: string | null;
+            /**
+             * Push Url
+             * @description push checks: call this (GET or POST) ?status=up|down&msg=&ping=
+             */
+            push_url?: string | null;
         };
         /** TokenIn */
         app__routes__tokens__TokenIn: {
@@ -10640,6 +10669,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProbeRegion"][];
+                };
+            };
+        };
+    };
+    rotate_push_token_v1_checks__check_id__push_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                check_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__routes__checks__CheckOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

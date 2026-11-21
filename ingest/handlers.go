@@ -52,6 +52,7 @@ var rateLimits = map[string][2]int{
 	"config":   {20, 30},
 	"logs":     {60, 200},
 	"traces":   {120, 300},
+	"push":     {30, 30}, // per push token
 }
 
 func newLimits() map[string]*limiter {
@@ -93,6 +94,8 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /v1/agent/config", s.limited("config", s.handleAgentConfig))
 	mux.HandleFunc("POST /v1/logs", s.limited("logs", s.handleLogs))
 	mux.HandleFunc("POST /v1/traces", s.limited("traces", s.handleTraces))
+	mux.HandleFunc("GET /push/{token}", s.handlePush)
+	mux.HandleFunc("POST /push/{token}", s.handlePush)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("ok"))
 	})
