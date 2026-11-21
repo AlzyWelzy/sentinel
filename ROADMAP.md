@@ -15,7 +15,7 @@ What to build next, in order. Each item ends with something that runs on sentine
 1. **Billing:** plans, limits per organisation (servers, checks, retention), and Stripe or Razorpay. Room for it is already kept.
 2. **Google and GitHub sign-in.**
 3. **IPDR on real gear:** a FortiGate and Arista sending to a real collector, plus a court-ready export format review.
-4. **Correlated outages:** suggest a dependency when several servers drop together (see Open ideas in CLAUDE.md).
+4. **Correlated outages:** suggest a dependency when several servers drop together (see Open ideas in AGENTS.md).
 5. **Mobile:** a PWA with push for on-call acknowledgement.
 6. **Public API docs and a Terraform provider release** (`terraform-provider-sentinel`).
 

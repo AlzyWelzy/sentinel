@@ -38,11 +38,11 @@ Operators live in the incident list, server detail and overview during the day, 
 
 ## Brand Commitments
 
-- Name: Sentinel. Domain sentinel.rajpoot.app. Copy is plain, specific, behaviour-first (as in CLAUDE.md and the help page).
+- Name: Sentinel. Domain sentinel.rajpoot.app. Copy is plain, specific, behaviour-first (as in AGENTS.md and the help page).
 
 ## Evidence on Hand
 
-- Real behaviour documented in README.md, ARCHITECTURE.md, CLAUDE.md (fleet lessons, live tests).
+- Real behaviour documented in README.md, ARCHITECTURE.md, AGENTS.md (fleet lessons, live tests).
 - No customers, testimonials, logos, benchmarks or uptime figures exist: never invent them.
 
 ## Product Principles
