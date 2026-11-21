@@ -12966,7 +12966,8 @@
        "snmp",
        "docker",
        "service",
-       "push"
+       "push",
+       "group"
       ],
       "title": "Type"
      },
@@ -13018,6 +13019,19 @@
       "type": "boolean",
       "title": "On Probes",
       "default": false
+     },
+     "parent_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parent Id",
+      "description": "the group this check is in"
      },
      "probe_regions": {
       "items": {
@@ -23116,6 +23130,27 @@
      "slo_target": {
       "type": "number",
       "title": "Slo Target"
+     },
+     "parent_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parent Id"
+     },
+     "members": {
+      "items": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "type": "array",
+      "title": "Members",
+      "description": "groups: direct members"
      },
      "created_at": {
       "type": "string",

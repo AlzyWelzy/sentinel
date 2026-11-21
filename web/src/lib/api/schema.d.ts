@@ -3978,7 +3978,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "tcp" | "http" | "tls" | "dns" | "file" | "log" | "ping" | "websocket" | "smtp" | "ntp" | "redis" | "postgres" | "mysql" | "mongodb" | "kafka" | "mqtt" | "grpc" | "sip" | "radius" | "game" | "snmp" | "docker" | "service" | "push";
+            type: "tcp" | "http" | "tls" | "dns" | "file" | "log" | "ping" | "websocket" | "smtp" | "ntp" | "redis" | "postgres" | "mysql" | "mongodb" | "kafka" | "mqtt" | "grpc" | "sip" | "radius" | "game" | "snmp" | "docker" | "service" | "push" | "group";
             /**
              * Target
              * @default
@@ -4003,6 +4003,11 @@ export interface components {
              * @default false
              */
             on_probes: boolean;
+            /**
+             * Parent Id
+             * @description the group this check is in
+             */
+            parent_id?: string | null;
             /** Probe Regions */
             probe_regions?: string[];
             /**
@@ -7357,6 +7362,13 @@ export interface components {
             enabled: boolean;
             /** Slo Target */
             slo_target: number;
+            /** Parent Id */
+            parent_id?: string | null;
+            /**
+             * Members
+             * @description groups: direct members
+             */
+            members?: string[];
             /**
              * Created At
              * Format: date-time

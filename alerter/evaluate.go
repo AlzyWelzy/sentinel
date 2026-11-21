@@ -102,6 +102,9 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 		// Silence for duration_seconds is itself the condition, already
 		// measured, so fire as soon as it's observed.
 		duration = 0
+	case r.Kind == "check" && r.Check != nil && r.Check.Type == "group":
+		obs, err = e.groupObservations(ctx, r)
+		duration = 0 // members already waited out their own durations
 	case r.Kind == "check" && r.Check != nil && r.Check.Type == "push":
 		obs, err = e.pushObservations(ctx, r, time.Now())
 	case r.Kind == "check" && r.Check != nil && r.Check.OnProbes:
@@ -162,8 +165,8 @@ func (e *evaluator) evaluate(ctx context.Context, c *cycle, r rule) error {
 			continue
 		}
 		if act != actionNone {
-			if missed := o.Detail; missed != "" && r.Check != nil && r.Check.Type == "push" {
-				o.Detail = missed // what silence means, not the last push's text
+			if missed := o.Detail; missed != "" && r.Check != nil && (r.Check.Type == "push" || r.Check.Type == "group") {
+				o.Detail = missed // what silence means, or which members failed
 			} else {
 				o.Detail = e.checkDetail(ctx, r, h)
 			}
@@ -266,6 +269,40 @@ func (e *evaluator) pushObservations(ctx context.Context, r rule, now time.Time)
 			Detail: fmt.Sprintf("no push for %s (expected every %s)", fmtAge(age), fmtAge(time.Duration(c.Interval)*time.Second))}}, nil
 	}
 	return map[string]observation{c.ID: {HasData: true, Breached: !last.OK, Value: age.Seconds()}}, nil
+}
+
+// groupObservations: a group is down while any member has an open
+// incident, so each member's own confirmation (durations, probe counts,
+// push silence) decides; the detail names the failing members.
+func (e *evaluator) groupObservations(ctx context.Context, r rule) (map[string]observation, error) {
+	down, total, err := e.store.downMembers(ctx, r.TenantID, r.Check.ID)
+	if err != nil {
+		return nil, err
+	}
+	if total == 0 {
+		return map[string]observation{}, nil
+	}
+	return map[string]observation{r.Check.ID: {HasData: true, Breached: len(down) > 0,
+		Value: float64(len(down)), Total: float64(total), Detail: groupDetail(down, total)}}, nil
+}
+
+func groupDetail(down []groupMember, total int) string {
+	if len(down) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(down))
+	for i, m := range down {
+		if i == 5 {
+			parts = append(parts, fmt.Sprintf("and %d more", len(down)-5))
+			break
+		}
+		if m.Detail != "" {
+			parts = append(parts, fmt.Sprintf("%s (%s)", m.Name, cut(m.Detail, 120)))
+		} else {
+			parts = append(parts, m.Name)
+		}
+	}
+	return fmt.Sprintf("%d of %d down: %s", len(down), total, strings.Join(parts, ", "))
 }
 
 func fmtAge(d time.Duration) string {

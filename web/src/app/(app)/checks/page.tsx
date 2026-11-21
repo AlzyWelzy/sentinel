@@ -24,6 +24,25 @@ import { unwrap, useHosts } from "@/lib/queries";
 import { canEdit, useMe } from "@/lib/session";
 
 type CheckIn = components["schemas"]["CheckIn"];
+type CheckOut = components["schemas"]["app__routes__checks__CheckOut"];
+
+// Groups first, each followed by its members (nested), then the rest.
+function nested(all: CheckOut[]): { c: CheckOut; depth: number }[] {
+  const byId = new Map(all.map((c) => [c.id, c]));
+  const out: { c: CheckOut; depth: number }[] = [];
+  const seen = new Set<string>();
+  const walk = (c: CheckOut, depth: number) => {
+    if (seen.has(c.id)) return;
+    seen.add(c.id);
+    out.push({ c, depth });
+    for (const m of all.filter((x) => x.parent_id === c.id)) walk(m, depth + 1);
+  };
+  for (const c of all) if (!c.parent_id || !byId.has(c.parent_id)) walk(c, 0);
+  for (const c of all) walk(c, 0);
+  return out;
+}
+
+const RUNS_NOWHERE = new Set(["push", "group"]);
 
 const GROUPS = ["Web", "Network", "Databases and brokers", "On the server", "Heartbeat"] as const;
 const every = (s: number) =>
@@ -65,6 +84,35 @@ export default function ChecksPage() {
   const [where, setWhere] = useState("probes");
   const kind = checkType(form.type);
   const isPush = form.type === "push";
+  const isGroup = form.type === "group";
+  const groups = (checks.data ?? []).filter((c) => c.type === "group");
+  const move = useMutation({
+    mutationFn: async ({ c, parent }: { c: CheckOut; parent: string | null }) =>
+      unwrap(
+        await api.PUT("/v1/checks/{check_id}", {
+          params: { path: { check_id: c.id } },
+          body: {
+            name: c.name,
+            type: c.type as CheckIn["type"],
+            target: c.target,
+            params: c.params,
+            interval_seconds: c.interval_seconds,
+            host_id: c.host_id,
+            tag: c.tag,
+            on_probes: c.on_probes,
+            probe_regions: c.probe_regions,
+            min_failing: c.min_failing,
+            enabled: c.enabled,
+            slo_target: c.slo_target,
+            parent_id: parent,
+            alert: false,
+            severity: "critical",
+          },
+        }),
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["checks"] }),
+    onError: (e) => alert(errorText(e)),
+  });
   const pickType = (value: string) => {
     const next = checkType(value);
     setForm({
@@ -88,12 +136,11 @@ export default function ChecksPage() {
     mutationFn: async () =>
       unwrap(
         await api.POST("/v1/checks", {
-          body:
-            form.type === "push"
-              ? { ...form, target: "push", on_probes: false, host_id: null }
-              : where === "probes"
-                ? { ...form, on_probes: true, host_id: null }
-                : { ...form, on_probes: false, host_id: where },
+          body: RUNS_NOWHERE.has(form.type)
+            ? { ...form, target: form.type, on_probes: false, host_id: null }
+            : where === "probes"
+              ? { ...form, on_probes: true, host_id: null }
+              : { ...form, on_probes: false, host_id: where },
         }),
       ),
     onSuccess: () => {
@@ -151,7 +198,11 @@ export default function ChecksPage() {
                   placeholder="Website"
                 />
               </Field>
-              {isPush ? (
+              {isGroup ? (
+                <p className="self-end pb-2 text-[13px] text-ink-2">
+                  Down while any check in it is down. Put checks in it from the list below.
+                </p>
+              ) : isPush ? (
                 <p className="self-end pb-2 text-[13px] text-ink-2">
                   You get a URL to call from your job after it&apos;s added.
                 </p>
@@ -173,23 +224,47 @@ export default function ChecksPage() {
                   />
                 </Field>
               )}
-              <Field label={isPush ? "Expect a push every" : "Every"}>
-                <Select
-                  value={form.interval_seconds}
-                  onChange={(e) => setForm({ ...form, interval_seconds: Number(e.target.value) })}
-                  className="w-full"
-                >
-                  {(isPush ? [60, 300, 900, 3600, 21600, 86400, 604800] : [30, 60, 300, 900]).map(
-                    (s) => (
-                      <option key={s} value={s}>
-                        {every(s)}
-                      </option>
-                    ),
-                  )}
-                </Select>
-              </Field>
+              {!isGroup && (
+                <Field label={isPush ? "Expect a push every" : "Every"}>
+                  <Select
+                    value={form.interval_seconds}
+                    onChange={(e) => setForm({ ...form, interval_seconds: Number(e.target.value) })}
+                    className="w-full"
+                  >
+                    {(isPush ? [60, 300, 900, 3600, 21600, 86400, 604800] : [30, 60, 300, 900]).map(
+                      (s) => (
+                        <option key={s} value={s}>
+                          {every(s)}
+                        </option>
+                      ),
+                    )}
+                  </Select>
+                </Field>
+              )}
             </div>
-            <div className={isPush ? "hidden" : "grid gap-3 sm:grid-cols-[12rem_1fr]"}>
+            {groups.length > 0 && (
+              <div className="sm:max-w-xs">
+                <Field label="In group">
+                  <Select
+                    value={form.parent_id ?? ""}
+                    onChange={(e) => setForm({ ...form, parent_id: e.target.value || null })}
+                    className="w-full"
+                  >
+                    <option value="">No group</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+            )}
+            <div
+              className={
+                RUNS_NOWHERE.has(form.type) ? "hidden" : "grid gap-3 sm:grid-cols-[12rem_1fr]"
+              }
+            >
               <Field label="Runs from">
                 <Select value={where} onChange={(e) => setWhere(e.target.value)} className="w-full">
                   {kind.probes && <option value="probes">Probe locations</option>}
@@ -300,12 +375,16 @@ export default function ChecksPage() {
               </tr>
             </thead>
             <tbody>
-              {checks.data.map((c) => (
+              {nested(checks.data).map(({ c, depth }) => (
                 <tr key={c.id}>
-                  <td>
+                  <td style={{ paddingLeft: `${0.75 + depth * 1.5}rem` }}>
                     <span className="font-medium">{c.name}</span>
                     <p className="font-mono text-xs text-ink-3">
-                      {c.type === "push" ? "push" : `${c.type} · ${c.target}`}
+                      {c.type === "group"
+                        ? `group · ${c.members?.length ?? 0} ${(c.members?.length ?? 0) === 1 ? "check" : "checks"}`
+                        : c.type === "push"
+                          ? "push"
+                          : `${c.type} · ${c.target}`}
                     </p>
                     {c.push_url && (
                       <button
@@ -324,17 +403,36 @@ export default function ChecksPage() {
                     </Badge>
                   </td>
                   <td className="text-ink-2">
-                    {c.on_probes
-                      ? c.probe_regions.length
-                        ? c.probe_regions.join(", ")
-                        : "all probes"
-                      : "your servers"}
+                    {RUNS_NOWHERE.has(c.type)
+                      ? "—"
+                      : c.on_probes
+                        ? c.probe_regions.length
+                          ? c.probe_regions.join(", ")
+                          : "all probes"
+                        : "your servers"}
                   </td>
                   <td className="max-w-xs truncate text-xs text-ink-3">
                     {c.last_failure?.detail ?? "—"}
                   </td>
                   {editable && (
-                    <td className="text-right">
+                    <td className="whitespace-nowrap text-right">
+                      {groups.some((g) => g.id !== c.id) && (
+                        <Select
+                          aria-label={`Group for ${c.name}`}
+                          value={c.parent_id ?? ""}
+                          onChange={(e) => move.mutate({ c, parent: e.target.value || null })}
+                          className="mr-2 w-36"
+                        >
+                          <option value="">No group</option>
+                          {groups
+                            .filter((g) => g.id !== c.id)
+                            .map((g) => (
+                              <option key={g.id} value={g.id}>
+                                {g.name}
+                              </option>
+                            ))}
+                        </Select>
+                      )}
                       <Button
                         variant="ghost"
                         onClick={() => confirm(`Delete ${c.name}?`) && remove.mutate(c.id)}

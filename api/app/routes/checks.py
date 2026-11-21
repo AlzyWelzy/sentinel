@@ -61,10 +61,11 @@ CheckType = Literal[
     "docker",
     "service",
     "push",
+    "group",
 ]
 # What can run on the public probes: anything over the network. Files, logs,
 # containers and services are only on the server itself.
-LOCAL_TYPES = {"file", "log", "docker", "service", "push"}
+LOCAL_TYPES = {"file", "log", "docker", "service", "push", "group"}
 PROBE_TYPES = set(CheckType.__args__) - LOCAL_TYPES
 # Answered as this placeholder, never in the clear; sending it back on an
 # update keeps the stored value.
@@ -217,6 +218,7 @@ PARAMS: dict[str, set[str]] = {
     "docker": {"socket"},
     "service": set(),
     "push": {"grace_seconds"},
+    "group": set(),
     "dns": {"record_type", "expect", "server", "timeout_seconds"},
     "file": {"mode", "value"},
     "log": {"pattern", "threshold"},
@@ -262,6 +264,7 @@ class CheckIn(BaseModel):
     host_id: uuid.UUID | None = None
     tag: str | None = None
     on_probes: bool = False
+    parent_id: uuid.UUID | None = Field(default=None, description="the group this check is in")
     probe_regions: list[str] = Field(default_factory=list, max_length=20)
     min_failing: int = Field(default=1, ge=1, le=10)
     enabled: bool = True
@@ -288,7 +291,12 @@ class CheckIn(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> "CheckIn":
-        if self.type == "push":
+        if self.type == "group":
+            # Nothing runs it: its members are its state.
+            if self.host_id or self.tag or self.on_probes:
+                raise ValueError("a group runs nowhere: leave host_id, tag and on_probes out")
+            self.target, self.interval_seconds = "group", 60
+        elif self.type == "push":
             # Nothing runs it: something calls in.
             if self.host_id or self.tag or self.on_probes:
                 raise ValueError("a push check runs nowhere: leave host_id, tag and on_probes out")
@@ -368,7 +376,7 @@ class CheckIn(BaseModel):
                     raise ValueError(
                         "lookarounds and other (? constructs aren't supported, except (?i)"
                     )
-        elif t == "push":
+        elif t in ("push", "group"):
             pass
         elif t in ("docker", "service"):
             if not SERVICE_RE.match(self.target) or self.target.startswith("-"):
@@ -460,6 +468,8 @@ class CheckOut(BaseModel):
     min_failing: int
     enabled: bool
     slo_target: float
+    parent_id: uuid.UUID | None = None
+    members: list[uuid.UUID] = Field(default_factory=list, description="groups: direct members")
     created_at: datetime
     updated_at: datetime
     status: CheckStatus
@@ -487,6 +497,67 @@ def _status(c: Check, results: list[dict]) -> CheckStatus:
     failing = sum(1 for r in results if not r.get("ok"))
     need = min(c.min_failing, len(results)) if c.on_probes else 1
     return "down" if failing >= max(need, 1) else "up"
+
+
+def _rollup(statuses: list[str]) -> CheckStatus:
+    live = [s for s in statuses if s != "paused"]
+    if not live:
+        return "pending"
+    if "down" in live:
+        return "down"
+    return "up" if "up" in live else "pending"
+
+
+async def _groups(
+    t: TenantContext, checks: list[Check]
+) -> tuple[dict[uuid.UUID, list[uuid.UUID]], dict[uuid.UUID, CheckStatus]]:
+    """Each group's direct members, and its state: down while any member
+    (through nested groups) is down; paused members don't count."""
+    if not any(c.type == "group" for c in checks):
+        return {}, {}
+    every = list(await t.db.scalars(select(Check).where(Check.tenant_id == t.tenant_id)))
+    by_id = {c.id: c for c in every}
+    latest = await checkresults.latest([c.id for c in every if c.type != "group"])
+    tree: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for c in every:
+        if c.parent_id is not None and c.parent_id in by_id:
+            tree.setdefault(c.parent_id, []).append(c.id)
+
+    def state(cid: uuid.UUID, seen: frozenset[uuid.UUID]) -> CheckStatus:
+        c = by_id[cid]
+        if not c.enabled:
+            return "paused"
+        if c.type != "group":
+            return _status(c, latest.get(cid, []))
+        return _rollup([state(m, seen | {m}) for m in tree.get(cid, []) if m not in seen])
+
+    return tree, {c.id: state(c.id, frozenset({c.id})) for c in checks if c.type == "group"}
+
+
+async def _check_parent(
+    t: TenantContext, parent_id: uuid.UUID | None, self_id: uuid.UUID | None
+) -> None:
+    """The parent is one of this account's groups, and not inside this check."""
+    seen: set[uuid.UUID] = set()
+    cur = parent_id
+    while cur is not None:
+        if cur == self_id or cur in seen:
+            raise HTTPException(status_code=422, detail="a group can't be inside itself")
+        seen.add(cur)
+        if len(seen) > 5:
+            raise HTTPException(status_code=422, detail="groups nest at most 5 deep")
+        row = (
+            await t.db.execute(
+                select(Check.type, Check.parent_id).where(
+                    Check.id == cur, Check.tenant_id == t.tenant_id
+                )
+            )
+        ).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=422, detail="parent_id not found")
+        if row.type != "group" and cur == parent_id:
+            raise HTTPException(status_code=422, detail="parent_id must be a group")
+        cur = row.parent_id
 
 
 async def _out(t: TenantContext, checks: list[Check]) -> list[CheckOut]:
@@ -517,6 +588,7 @@ async def _out(t: TenantContext, checks: list[Check]) -> list[CheckOut]:
         for row in incident_rows:
             if row.check_id is not None:
                 open_incidents.setdefault(row.check_id, row.id)
+    tree, group_status = await _groups(t, checks)
     out = []
     for c in checks:
         results = latest.get(c.id, [])
@@ -536,9 +608,11 @@ async def _out(t: TenantContext, checks: list[Check]) -> list[CheckOut]:
                 min_failing=c.min_failing,
                 enabled=c.enabled,
                 slo_target=float(c.slo_target),
+                parent_id=c.parent_id,
+                members=tree.get(c.id, []),
                 created_at=c.created_at,
                 updated_at=c.updated_at,
-                status=_status(c, results),
+                status=group_status[c.id] if c.type == "group" else _status(c, results),
                 results=[CheckResultOut(**r) for r in results],
                 last_failure=CheckResultOut(**failures[c.id]) if c.id in failures else None,
                 rule_id=rules.get(str(c.id)),
@@ -586,6 +660,7 @@ async def list_checks(
 @router.post("/checks", status_code=status.HTTP_201_CREATED)
 async def create_check(body: CheckIn, t: Tenant) -> CheckOut:
     await _check_host(t, body.host_id)
+    await _check_parent(t, body.parent_id, None)
     count = await t.db.scalar(
         select(func.count()).select_from(Check).where(Check.tenant_id == t.tenant_id)
     )
@@ -609,7 +684,7 @@ async def create_check(body: CheckIn, t: Tenant) -> CheckOut:
                 # for it to persist across two runs.
                 # A push check's grace is its wait; a down push is news.
                 duration_seconds=0
-                if _event_like(body) or body.type == "push"
+                if _event_like(body) or body.type in ("push", "group")
                 else min(body.interval_seconds * 2, 600),
                 severity=body.severity,
             )
@@ -628,6 +703,15 @@ async def get_check(check_id: uuid.UUID, t: Tenant) -> CheckOut:
 async def update_check(check_id: uuid.UUID, body: CheckIn, t: Tenant) -> CheckOut:
     check = await _get(t, check_id)
     await _check_host(t, body.host_id)
+    await _check_parent(t, body.parent_id, check.id)
+    if check.type == "group" and body.type != "group":
+        members = await t.db.scalar(
+            select(func.count())
+            .select_from(Check)
+            .where(Check.parent_id == check.id, Check.tenant_id == t.tenant_id)
+        )
+        if members:
+            raise HTTPException(status_code=422, detail="move this group's members out first")
     body.target, body.params = unmask(body.type, body.target, body.params, check)
     if body.type == "push" and not check.push_token:
         check.push_token = secrets.token_urlsafe(24)

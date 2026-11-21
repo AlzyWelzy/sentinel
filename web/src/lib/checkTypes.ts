@@ -36,6 +36,14 @@ const TLS: ParamField[] = [
 
 export const CHECK_TYPES: CheckType[] = [
   {
+    value: "group",
+    label: "Group of checks",
+    group: "Heartbeat",
+    placeholder: "",
+    probes: false,
+    fields: [],
+  },
+  {
     value: "push",
     label: "Push (heartbeat URL)",
     group: "Heartbeat",

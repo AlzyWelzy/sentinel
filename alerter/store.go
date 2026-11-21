@@ -58,7 +58,50 @@ type checkInfo struct {
 
 // standalone checks are their own subject, not run on a host: uptime
 // checks on the probes, and push checks (something else calls in).
-func (c *checkInfo) standalone() bool { return c.OnProbes || c.Type == "push" }
+func (c *checkInfo) standalone() bool { return c.OnProbes || c.Type == "push" || c.Type == "group" }
+
+// groupMember is a check under a group (at any depth) with an open incident.
+type groupMember struct{ Name, Detail string }
+
+// downMembers returns a group's failing members and how many it has (not
+// counting nested groups or paused checks). Depth is capped in case a loop
+// was ever written past the API.
+func (s *store) downMembers(ctx context.Context, tenantID, groupID string) ([]groupMember, int, error) {
+	rows, err := s.pool.Query(ctx, `
+		WITH RECURSIVE m AS (
+		  SELECT id, name, type, 1 AS depth FROM checks
+		   WHERE parent_id = $2 AND tenant_id = $1 AND enabled
+		  UNION ALL
+		  SELECT c.id, c.name, c.type, m.depth + 1 FROM checks c JOIN m ON c.parent_id = m.id
+		   WHERE c.tenant_id = $1 AND c.enabled AND m.depth < 6
+		)
+		SELECT m.name, coalesce(i.detail, i.summary, ''), i.id IS NOT NULL
+		  FROM m
+		  LEFT JOIN LATERAL (
+		    SELECT id, detail, summary FROM incidents
+		     WHERE check_id = m.id AND tenant_id = $1 AND status = 'open'
+		     ORDER BY opened_at LIMIT 1) i ON true
+		 WHERE m.type <> 'group'
+		 ORDER BY m.name`, tenantID, groupID)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var down []groupMember
+	total := 0
+	for rows.Next() {
+		var g groupMember
+		var open bool
+		if err := rows.Scan(&g.Name, &g.Detail, &open); err != nil {
+			return nil, 0, err
+		}
+		total++
+		if open {
+			down = append(down, g)
+		}
+	}
+	return down, total, rows.Err()
+}
 
 // host is what a rule is evaluated for. For a probe-run uptime check it's
 // the check itself (IsCheck): ID and Hostname are the check's id and name.

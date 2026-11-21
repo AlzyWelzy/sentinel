@@ -318,6 +318,9 @@ class Check(TenantScoped):
     enabled: Mapped[bool] = mapped_column(default=True)
     slo_target: Mapped[float] = mapped_column(Numeric(6, 3), default=99.9)
     push_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("checks.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
