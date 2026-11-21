@@ -12790,7 +12790,23 @@
        "dns",
        "file",
        "log",
-       "ping"
+       "ping",
+       "websocket",
+       "smtp",
+       "ntp",
+       "redis",
+       "postgres",
+       "mysql",
+       "mongodb",
+       "kafka",
+       "mqtt",
+       "grpc",
+       "sip",
+       "radius",
+       "game",
+       "snmp",
+       "docker",
+       "service"
       ],
       "title": "Type"
      },
@@ -15702,6 +15718,11 @@
        }
       ],
       "title": "Disk Full In Days"
+     },
+     "kind": {
+      "type": "string",
+      "title": "Kind",
+      "default": "server"
      }
     },
     "type": "object",

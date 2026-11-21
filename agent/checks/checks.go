@@ -1,8 +1,9 @@
 // Package checks runs resource and uptime checks: TCP ports, HTTP(S) URLs,
-// TLS certificate expiry, DNS records, files and log patterns. Each check
-// runs on its own interval; the agent collects the latest results with each
-// push. Checks come from the agent's config, so they are limited to these
-// read-only probes: nothing here executes commands.
+// TLS certificate expiry, DNS records, files and log patterns, and the
+// protocol checks in protocols.go. Each check runs on its own interval; the
+// agent collects the latest results with each push. Checks come from the
+// agent's config, so they are limited to these read-only probes: the only
+// command run is the service manager's status query, with a checked name.
 package checks
 
 import (
@@ -11,6 +12,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -220,24 +222,15 @@ func (r *Runner) run(ctx context.Context, s *scheduled) (proto.CheckResult, []pr
 	}
 
 	start := time.Now()
-	var out outcome
-	switch c.Type {
-	case "tcp":
-		out = checkTCP(ctx, c.Target)
-	case "ping":
-		out = checkReachable(ctx, c.Target)
-	case "http":
-		out = r.checkHTTP(ctx, c)
-	case "tls":
-		out = checkTLS(ctx, c)
-	case "dns":
-		out = checkDNS(ctx, c)
-	case "file":
-		out = checkFile(c, &s.state)
-	case "log":
-		out = checkLog(c, &s.state)
-	default:
-		out = outcome{detail: "unknown check type " + c.Type}
+	out := r.dispatch(ctx, c, s)
+	if c.Params["invert"] == "true" {
+		// Upside down: up means the thing is unreachable or failing (a
+		// port that must stay closed, a page that must stay down).
+		if out.ok {
+			out = outcome{detail: "expected down, but " + out.detail, latency: out.latency, extra: out.extra}
+		} else {
+			out = outcome{ok: true, detail: "down, as expected: " + out.detail, latency: out.latency, extra: out.extra}
+		}
 	}
 	latency := time.Since(start)
 	if out.latency > 0 {
@@ -260,7 +253,7 @@ func (r *Runner) run(ctx context.Context, s *scheduled) (proto.CheckResult, []pr
 	samples := []proto.Sample{
 		sample("sentinel_check_up", boolValue(out.ok), c.ID),
 	}
-	if c.Type != "file" && c.Type != "log" {
+	if c.Type != "file" && c.Type != "log" && c.Type != "docker" && c.Type != "service" {
 		samples = append(samples, sample("sentinel_check_latency_seconds", latency.Seconds(), c.ID))
 	}
 	for name, v := range out.extra {
@@ -330,18 +323,44 @@ func (r *Runner) checkHTTP(ctx context.Context, c proto.Check) outcome {
 	if method == "" {
 		method = http.MethodGet
 	}
-	if method != http.MethodGet && method != http.MethodHead && method != http.MethodPost {
-		return outcome{detail: "method must be GET, HEAD or POST"}
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions:
+	default:
+		return outcome{detail: "method must be GET, HEAD, POST, PUT, PATCH, DELETE or OPTIONS"}
 	}
 	var body io.Reader
-	if method == http.MethodPost && c.Params["body"] != "" {
+	if c.Params["body"] != "" && method != http.MethodGet && method != http.MethodHead {
 		body = strings.NewReader(c.Params["body"])
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.Target, body)
 	if err != nil {
 		return outcome{detail: "invalid URL"}
 	}
+	if body != nil {
+		ct := map[string]string{"json": "application/json", "form": "application/x-www-form-urlencoded", "xml": "application/xml"}[c.Params["body_encoding"]]
+		req.Header.Set("Content-Type", orDefault(ct, "application/json"))
+	}
 	req.Header.Set("User-Agent", "Sentinel-Monitor/"+r.version)
+	if h := c.Params["headers"]; h != "" {
+		var hs map[string]string
+		if err := json.Unmarshal([]byte(h), &hs); err != nil {
+			return outcome{detail: "headers must be a JSON object of strings"}
+		}
+		for k, v := range hs {
+			req.Header.Set(k, v)
+		}
+	}
+	switch {
+	case c.Params["bearer_token"] != "":
+		req.Header.Set("Authorization", "Bearer "+c.Params["bearer_token"])
+	case c.Params["basic_user"] != "":
+		req.SetBasicAuth(c.Params["basic_user"], c.Params["basic_password"])
+	}
+	if c.Params["cache_bust"] == "true" {
+		q := req.URL.Query()
+		q.Set("_sentinel", strconv.FormatInt(time.Now().UnixNano(), 36))
+		req.URL.RawQuery = q.Encode()
+	}
 	client := r.client
 	if c.Params["tls_skip_verify"] == "true" || c.Params["public_only"] == "true" {
 		t := http.DefaultTransport.(*http.Transport).Clone()
@@ -359,6 +378,15 @@ func (r *Runner) checkHTTP(ctx context.Context, c proto.Check) outcome {
 		cl := *client
 		cl.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		client = &cl
+	} else if max := intParam(c.Params, "max_redirects", 0); max > 0 {
+		cl := *client
+		cl.CheckRedirect = func(_ *http.Request, via []*http.Request) error {
+			if len(via) > max {
+				return fmt.Errorf("more than %d redirects", max)
+			}
+			return nil
+		}
+		client = &cl
 	}
 	start := time.Now()
 	resp, err := client.Do(req)
@@ -375,15 +403,34 @@ func (r *Runner) checkHTTP(ctx context.Context, c proto.Check) outcome {
 	if resp.StatusCode < lo || resp.StatusCode > hi {
 		return outcome{detail: fmt.Sprintf("HTTP %d (expected %d-%d)", resp.StatusCode, lo, hi), latency: latency, extra: extra}
 	}
+	var page []byte
+	if c.Params["keyword"] != "" || c.Params["json_path"] != "" {
+		page, _ = io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	}
 	if kw := c.Params["keyword"]; kw != "" {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
-		found := strings.Contains(string(b), kw)
+		found := strings.Contains(string(page), kw)
+		if c.Params["keyword_case_insensitive"] == "true" {
+			found = strings.Contains(strings.ToLower(string(page)), strings.ToLower(kw))
+		}
 		if c.Params["keyword_absent"] == "true" {
 			if found {
 				return outcome{detail: fmt.Sprintf("HTTP %d, but the page contains %q", resp.StatusCode, kw), latency: latency, extra: extra}
 			}
 		} else if !found {
 			return outcome{detail: fmt.Sprintf("HTTP %d, but %q isn't on the page", resp.StatusCode, kw), latency: latency, extra: extra}
+		}
+	}
+	if path := c.Params["json_path"]; path != "" {
+		var doc any
+		if err := json.Unmarshal(page, &doc); err != nil {
+			return outcome{detail: fmt.Sprintf("HTTP %d, but the answer isn't JSON", resp.StatusCode), latency: latency, extra: extra}
+		}
+		got, err := jsonPath(doc, path)
+		if err != nil {
+			return outcome{detail: fmt.Sprintf("HTTP %d, but %s", resp.StatusCode, err), latency: latency, extra: extra}
+		}
+		if ok, why := compare(got, orDefault(c.Params["json_op"], "=="), c.Params["json_expect"]); !ok {
+			return outcome{detail: fmt.Sprintf("%s is %s: %s", path, truncate(got, 80), why), latency: latency, extra: extra}
 		}
 	}
 	if days := intParam(c.Params, "tls_expiry_days", 0); days > 0 {
@@ -705,5 +752,119 @@ func sortStrings(a []string) {
 		for j := i; j > 0 && a[j] < a[j-1]; j-- {
 			a[j], a[j-1] = a[j-1], a[j]
 		}
+	}
+}
+
+// jsonPath reads a value with a dotted path: status, data.items[0].state,
+// $.a.b (the leading $ is optional). Objects and arrays come back as JSON.
+func jsonPath(doc any, path string) (string, error) {
+	p := strings.TrimPrefix(strings.TrimPrefix(path, "$"), ".")
+	cur := doc
+	for p != "" {
+		var key string
+		if strings.HasPrefix(p, "[") {
+			end := strings.Index(p, "]")
+			if end < 0 {
+				return "", fmt.Errorf("bad path %q", path)
+			}
+			idx, err := strconv.Atoi(p[1:end])
+			arr, ok := cur.([]any)
+			if err != nil || !ok {
+				return "", fmt.Errorf("%s isn't in the answer", path)
+			}
+			if idx < 0 {
+				idx += len(arr)
+			}
+			if idx < 0 || idx >= len(arr) {
+				return "", fmt.Errorf("%s isn't in the answer", path)
+			}
+			cur, p = arr[idx], strings.TrimPrefix(p[end+1:], ".")
+			continue
+		}
+		i := strings.IndexAny(p, ".[")
+		if i < 0 {
+			key, p = p, ""
+		} else {
+			key, p = p[:i], strings.TrimPrefix(p[i:], ".")
+		}
+		obj, ok := cur.(map[string]any)
+		if !ok {
+			return "", fmt.Errorf("%s isn't in the answer", path)
+		}
+		if cur, ok = obj[key]; !ok {
+			return "", fmt.Errorf("%s isn't in the answer", path)
+		}
+	}
+	switch v := cur.(type) {
+	case string:
+		return v, nil
+	case nil:
+		return "null", nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	case bool:
+		return strconv.FormatBool(v), nil
+	}
+	b, _ := json.Marshal(cur)
+	return string(b), nil
+}
+
+// dispatch runs one check. A check that panics (a driver bug, a malformed
+// answer nobody anticipated) fails that check, not the agent.
+func (r *Runner) dispatch(ctx context.Context, c proto.Check, s *scheduled) (out outcome) {
+	defer func() {
+		if p := recover(); p != nil {
+			out = outcome{detail: fmt.Sprintf("the check crashed: %v", p)}
+		}
+	}()
+	switch c.Type {
+	case "tcp":
+		return checkTCP(ctx, c.Target)
+	case "ping":
+		return checkReachable(ctx, c.Target)
+	case "http":
+		return r.checkHTTP(ctx, c)
+	case "tls":
+		return checkTLS(ctx, c)
+	case "dns":
+		return checkDNS(ctx, c)
+	case "file":
+		return checkFile(c, &s.state)
+	case "log":
+		return checkLog(c, &s.state)
+	case "websocket":
+		return checkWebSocket(ctx, c)
+	case "smtp":
+		return checkSMTP(ctx, c)
+	case "ntp":
+		return checkNTP(ctx, c)
+	case "redis":
+		return checkRedis(ctx, c)
+	case "postgres":
+		return checkPostgres(ctx, c)
+	case "mysql":
+		return checkMySQL(ctx, c)
+	case "mongodb":
+		return checkMongo(ctx, c)
+	case "kafka":
+		return checkKafka(ctx, c)
+	case "mqtt":
+		return checkMQTT(ctx, c)
+	case "grpc":
+		return checkGRPC(ctx, c)
+	case "sip":
+		return checkSIP(ctx, c)
+	case "radius":
+		return checkRADIUS(ctx, c)
+	case "game":
+		return checkGame(ctx, c)
+	case "snmp":
+		return checkSNMP(ctx, c)
+	case "docker":
+		return checkDocker(ctx, c)
+	case "service":
+		return checkService(ctx, c)
+	default:
+		return outcome{detail: "unknown check type " + c.Type}
 	}
 }

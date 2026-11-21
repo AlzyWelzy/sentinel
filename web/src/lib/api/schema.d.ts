@@ -3893,7 +3893,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "tcp" | "http" | "tls" | "dns" | "file" | "log" | "ping";
+            type: "tcp" | "http" | "tls" | "dns" | "file" | "log" | "ping" | "websocket" | "smtp" | "ntp" | "redis" | "postgres" | "mysql" | "mongodb" | "kafka" | "mqtt" | "grpc" | "sip" | "radius" | "game" | "snmp" | "docker" | "service";
             /** Target */
             target: string;
             /** Params */
@@ -4798,6 +4798,11 @@ export interface components {
             disk_max?: number | null;
             /** Disk Full In Days */
             disk_full_in_days?: number | null;
+            /**
+             * Kind
+             * @default server
+             */
+            kind: string;
         };
         /** HotServer */
         HotServer: {

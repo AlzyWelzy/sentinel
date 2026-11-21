@@ -10,6 +10,7 @@ common case ("tell me when my site is down") is one request.
 """
 
 import ipaddress
+import json
 import re
 import uuid
 from datetime import UTC, datetime
@@ -33,11 +34,121 @@ router = APIRouter(prefix="/v1")
 
 MAX_CHECKS = 200
 MIN_PROBE_INTERVAL = 30
-CheckType = Literal["tcp", "http", "tls", "dns", "file", "log", "ping"]
-PROBE_TYPES = {"tcp", "http", "tls", "dns", "ping"}
+CheckType = Literal[
+    "tcp",
+    "http",
+    "tls",
+    "dns",
+    "file",
+    "log",
+    "ping",
+    "websocket",
+    "smtp",
+    "ntp",
+    "redis",
+    "postgres",
+    "mysql",
+    "mongodb",
+    "kafka",
+    "mqtt",
+    "grpc",
+    "sip",
+    "radius",
+    "game",
+    "snmp",
+    "docker",
+    "service",
+]
+# What can run on the public probes: anything over the network. Files, logs,
+# containers and services are only on the server itself.
+LOCAL_TYPES = {"file", "log", "docker", "service"}
+PROBE_TYPES = set(CheckType.__args__) - LOCAL_TYPES
+# Answered as this placeholder, never in the clear; sending it back on an
+# update keeps the stored value.
+MASK = "••••••••"
+SECRET_PARAMS = {"password", "secret", "bearer_token", "basic_password"}
+URL_TARGET_TYPES = {"redis", "postgres", "mysql", "mongodb"}
 HOSTNAME_RE = re.compile(
     r"^(?=.{1,253}$)([A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.?$"
 )
+
+COMPARISONS = {"==", "!=", "<", "<=", ">", ">=", "contains", "not_contains"}
+SERVICE_RE = re.compile(r"^[A-Za-z0-9@._:\\-]{1,128}$")
+OID_RE = re.compile(r"^\.?\d+(\.\d+)+$")
+
+
+def _url_target(target: str, schemes: tuple[str, ...]) -> str:
+    u = urlparse(target)
+    if u.scheme not in schemes or not u.hostname:
+        raise ValueError(f"target must be a {' or '.join(s + '://' for s in schemes)} URL")
+    _hostname(u.hostname)
+    return u.hostname
+
+
+def _target_host(t: str, target: str) -> str | None:
+    """The host a network check connects to, for the probe address rule."""
+    if t in URL_TARGET_TYPES:
+        return _url_target(
+            target,
+            {
+                "redis": ("redis", "rediss"),
+                "postgres": ("postgres", "postgresql"),
+                "mysql": ("mysql",),
+                "mongodb": ("mongodb",),
+            }[t],
+        )
+    if t == "websocket":
+        return _url_target(target, ("ws", "wss"))
+    if t == "mqtt":
+        target = target.removeprefix("mqtt://").removeprefix("mqtts://")
+    host, sep, port = target.rpartition(":")
+    if sep and port.isdigit() and not host.endswith(":"):
+        if not 1 <= int(port) <= 65535:
+            raise ValueError("the port must be 1-65535")
+        return _hostname(host.strip("[]"))
+    return _hostname(target.strip("[]"))
+
+
+def mask(c_type: str, target: str, params: dict[str, str]) -> tuple[str, dict[str, str]]:
+    """A check as answered: passwords and tokens replaced with MASK."""
+    out = {k: (MASK if k in SECRET_PARAMS and v else v) for k, v in params.items()}
+    if c_type in URL_TARGET_TYPES:
+        u = urlparse(target)
+        if u.password:
+            target = u._replace(
+                netloc=u.netloc.replace(":" + u.password + "@", ":" + MASK + "@", 1)
+            ).geturl()
+    if c_type == "http" and "headers" in out:
+        out["headers"] = (
+            MASK
+            if any(
+                k.lower() in ("authorization", "cookie", "x-api-key")
+                for k in _headers(out["headers"])
+            )
+            else out["headers"]
+        )
+    return target, out
+
+
+def _headers(raw: str) -> dict[str, str]:
+    try:
+        v = json.loads(raw)
+    except ValueError:
+        return {}
+    return v if isinstance(v, dict) else {}
+
+
+def unmask(
+    c_type: str, target: str, params: dict[str, str], old: "Check"
+) -> tuple[str, dict[str, str]]:
+    """An update that sends MASK back keeps the stored secret."""
+    old_params = old.params or {}
+    params = {k: (old_params.get(k, "") if v == MASK else v) for k, v in params.items()}
+    if MASK in target and old.type == c_type:
+        old_pw = urlparse(old.target).password or ""
+        target = target.replace(MASK, old_pw, 1)
+    return target, params
+
 
 # Parameters each check type understands; anything else is rejected, so a
 # typo doesn't silently do nothing.
@@ -54,8 +165,50 @@ PARAMS: dict[str, set[str]] = {
         "follow_redirects",
         "tls_expiry_days",
         "body",
+        "body_encoding",
+        "headers",
+        "basic_user",
+        "basic_password",
+        "bearer_token",
+        "json_path",
+        "json_op",
+        "json_expect",
+        "keyword_case_insensitive",
+        "max_redirects",
+        "cache_bust",
     },
     "tls": {"tls_expiry_days", "timeout_seconds"},
+    "websocket": {"subprotocol", "tls_skip_verify", "timeout_seconds"},
+    "smtp": {"security", "tls_skip_verify", "timeout_seconds"},
+    "ntp": {"max_offset_ms", "max_stratum", "timeout_seconds"},
+    "redis": {"tls_skip_verify", "timeout_seconds"},
+    "postgres": {"query", "expect", "timeout_seconds"},
+    "mysql": {"query", "expect", "tls_skip_verify", "timeout_seconds"},
+    "mongodb": {"tls", "tls_skip_verify", "timeout_seconds"},
+    "kafka": {"tls", "tls_skip_verify", "timeout_seconds"},
+    "mqtt": {
+        "topic",
+        "expect",
+        "username",
+        "password",
+        "tls",
+        "tls_skip_verify",
+        "timeout_seconds",
+    },
+    "grpc": {"service", "metadata", "tls", "tls_skip_verify", "timeout_seconds"},
+    "sip": {"timeout_seconds"},
+    "radius": {
+        "secret",
+        "username",
+        "password",
+        "called_station_id",
+        "calling_station_id",
+        "timeout_seconds",
+    },
+    "game": {"protocol", "timeout_seconds"},
+    "snmp": {"oid", "community", "version", "op", "expect", "timeout_seconds"},
+    "docker": {"socket"},
+    "service": set(),
     "dns": {"record_type", "expect", "server", "timeout_seconds"},
     "file": {"mode", "value"},
     "log": {"pattern", "threshold"},
@@ -129,11 +282,11 @@ class CheckIn(BaseModel):
             raise ValueError("a check runs on one server (host_id), a tag, or the probes")
         if self.on_probes:
             if self.type not in PROBE_TYPES:
-                raise ValueError("file and log checks run on a server, not the probes")
+                raise ValueError(f"{self.type} checks run on a server, not the probes")
             self.interval_seconds = max(self.interval_seconds, MIN_PROBE_INTERVAL)
         else:
             self.probe_regions, self.min_failing = [], 1
-        unknown = set(self.params) - PARAMS[self.type]
+        unknown = set(self.params) - PARAMS[self.type] - {"invert"}
         if unknown:
             raise ValueError(f"unknown params for {self.type}: {', '.join(sorted(unknown))}")
         self.params = {
@@ -194,6 +347,57 @@ class CheckIn(BaseModel):
                     raise ValueError(
                         "lookarounds and other (? constructs aren't supported, except (?i)"
                     )
+        elif t in ("docker", "service"):
+            if not SERVICE_RE.match(self.target) or self.target.startswith("-"):
+                raise ValueError(
+                    f"target must be a {'container' if t == 'docker' else 'service'} name"
+                )
+        elif t != "http":
+            host = _target_host(t, self.target)
+            if self.on_probes and host and _is_private(host):
+                raise ValueError("public probes can only check public addresses")
+        p = self.params
+        if t == "http":
+            if "headers" in p and p["headers"] != MASK:
+                try:
+                    h = json.loads(p["headers"])
+                except ValueError:
+                    raise ValueError("headers must be a JSON object") from None
+                if not isinstance(h, dict) or not all(
+                    isinstance(k, str) and isinstance(v, str) for k, v in h.items()
+                ):
+                    raise ValueError("headers must be a JSON object of strings")
+            if p.get("body_encoding", "json") not in ("json", "form", "xml"):
+                raise ValueError("body_encoding is json, form or xml")
+            if "basic_user" in p and "bearer_token" in p:
+                raise ValueError("use basic_user or bearer_token, not both")
+        if "json_op" in p and p["json_op"] not in COMPARISONS:
+            raise ValueError(f"json_op is one of {', '.join(sorted(COMPARISONS))}")
+        if "op" in p and p["op"] not in COMPARISONS:
+            raise ValueError(f"op is one of {', '.join(sorted(COMPARISONS))}")
+        if t == "smtp" and p.get("security", "none") not in ("none", "starttls", "tls"):
+            raise ValueError("security is none, starttls or tls")
+        if t == "game" and p.get("protocol", "a2s") not in ("a2s", "minecraft"):
+            raise ValueError("protocol is a2s (Source/Steam games) or minecraft")
+        if t == "snmp":
+            if not OID_RE.match(p.get("oid", "")):
+                raise ValueError("an SNMP check needs an oid, e.g. 1.3.6.1.2.1.1.3.0")
+            if p.get("version", "2c") not in ("1", "2c"):
+                raise ValueError("version is 1 or 2c (v3 devices are polled as network devices)")
+        if t == "radius" and not (p.get("secret") and p.get("username")):
+            raise ValueError("a RADIUS check needs secret and username")
+        if t == "grpc" and "metadata" in p:
+            try:
+                md = json.loads(p["metadata"])
+            except ValueError:
+                md = None
+            if not isinstance(md, dict):
+                raise ValueError("metadata must be a JSON object")
+        if p.get("invert") not in (None, "true", "false"):
+            raise ValueError("invert is true or false")
+        for key in ("max_offset_ms", "max_stratum", "max_redirects"):
+            if key in p and not p[key].isdigit():
+                raise ValueError(f"{key} must be a whole number")
         for key in ("timeout_seconds", "tls_expiry_days", "threshold"):
             if key in self.params and not self.params[key].isdigit():
                 raise ValueError(f"{key} must be a whole number")
@@ -283,13 +487,14 @@ async def _out(t: TenantContext, checks: list[Check]) -> list[CheckOut]:
     out = []
     for c in checks:
         results = latest.get(c.id, [])
+        target, params = mask(c.type, c.target, {k: str(v) for k, v in (c.params or {}).items()})
         out.append(
             CheckOut(
                 id=c.id,
                 name=c.name,
                 type=c.type,
-                target=c.target,
-                params={k: str(v) for k, v in (c.params or {}).items()},
+                target=target,
+                params=params,
                 interval_seconds=c.interval_seconds,
                 host_id=c.host_id,
                 tag=c.tag,
@@ -352,6 +557,8 @@ async def create_check(body: CheckIn, t: Tenant) -> CheckOut:
     )
     if (count or 0) >= MAX_CHECKS:
         raise HTTPException(status_code=422, detail=f"at most {MAX_CHECKS} checks per account")
+    if MASK in body.target or MASK in body.params.values():
+        raise HTTPException(status_code=422, detail="enter the password or token itself")
     check = Check(tenant_id=t.tenant_id, **body.model_dump(exclude={"alert", "severity"}))
     t.db.add(check)
     await t.db.flush()
@@ -382,6 +589,7 @@ async def get_check(check_id: uuid.UUID, t: Tenant) -> CheckOut:
 async def update_check(check_id: uuid.UUID, body: CheckIn, t: Tenant) -> CheckOut:
     check = await _get(t, check_id)
     await _check_host(t, body.host_id)
+    body.target, body.params = unmask(body.type, body.target, body.params, check)
     for field, value in body.model_dump(exclude={"alert", "severity"}).items():
         setattr(check, field, value)
     check.updated_at = datetime.now(UTC)

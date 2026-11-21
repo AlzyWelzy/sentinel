@@ -33,9 +33,16 @@ from app.models import (
     TenantMember,
 )
 from app.routes.channels import mask_target
+from app.routes.checks import mask as mask_check
 
 # Never exported: credential hashes, machine ids, the agent's state.
 SKIP = {"tenant_id", "token_hash", "key_hash", "machine_id", "invite_hash"}
+
+
+def _check_row(c: Check) -> dict:
+    row = _row(c)
+    row["target"], row["params"] = mask_check(c.type, c.target, dict(c.params or {}))
+    return row
 
 
 def _json(v: Any) -> Any:
@@ -123,7 +130,7 @@ async def build(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
             if i.billing_tag
         ],
         "alert_rules": [_row(r) for r in await _all(db, AlertRule, tenant_id)],
-        "checks": [_row(c) for c in await _all(db, Check, tenant_id)],
+        "checks": [_check_row(c) for c in await _all(db, Check, tenant_id)],
         "contacts": channels,
         "maintenance_windows": [_row(w) for w in await _all(db, MaintenanceWindow, tenant_id)],
         "oncall_schedules": [_row(s) for s in await _all(db, OncallSchedule, tenant_id)],

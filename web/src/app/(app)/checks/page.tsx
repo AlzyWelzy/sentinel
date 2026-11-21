@@ -19,10 +19,18 @@ import {
 } from "@/components/ui";
 import { api, errorText } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { unwrap } from "@/lib/queries";
+import { CHECK_TYPES, checkType, type ParamField } from "@/lib/checkTypes";
+import { unwrap, useHosts } from "@/lib/queries";
 import { canEdit, useMe } from "@/lib/session";
 
 type CheckIn = components["schemas"]["CheckIn"];
+
+const GROUPS = ["Web", "Network", "Databases and brokers", "On the server"] as const;
+const INVERT: ParamField = {
+  key: "invert",
+  label: "Upside down (up when unreachable)",
+  kind: "bool",
+};
 
 export default function ChecksPage() {
   const qc = useQueryClient();
@@ -40,7 +48,7 @@ export default function ChecksPage() {
   const [form, setForm] = useState<CheckIn>({
     name: "",
     type: "http",
-    target: "https://",
+    target: "",
     interval_seconds: 60,
     on_probes: true,
     probe_regions: [],
@@ -51,12 +59,35 @@ export default function ChecksPage() {
     severity: "critical",
     params: {},
   });
+  const hosts = useHosts();
+  const [where, setWhere] = useState("probes");
+  const kind = checkType(form.type);
+  const pickType = (value: string) => {
+    const next = checkType(value);
+    setForm({ ...form, type: value as CheckIn["type"], target: "", params: {} });
+    if (!next.probes && where === "probes" && hosts.data?.length)
+      setWhere(hosts.data[0]?.id ?? "probes");
+  };
+  const setParam = (key: string, value: string) => {
+    const params = { ...(form.params ?? {}) };
+    if (value === "") delete params[key];
+    else params[key] = value;
+    setForm({ ...form, params });
+  };
   const [error, setError] = useState<string | null>(null);
   const create = useMutation({
-    mutationFn: async () => unwrap(await api.POST("/v1/checks", { body: form })),
+    mutationFn: async () =>
+      unwrap(
+        await api.POST("/v1/checks", {
+          body:
+            where === "probes"
+              ? { ...form, on_probes: true, host_id: null }
+              : { ...form, on_probes: false, host_id: where },
+        }),
+      ),
     onSuccess: () => {
       setError(null);
-      setForm({ ...form, name: "", target: form.type === "http" ? "https://" : "" });
+      setForm({ ...form, name: "", target: "", params: {} });
       qc.invalidateQueries({ queryKey: ["checks"] });
     },
     onError: (e) => setError(errorText(e)),
@@ -72,66 +103,148 @@ export default function ChecksPage() {
     <>
       <PageHeader
         title="Uptime checks"
-        subtitle="URLs, ports, certificates and DNS, checked from probe locations or your own servers."
+        subtitle="Websites, ports, certificates, DNS, databases, brokers, game servers, containers and services, checked from probe locations or your own servers."
       />
       {editable && (
         <Card title="New check" className="mb-6">
           <form
-            className="grid gap-3 sm:grid-cols-[8rem_1fr_1fr_8rem_auto] sm:items-end"
+            className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
               create.mutate();
             }}
           >
-            <Field label="Type">
-              <Select
-                value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value as CheckIn["type"] })}
-                className="w-full"
-              >
-                <option value="http">HTTP(S)</option>
-                <option value="tcp">TCP port</option>
-                <option value="tls">TLS certificate</option>
-                <option value="dns">DNS</option>
-              </Select>
-            </Field>
-            <Field label="Name">
-              <Input
-                required
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Website"
-              />
-            </Field>
-            <Field label="Target">
-              <Input
-                required
-                value={form.target}
-                onChange={(e) => setForm({ ...form, target: e.target.value })}
-                placeholder={
-                  form.type === "http"
-                    ? "https://example.com"
-                    : form.type === "dns"
-                      ? "example.com"
-                      : "example.com:443"
+            <div className="grid gap-3 sm:grid-cols-[12rem_1fr_2fr_8rem] sm:items-end">
+              <Field label="Type">
+                <Select
+                  value={form.type}
+                  onChange={(e) => pickType(e.target.value)}
+                  className="w-full"
+                >
+                  {GROUPS.map((g) => (
+                    <optgroup key={g} label={g}>
+                      {CHECK_TYPES.filter((t) => t.group === g).map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Name">
+                <Input
+                  required
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="Website"
+                />
+              </Field>
+              <Field
+                label={
+                  kind.group === "On the server" && kind.value !== "file" && kind.value !== "log"
+                    ? "Name on the server"
+                    : "Target"
                 }
-              />
-            </Field>
-            <Field label="Every">
-              <Select
-                value={form.interval_seconds}
-                onChange={(e) => setForm({ ...form, interval_seconds: Number(e.target.value) })}
-                className="w-full"
               >
-                {[30, 60, 300, 900].map((s) => (
-                  <option key={s} value={s}>
-                    {s < 60 ? `${s}s` : `${s / 60}m`}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+                <Input
+                  required
+                  value={form.target}
+                  onChange={(e) => setForm({ ...form, target: e.target.value })}
+                  placeholder={kind.placeholder}
+                  spellCheck={false}
+                  autoCapitalize="off"
+                />
+              </Field>
+              <Field label="Every">
+                <Select
+                  value={form.interval_seconds}
+                  onChange={(e) => setForm({ ...form, interval_seconds: Number(e.target.value) })}
+                  className="w-full"
+                >
+                  {[30, 60, 300, 900].map((s) => (
+                    <option key={s} value={s}>
+                      {s < 60 ? `${s}s` : `${s / 60}m`}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
+              <Field label="Runs from">
+                <Select value={where} onChange={(e) => setWhere(e.target.value)} className="w-full">
+                  {kind.probes && <option value="probes">Probe locations</option>}
+                  {hosts.data?.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.hostname}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              {where === "probes" && !kind.probes && (
+                <p className="self-end text-xs text-warn">Pick the server this runs on.</p>
+              )}
+            </div>
+            {
+              <details
+                className="rounded border border-line p-3"
+                open={kind.fields.length > 0 && kind.value !== "http"}
+              >
+                <summary className="cursor-pointer text-[13px] font-medium">Options</summary>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  {kind.fields
+                    .filter((f) => f.kind !== "bool")
+                    .map((f) => (
+                      <Field key={f.key} label={f.label} hint={f.hint}>
+                        {f.kind === "select" ? (
+                          <Select
+                            value={form.params?.[f.key] ?? ""}
+                            onChange={(e) => setParam(f.key, e.target.value)}
+                            className="w-full"
+                          >
+                            <option value="">Default</option>
+                            {f.options?.map(([v, l]) => (
+                              <option key={v} value={v}>
+                                {l}
+                              </option>
+                            ))}
+                          </Select>
+                        ) : (
+                          <Input
+                            type={
+                              f.kind === "password"
+                                ? "password"
+                                : f.kind === "number"
+                                  ? "number"
+                                  : "text"
+                            }
+                            min={f.kind === "number" ? 0 : undefined}
+                            value={form.params?.[f.key] ?? ""}
+                            onChange={(e) => setParam(f.key, e.target.value)}
+                            placeholder={f.placeholder}
+                            autoComplete={f.kind === "password" ? "new-password" : "off"}
+                            spellCheck={false}
+                          />
+                        )}
+                      </Field>
+                    ))}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[13px]">
+                  {[...kind.fields.filter((f) => f.kind === "bool"), INVERT].map((f) => (
+                    <label key={f.key} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={form.params?.[f.key] === "true"}
+                        onChange={(e) => setParam(f.key, e.target.checked ? "true" : "")}
+                      />
+                      {f.label}
+                    </label>
+                  ))}
+                </div>
+              </details>
+            }
             <Button type="submit" variant="primary" loading={create.isPending}>
-              Add
+              Add check
             </Button>
           </form>
           {error && (
@@ -189,11 +302,7 @@ export default function ChecksPage() {
                       : "your servers"}
                   </td>
                   <td className="max-w-xs truncate text-xs text-ink-3">
-                    {typeof c.last_failure === "string"
-                      ? c.last_failure
-                      : c.last_failure
-                        ? JSON.stringify(c.last_failure)
-                        : "—"}
+                    {c.last_failure?.detail ?? "—"}
                   </td>
                   {editable && (
                     <td className="text-right">

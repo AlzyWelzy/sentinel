@@ -5,6 +5,7 @@ with anything secret-looking redacted."""
 
 import json
 import logging
+import re
 import uuid
 from typing import Any
 
@@ -15,7 +16,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 log = logging.getLogger("sentinel.audit")
 
 MAX_DETAILS = 4000
-REDACT = ("password", "secret", "token", "key", "auth", "code", "p256dh", "webhook_url")
+REDACT = (
+    "password",
+    "secret",
+    "token",
+    "key",
+    "auth",
+    "code",
+    "p256dh",
+    "webhook_url",
+    "headers",
+    "community",
+)
+# user:password@ in a URL (database check targets, proxies).
+URL_PASSWORD = re.compile(r"(\w[\w+.-]*://[^/@:\s]*:)[^/@\s]+@")
 # Not changes worth recording: dry runs and per-person conveniences.
 SKIP = {
     ("POST", "/v1/alert-rules/preview"),
@@ -99,6 +113,8 @@ def redact(value: Any) -> Any:
         }
     if isinstance(value, list):
         return [redact(v) for v in value[:50]]
+    if isinstance(value, str):
+        return URL_PASSWORD.sub(r"\1[redacted]@", value)
     return value
 
 
