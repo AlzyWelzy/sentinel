@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chromedp/cdproto/emulation"
@@ -156,6 +157,57 @@ func (s *pageStats) listen(ev any) {
 	}
 }
 
+var errNoChromium = errors.New("no Chromium on this machine: install chromium (or google-chrome), or set a remote browser")
+
+// noSandbox is set once Chromium has failed to start with its sandbox here.
+var noSandbox atomic.Bool
+
+// startBrowser launches (or connects to) a browser and opens a tab with
+// network and runtime events on.
+func startBrowser(ctx context.Context, p map[string]string, proxy string, stats *pageStats, unsandboxed bool) (context.Context, func(), error) {
+	var alloc context.Context
+	var cancelAlloc context.CancelFunc
+	if ws := p["browser_ws"]; ws != "" {
+		alloc, cancelAlloc = chromedp.NewRemoteAllocator(ctx, ws)
+	} else {
+		bin := findChromium()
+		if bin == "" {
+			return ctx, func() {}, errNoChromium
+		}
+		opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
+		opts = append(opts,
+			chromedp.ExecPath(bin),
+			chromedp.WindowSize(browserViewportW, browserViewportH),
+			chromedp.WSURLReadTimeout(15*time.Second),
+			chromedp.Flag("force-webrtc-ip-handling-policy", "disable_non_proxied_udp"),
+			chromedp.Flag("webrtc-ip-handling-policy", "disable_non_proxied_udp"),
+			chromedp.Flag("disable-features", "WebRtcHideLocalIpsWithMdns,Translate,MediaRouter"),
+		)
+		if unsandboxed || os.Geteuid() == 0 || os.Getenv("SENTINEL_BROWSER_NO_SANDBOX") == "1" {
+			opts = append(opts, chromedp.NoSandbox)
+		}
+		if p["tls_skip_verify"] == "true" {
+			opts = append(opts, chromedp.Flag("ignore-certificate-errors", true))
+		}
+		if proxy != "" {
+			opts = append(opts,
+				chromedp.ProxyServer("http://"+proxy),
+				// Loopback too: Chromium bypasses the proxy for it by default.
+				chromedp.Flag("proxy-bypass-list", "<-loopback>"),
+			)
+		}
+		alloc, cancelAlloc = chromedp.NewExecAllocator(ctx, opts...)
+	}
+	bctx, cancelBrowser := chromedp.NewContext(alloc)
+	closeAll := func() { cancelBrowser(); cancelAlloc() }
+	chromedp.ListenTarget(bctx, stats.listen)
+	if err := chromedp.Run(bctx, network.Enable(), runtime.Enable()); err != nil {
+		closeAll()
+		return bctx, func() {}, err
+	}
+	return bctx, closeAll, nil
+}
+
 func (r *Runner) checkBrowser(ctx context.Context, c proto.Check) (out outcome) {
 	p := c.Params
 	steps, err := parseSteps(p["steps"])
@@ -174,53 +226,32 @@ func (r *Runner) checkBrowser(ctx context.Context, c proto.Check) (out outcome) 
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout+10*time.Second)
 	defer cancel()
 
-	var alloc context.Context
-	var cancelAlloc context.CancelFunc
-	if ws := p["browser_ws"]; ws != "" {
-		if publicOnly {
-			return outcome{detail: "a remote browser can't be used from public probes"}
-		}
-		alloc, cancelAlloc = chromedp.NewRemoteAllocator(ctx, ws)
-	} else {
-		bin := findChromium()
-		if bin == "" {
-			return outcome{detail: "no Chromium on this machine: install chromium (or google-chrome), or set a remote browser"}
-		}
-		opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
-		opts = append(opts,
-			chromedp.ExecPath(bin),
-			chromedp.WindowSize(browserViewportW, browserViewportH),
-			chromedp.Flag("force-webrtc-ip-handling-policy", "disable_non_proxied_udp"),
-			chromedp.Flag("webrtc-ip-handling-policy", "disable_non_proxied_udp"),
-			chromedp.Flag("disable-features", "WebRtcHideLocalIpsWithMdns,Translate,MediaRouter"),
-		)
-		if os.Geteuid() == 0 || os.Getenv("SENTINEL_BROWSER_NO_SANDBOX") == "1" {
-			opts = append(opts, chromedp.NoSandbox)
-		}
-		if p["tls_skip_verify"] == "true" {
-			opts = append(opts, chromedp.Flag("ignore-certificate-errors", true))
-		}
-		if publicOnly {
-			proxy, stop, err := startGuardProxy()
-			if err != nil {
-				return outcome{detail: "couldn't start the probe's browser proxy: " + err.Error()}
-			}
-			defer stop()
-			opts = append(opts,
-				chromedp.ProxyServer("http://"+proxy),
-				// Loopback too: Chromium bypasses the proxy for it by default.
-				chromedp.Flag("proxy-bypass-list", "<-loopback>"),
-			)
-		}
-		alloc, cancelAlloc = chromedp.NewExecAllocator(ctx, opts...)
+	if p["browser_ws"] != "" && publicOnly {
+		return outcome{detail: "a remote browser can't be used from public probes"}
 	}
-	defer cancelAlloc()
-	bctx, cancelBrowser := chromedp.NewContext(alloc)
-	defer cancelBrowser()
-
+	var proxy string
+	if publicOnly && p["browser_ws"] == "" {
+		addr, stop, err := startGuardProxy()
+		if err != nil {
+			return outcome{detail: "couldn't start the probe's browser proxy: " + err.Error()}
+		}
+		defer stop()
+		proxy = addr
+	}
 	stats := &pageStats{}
-	chromedp.ListenTarget(bctx, stats.listen)
-	if err := chromedp.Run(bctx, network.Enable(), runtime.Enable()); err != nil {
+	bctx, closeBrowser, err := startBrowser(ctx, p, proxy, stats, noSandbox.Load())
+	if err != nil && !errors.Is(err, errNoChromium) && p["browser_ws"] == "" && !noSandbox.Load() {
+		// Ubuntu 24.04 (AppArmor) and many containers refuse the user
+		// namespaces Chromium's sandbox needs: run without it from now on.
+		closeBrowser()
+		noSandbox.Store(true)
+		bctx, closeBrowser, err = startBrowser(ctx, p, proxy, stats, true)
+	}
+	defer closeBrowser()
+	if errors.Is(err, errNoChromium) {
+		return outcome{detail: err.Error()}
+	}
+	if err != nil {
 		return outcome{detail: "the browser didn't start: " + cleanErr(err)}
 	}
 	if ua := p["user_agent"]; ua != "" {

@@ -209,6 +209,7 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - **The disk fills during image builds** and Docker Desktop then stops answering; `docker builder prune -af` and the Go/npm caches free several GB.
 - **CI can stop for billing:** when GitHub Actions refuses jobs ("recent account payments have failed"), every job fails in seconds with no logs. Run the CI steps locally (`make lint`, `go test -race ./...`, `uv run pytest`, `npm run build`) and hold the tag: the release workflow can't build images either.
 - **A full disk breaks more than the build:** Docker Desktop's disk turns read-only (only a restart fixes it, and it restarts every container), and macOS purges `~/Library/Caches` (Playwright's Chromium went with it). Check `df -h /` before image builds; a Mailpit at its 500-message cap also slows the e2e sign-ups to timeouts (`DELETE /api/v1/messages`).
+- **Chromium's sandbox fails on Ubuntu 24.04** (AppArmor blocks unprivileged user namespaces) and in most containers: browser checks retry once without it and remember (`agent/checks/browser.go`). CI caught it; a Mac never shows it.
 - **Fixtures from real devices** (`netmon/testdata/walks`) are anonymised with `netmon/testdata/anonymise.py` (names, serials, IPs, MACs, customer words). Run it over every new recording and read the remaining strings before committing: the repo is public.
 
 ## Lessons from the production fleet

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -131,5 +133,27 @@ func TestBrowserPublicOnly(t *testing.T) {
 		Params: map[string]string{"public_only": "true", "browser_ws": "ws://127.0.0.1:9222"}})
 	if res.OK || !strings.Contains(res.Detail, "remote browser") {
 		t.Fatalf("remote browser on a probe: %+v", res)
+	}
+}
+
+// Where Chromium's sandbox can't start (Ubuntu 24.04's AppArmor, many
+// containers), the check retries without it and keeps doing so.
+func TestBrowserWithoutSandbox(t *testing.T) {
+	needChromium(t)
+	real := findChromium()
+	wrapper := filepath.Join(t.TempDir(), "chromium")
+	script := "#!/bin/sh\ncase \"$*\" in *--no-sandbox*) exec \"" + real + "\" \"$@\" ;; esac\necho 'No usable sandbox!' >&2\nexit 1\n"
+	if err := os.WriteFile(wrapper, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SENTINEL_CHROME", wrapper)
+	noSandbox.Store(false)
+	t.Cleanup(func() { noSandbox.Store(false) })
+	srv := browserServer()
+	defer srv.Close()
+	r := NewRunner("test")
+	res := runOne(t, r, proto.Check{ID: "s", Type: "browser", Target: srv.URL + "/", Params: map[string]string{"keyword": "Sign in"}})
+	if !res.OK || !noSandbox.Load() {
+		t.Fatalf("no fallback: %+v", res)
 	}
 }
