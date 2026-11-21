@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -139,6 +140,9 @@ func TestBrowserPublicOnly(t *testing.T) {
 // Where Chromium's sandbox can't start (Ubuntu 24.04's AppArmor, many
 // containers), the check retries without it and keeps doing so.
 func TestBrowserWithoutSandbox(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the wrapper is a shell script")
+	}
 	needChromium(t)
 	real := findChromium()
 	wrapper := filepath.Join(t.TempDir(), "chromium")
