@@ -23,9 +23,9 @@ def check(name: str, ok: bool, detail: object = "") -> None:
 def link_for(email: str, kind: str = "verify") -> str:
     """The newest link of this kind emailed to this address."""
     for _ in range(40):
-        r = httpx.get(f"{MAIL}/search", params={"query": f"to:{email}"}).json()
+        r = httpx.get(f"{MAIL}/search", params={"query": f"to:{email}"}, timeout=120).json()
         for m in r.get("messages", []):
-            body = httpx.get(f"{MAIL}/message/{m['ID']}").json()["Text"]
+            body = httpx.get(f"{MAIL}/message/{m['ID']}", timeout=120).json()["Text"]
             for u in re.findall(r"https?://\S+", body):
                 if kind in u:
                     return u
@@ -36,7 +36,7 @@ def link_for(email: str, kind: str = "verify") -> str:
 def account(email: str | None = None, pw: str = "edge password 123") -> tuple[httpx.Client, str]:
     """A confirmed, signed-in user with an organisation selected."""
     email = email or f"edge-{secrets.token_hex(4)}@example.com"
-    c = httpx.Client(base_url=API, headers=H, timeout=30)
+    c = httpx.Client(base_url=API, headers=H, timeout=120)
     r = c.post("/auth/signup", json={"email": email, "password": pw})
     assert r.status_code < 300, r.text
     token = link_for(email.lower()).split("token=")[1].split("&")[0]

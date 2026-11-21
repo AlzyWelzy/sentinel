@@ -268,3 +268,73 @@ async def test_params_are_bounded(alice: User):
     body = {"name": "x", "type": "http", "target": "https://a.example.com", "on_probes": True}
     r = await alice.request("POST", "/v1/checks", json={**body, "params": {"body": "x" * 20000}})
     assert r.status_code == 422 and "too long" in r.text
+
+
+async def test_every_http_method(alice: User):
+    for m in ("put", "PATCH", "DELETE", "OPTIONS"):
+        r = await make(
+            alice, type="http", target="https://a.example.com", on_probes=True, params={"method": m}
+        )
+        assert r.status_code == 201 and r.json()["params"]["method"] == m.upper(), r.text
+
+
+STEPS = (
+    '[{"action":"type","selector":"#u","text":"{{username}}"},'
+    '{"action":"type","selector":"#p","text":"{{password}}"},'
+    '{"action":"click","selector":"button"},{"action":"expect_text","text":"Welcome"}]'
+)
+
+
+async def test_browser_checks(alice: User):
+    import base64
+    import json
+
+    from app.services.heartbeats import redis
+
+    r = await make(
+        alice, type="browser", target="https://shop.example.com/login", on_probes=True,
+        params={"steps": STEPS, "username": "ada", "password": "pa55word", "max_load_ms": "0"},
+    )  # fmt: skip
+    assert r.status_code == 201, r.text
+    c = r.json()
+    assert c["params"]["password"] == MASK and "pa55word" not in r.text
+    assert c["interval_seconds"] >= 60
+    # No screenshot yet; then one from ingest's key.
+    shot = f"/v1/checks/{c['id']}/screenshot"
+    assert (await alice.request("GET", shot)).status_code == 404
+    jpeg = b"\xff\xd8\xff\xe0fake"
+    for place, ts in (("probe:eu", 1), ("probe:us", 2)):
+        await redis.hset(
+            f"pg:checkshot:{c['id']}", place,
+            json.dumps({"ts": ts, "jpeg": base64.b64encode(jpeg + place.encode()).decode()}),
+        )  # fmt: skip
+    r = await alice.request("GET", shot)
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    assert r.content == jpeg + b"probe:us" and r.headers["x-taken-at"] == "2"
+
+
+@pytest.mark.parametrize(
+    "params,on_probes,why",
+    [
+        ({"steps": "nope"}, True, "JSON list"),
+        ({"steps": '[{"action":"eval"}]'}, True, "action is one of"),
+        ({"steps": '[{"action":"click"}]'}, True, "needs a selector"),
+        ({"steps": '[{"action":"goto","url":"http://10.0.0.1/"}]'}, True, "public addresses"),
+        ({"steps": '[{"action":"sleep","ms":60000}]'}, True, "1-10000"),
+        ({"browser_ws": "ws://chrome:9222"}, True, "not the public probes"),
+        ({"timeout_seconds": "500"}, True, "5-90"),
+        (
+            {
+                "steps": '[{"action":"type","selector":"#p","text":"hunter22"}]',
+                "password": "hunter22",
+            },
+            True,
+            "{{password}}",
+        ),
+    ],
+)
+async def test_browser_refused(alice: User, params, on_probes, why):
+    r = await make(
+        alice, type="browser", target="https://a.example.com", on_probes=on_probes, params=params
+    )
+    assert r.status_code == 422 and why in r.text, r.text

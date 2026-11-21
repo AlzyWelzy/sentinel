@@ -26,6 +26,45 @@ import { canEdit, useMe } from "@/lib/session";
 type CheckIn = components["schemas"]["CheckIn"];
 type CheckOut = components["schemas"]["app__routes__checks__CheckOut"];
 
+// A browser check's failure screenshot: fetched with the session (the
+// endpoint needs it), shown on request.
+function Screenshot({ checkId }: { checkId: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
+  const open = async () => {
+    const { data, response } = await api.GET("/v1/checks/{check_id}/screenshot", {
+      params: { path: { check_id: checkId } },
+      parseAs: "blob",
+    });
+    if (!response.ok || !(data instanceof Blob)) {
+      setMissing(true);
+      return;
+    }
+    setUrl(URL.createObjectURL(data));
+  };
+  if (missing) return <p className="mt-1">No screenshot kept</p>;
+  if (!url)
+    return (
+      <button
+        type="button"
+        onClick={open}
+        className="mt-1 text-brand underline-offset-2 hover:underline"
+      >
+        Show the page when it failed
+      </button>
+    );
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="mt-2 block">
+      {/* eslint-disable-next-line @next/next/no-img-element -- a blob URL */}
+      <img
+        src={url}
+        alt="The page when the check failed"
+        className="max-h-48 rounded border border-line"
+      />
+    </a>
+  );
+}
+
 // Groups first, each followed by its members (nested), then the rest.
 function nested(all: CheckOut[]): { c: CheckOut; depth: number }[] {
   const byId = new Map(all.map((c) => [c.id, c]));
@@ -303,12 +342,12 @@ export default function ChecksPage() {
                               </option>
                             ))}
                           </Select>
-                        ) : f.kind === "pem" ? (
+                        ) : f.kind === "multiline" ? (
                           <textarea
-                            rows={3}
+                            rows={f.key === "steps" ? 5 : 3}
                             value={form.params?.[f.key] ?? ""}
                             onChange={(e) => setParam(f.key, e.target.value)}
-                            placeholder="-----BEGIN …-----"
+                            placeholder={f.placeholder}
                             spellCheck={false}
                             className="w-full rounded-[3px] border border-line-2 bg-panel px-3 py-1.5 font-mono text-xs text-ink focus:border-brand focus:ring-2 focus:ring-brand/25 focus:outline-none"
                           />
@@ -398,7 +437,7 @@ export default function ChecksPage() {
                     {c.push_url && (
                       <button
                         type="button"
-                        className="mt-1 max-w-xs truncate font-mono text-xs text-accent underline-offset-2 hover:underline"
+                        className="mt-1 max-w-xs truncate font-mono text-xs text-brand underline-offset-2 hover:underline"
                         title="Copy the push URL"
                         onClick={() => navigator.clipboard?.writeText(c.push_url ?? "")}
                       >
@@ -420,8 +459,11 @@ export default function ChecksPage() {
                           : "all probes"
                         : "your servers"}
                   </td>
-                  <td className="max-w-xs truncate text-xs text-ink-3">
-                    {c.last_failure?.detail ?? "—"}
+                  <td className="max-w-xs text-xs text-ink-3">
+                    <p className="truncate" title={c.last_failure?.detail ?? undefined}>
+                      {c.last_failure?.detail ?? "—"}
+                    </p>
+                    {c.type === "browser" && c.last_failure && <Screenshot checkId={c.id} />}
                   </td>
                   {editable && (
                     <td className="whitespace-nowrap text-right">

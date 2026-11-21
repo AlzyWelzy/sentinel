@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete, func, select, update
 
@@ -62,6 +62,7 @@ CheckType = Literal[
     "service",
     "push",
     "group",
+    "browser",
 ]
 # What can run on the public probes: anything over the network. Files, logs,
 # containers and services are only on the server itself.
@@ -114,6 +115,64 @@ def _target_host(t: str, target: str) -> str | None:
             raise ValueError("the port must be 1-65535")
         return _hostname(host.strip("[]"))
     return _hostname(target.strip("[]"))
+
+
+HTTP_METHODS = ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+STEP_ACTIONS = {"goto", "click", "type", "wait", "expect_text", "expect_no_text", "sleep"}
+
+
+def _browser(target: str, p: dict[str, str], on_probes: bool) -> None:
+    """The same rules the agent applies (agent/checks/browser.go)."""
+    host = _url_target(target, ("http", "https"))
+    if on_probes and _is_private(host):
+        raise ValueError("public probes can only check public addresses")
+    if p.get("browser_ws"):
+        if on_probes:
+            raise ValueError("a remote browser runs on your servers, not the public probes")
+        _url_target(p["browser_ws"], ("ws", "wss"))
+    if "timeout_seconds" in p and not (
+        p["timeout_seconds"].isdigit() and 5 <= int(p["timeout_seconds"]) <= 90
+    ):
+        raise ValueError("timeout_seconds is 5-90 for browser checks")
+    if "expect_status" in p and not re.match(r"^\d{3}(-\d{3})?$", p["expect_status"]):
+        raise ValueError("expect_status is a code or a range, like 200 or 200-399")
+    for k in ("max_console_errors", "max_failed_requests", "max_load_ms"):
+        if k in p and not p[k].isdigit():
+            raise ValueError(f"{k} is a whole number")
+    if "headers" in p and p["headers"] != MASK:
+        h = _headers(p["headers"])
+        if not h or not all(isinstance(v, str) for v in h.values()):
+            raise ValueError("headers must be a JSON object of strings")
+    raw = p.get("steps", "").strip()
+    if not raw:
+        return
+    try:
+        steps = json.loads(raw)
+    except ValueError:
+        raise ValueError("steps must be a JSON list") from None
+    if not isinstance(steps, list) or len(steps) > 25:
+        raise ValueError("steps must be a JSON list of at most 25 steps")
+    for i, st in enumerate(steps, 1):
+        if not isinstance(st, dict) or st.get("action") not in STEP_ACTIONS:
+            raise ValueError(f"step {i}: action is one of {', '.join(sorted(STEP_ACTIONS))}")
+        a = st["action"]
+        if a in ("click", "wait", "type") and not st.get("selector"):
+            raise ValueError(f"step {i} ({a}) needs a selector")
+        if a in ("expect_text", "expect_no_text") and not st.get("text"):
+            raise ValueError(f"step {i} ({a}) needs text")
+        if a == "goto":
+            gh = _url_target(str(st.get("url", "")), ("http", "https"))
+            if on_probes and _is_private(gh):
+                raise ValueError(f"step {i}: public probes can only visit public addresses")
+        if a == "sleep" and not (isinstance(st.get("ms"), int) and 0 < st["ms"] <= 10000):
+            raise ValueError(f"step {i} (sleep) needs ms, 1-10000")
+        if (
+            a == "type"
+            and p.get("password")
+            and p["password"] != MASK
+            and p["password"] in str(st.get("text", ""))
+        ):
+            raise ValueError(f"step {i}: type {{{{password}}}} instead of the password itself")
 
 
 def push_url(token: str) -> str:
@@ -235,6 +294,22 @@ PARAMS: dict[str, set[str]] = {
     "service": set(),
     "push": {"grace_seconds"},
     "group": set(),
+    "browser": {
+        "steps",
+        "username",
+        "password",
+        "keyword",
+        "keyword_absent",
+        "expect_status",
+        "timeout_seconds",
+        "max_console_errors",
+        "max_failed_requests",
+        "max_load_ms",
+        "headers",
+        "user_agent",
+        "tls_skip_verify",
+        "browser_ws",
+    },
     "dns": {"record_type", "expect", "server", "timeout_seconds"},
     "file": {"mode", "value"},
     "log": {"pattern", "threshold"},
@@ -365,8 +440,9 @@ class CheckIn(BaseModel):
             if self.on_probes and _is_private(u.hostname):
                 raise ValueError("public probes can only check public addresses")
             method = self.params.get("method", "GET").upper()
-            if method not in ("GET", "HEAD", "POST"):
-                raise ValueError("method must be GET, HEAD or POST")
+            if method not in HTTP_METHODS:
+                raise ValueError(f"method must be {', '.join(HTTP_METHODS)}")
+            self.params["method"] = method
             if "expect_status" in self.params and not re.match(
                 r"^\d{3}(-\d{3})?$", self.params["expect_status"]
             ):
@@ -404,11 +480,14 @@ class CheckIn(BaseModel):
                 raise ValueError(
                     f"target must be a {'container' if t == 'docker' else 'service'} name"
                 )
-        elif t != "http":
+        elif t not in ("http", "browser"):
             host = _target_host(t, self.target)
             if self.on_probes and host and _is_private(host):
                 raise ValueError("public probes can only check public addresses")
         p = self.params
+        if t == "browser":
+            _browser(self.target, p, self.on_probes)
+            self.interval_seconds = max(self.interval_seconds, 60)
         if t == "http":
             if "headers" in p and p["headers"] != MASK:
                 try:
@@ -884,6 +963,29 @@ async def list_probe_regions(t: Tenant) -> list[ProbeRegion]:
         p.probes += 1
         p.online += int(is_online(seen.get(r.id)))
     return sorted(regions.values(), key=lambda p: p.region)
+
+
+@router.get(
+    "/checks/{check_id}/screenshot",
+    response_class=Response,
+    responses={200: {"content": {"image/jpeg": {}}}, 404: {"description": "none kept"}},
+)
+async def check_screenshot(check_id: uuid.UUID, t: Tenant) -> Response:
+    """A browser check's newest failure screenshot (kept as long as its results)."""
+    await _get(t, check_id)
+    shot = await checkresults.screenshot(check_id)
+    if shot is None:
+        raise HTTPException(status_code=404, detail="No screenshot")
+    ts, jpeg, _ = shot
+    return Response(
+        jpeg,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "private, max-age=30",
+            "X-Taken-At": str(ts),
+            "Content-Security-Policy": "default-src 'none'",
+        },
+    )
 
 
 @router.post("/checks/{check_id}/push-token")

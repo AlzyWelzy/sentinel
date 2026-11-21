@@ -27,6 +27,11 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
       -ldflags="-s -w -X main.version=$AGENT_VERSION" -o /sentinel-agent ./agent
 
 FROM alpine:3.20
+# BROWSER=1: Chromium for real-browser checks (probe images). Containers
+# rarely allow Chromium's sandbox; the agent drops it when told to here.
+ARG BROWSER=0
+RUN if [ "$BROWSER" = 1 ]; then apk add --no-cache chromium font-noto; fi
+ENV SENTINEL_BROWSER_NO_SANDBOX=1
 RUN apk add --no-cache ca-certificates tzdata su-exec \
  && adduser -D -H -s /sbin/nologin sentinel \
  && mkdir -p /var/lib/sentinel && chown sentinel /var/lib/sentinel

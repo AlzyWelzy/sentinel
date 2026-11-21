@@ -2,6 +2,7 @@
 one hash per check, one field per place it runs (a host id, or
 "probe:<region>"), plus "fail:<field>" holding that place's last failure."""
 
+import base64
 import json
 import uuid
 
@@ -75,5 +76,28 @@ async def last_failures(check_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
     return out
 
 
+CHECK_SHOT_KEY = "pg:checkshot:{check_id}"
+
+
+async def screenshot(check_id: uuid.UUID) -> tuple[int, bytes, str] | None:
+    """The newest failure screenshot of a browser check: (ts, jpeg, place)."""
+    fields = await redis.hgetall(CHECK_SHOT_KEY.format(check_id=check_id)) or {}
+    best: tuple[int, bytes, str] | None = None
+    for place_raw, raw in fields.items():
+        place = place_raw.decode() if isinstance(place_raw, bytes) else place_raw
+        v = _parse(raw.decode() if isinstance(raw, bytes) else raw)
+        if not v or not isinstance(v.get("jpeg"), str):
+            continue
+        try:
+            jpeg = base64.b64decode(v["jpeg"], validate=True)
+        except ValueError:
+            continue
+        if best is None or v.get("ts", 0) > best[0]:
+            best = (int(v.get("ts", 0)), jpeg, place)
+    return best
+
+
 async def forget(check_id: uuid.UUID) -> None:
-    await redis.delete(CHECK_RESULT_KEY.format(check_id=check_id))
+    await redis.delete(
+        CHECK_RESULT_KEY.format(check_id=check_id), CHECK_SHOT_KEY.format(check_id=check_id)
+    )

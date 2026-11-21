@@ -139,6 +139,9 @@ type CheckResult struct {
 	LatencyMs   float64    `json:"latency_ms,omitempty"`
 	TimestampMs int64      `json:"ts"`
 	Diagnosis   *Diagnosis `json:"diagnosis,omitempty"`
+	// Browser checks: a JPEG of the page when it starts failing (and every
+	// few minutes while it keeps failing).
+	Screenshot []byte `json:"screenshot,omitempty"`
 }
 
 // Diagnosis is what the agent found out when a network check failed: how

@@ -1059,6 +1059,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/network/devices/{device_id}/insight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Device Insight
+         * @description How a device has been: availability, its busiest and most troubled
+         *     ports, and when in the week its traffic happens.
+         */
+        get: operations["device_insight_v1_network_devices__device_id__insight_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/network/devices/{device_id}/interfaces/{ifindex}": {
         parameters: {
             query?: never;
@@ -1797,6 +1818,26 @@ export interface paths {
          *     they're read through the service role's view (no host details).
          */
         get: operations["list_probe_regions_v1_probes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/checks/{check_id}/screenshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Screenshot
+         * @description A browser check's newest failure screenshot (kept as long as its results).
+         */
+        get: operations["check_screenshot_v1_checks__check_id__screenshot_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4037,7 +4078,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "tcp" | "http" | "tls" | "dns" | "file" | "log" | "ping" | "websocket" | "smtp" | "ntp" | "redis" | "postgres" | "mysql" | "mongodb" | "kafka" | "mqtt" | "grpc" | "sip" | "radius" | "game" | "snmp" | "docker" | "service" | "push" | "group";
+            type: "tcp" | "http" | "tls" | "dns" | "file" | "log" | "ping" | "websocket" | "smtp" | "ntp" | "redis" | "postgres" | "mysql" | "mongodb" | "kafka" | "mqtt" | "grpc" | "sip" | "radius" | "game" | "snmp" | "docker" | "service" | "push" | "group" | "browser";
             /**
              * Target
              * @default
@@ -5203,6 +5244,46 @@ export interface components {
             /** Merged Into */
             merged_into?: string | null;
         };
+        /** InsightOut */
+        InsightOut: {
+            /** Days */
+            days: number;
+            /**
+             * Availability
+             * @description % of polls that answered
+             */
+            availability: number | null;
+            /**
+             * Busiest
+             * @description average bits per second, in plus out
+             */
+            busiest: components["schemas"]["PortStat"][];
+            /**
+             * Peaks
+             * @description highest 5-minute rate, bits per second
+             */
+            peaks: components["schemas"]["PortStat"][];
+            /**
+             * Errors
+             * @description in plus out errors over the period
+             */
+            errors: components["schemas"]["PortStat"][];
+            /**
+             * Flaps
+             * @description times the port's state changed
+             */
+            flaps: components["schemas"]["PortStat"][];
+            /**
+             * Heatmap
+             * @description 7 rows (oldest day first) x 24 hours (UTC): average bits per second
+             */
+            heatmap: (number | null)[][];
+            /**
+             * Heatmap Start
+             * @description UTC midnight of the first row, unix seconds
+             */
+            heatmap_start: number;
+        };
         /** InterfaceOut */
         InterfaceOut: {
             /** Ifindex */
@@ -5800,6 +5881,13 @@ export interface components {
             devices: number;
             /** Trap Port */
             trap_port: number | null;
+        };
+        /** PortStat */
+        PortStat: {
+            /** Ifname */
+            ifname: string;
+            /** Value */
+            value: number;
         };
         /** ProbeIn */
         ProbeIn: {
@@ -9376,6 +9464,39 @@ export interface operations {
             };
         };
     };
+    device_insight_v1_network_devices__device_id__insight_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsightOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_interface_v1_network_devices__device_id__interfaces__ifindex__patch: {
         parameters: {
             query?: never;
@@ -10852,6 +10973,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProbeRegion"][];
+                };
+            };
+        };
+    };
+    check_screenshot_v1_checks__check_id__screenshot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                check_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description none kept */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

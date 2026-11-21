@@ -4,7 +4,7 @@
 export type ParamField = {
   key: string;
   label: string;
-  kind?: "text" | "password" | "number" | "bool" | "select" | "pem";
+  kind?: "text" | "password" | "number" | "bool" | "select" | "multiline";
   options?: [string, string][];
   placeholder?: string;
   hint?: string;
@@ -116,12 +116,57 @@ export const CHECK_TYPES: CheckType[] = [
         label: "Proxy",
         placeholder: "http://proxy:3128 or socks5://proxy:1080",
       },
-      { key: "client_cert", label: "Client certificate (PEM)", kind: "pem" },
-      { key: "client_key", label: "Client key (PEM)", kind: "pem" },
+      {
+        key: "client_cert",
+        label: "Client certificate (PEM)",
+        kind: "multiline",
+        placeholder: "-----BEGIN …-----",
+      },
+      {
+        key: "client_key",
+        label: "Client key (PEM)",
+        kind: "multiline",
+        placeholder: "-----BEGIN …-----",
+      },
       { key: "tls_expiry_days", label: "Warn days before the certificate expires", kind: "number" },
       { key: "max_redirects", label: "Most redirects", kind: "number" },
       { key: "tls_skip_verify", label: "Accept any certificate", kind: "bool" },
       { key: "cache_bust", label: "Bypass caches", kind: "bool" },
+    ],
+  },
+  {
+    value: "browser",
+    label: "Real browser (page and steps)",
+    group: "Web",
+    placeholder: "https://shop.example.com/login",
+    probes: true,
+    fields: [
+      {
+        key: "steps",
+        label: "Steps (JSON)",
+        kind: "multiline",
+        placeholder:
+          '[{"action":"type","selector":"#email","text":"{{username}}"},\n {"action":"type","selector":"#password","text":"{{password}}"},\n {"action":"click","selector":"button[type=submit]"},\n {"action":"expect_text","text":"Dashboard"}]',
+        hint: "goto, click, type, wait, expect_text, expect_no_text, sleep. Type {{username}} and {{password}} to use the fields below.",
+      },
+      { key: "username", label: "Username" },
+      { key: "password", label: "Password", kind: "password" },
+      { key: "keyword", label: "Page must contain" },
+      { key: "keyword_absent", label: "…must not contain it instead", kind: "bool" },
+      { key: "expect_status", label: "Expected status", placeholder: "200-399" },
+      { key: "max_load_ms", label: "Slow above (ms)", kind: "number", placeholder: "5000" },
+      { key: "max_console_errors", label: "Most script errors", kind: "number" },
+      { key: "max_failed_requests", label: "Most failed requests", kind: "number" },
+      { key: "timeout_seconds", label: "Timeout (seconds)", kind: "number", placeholder: "30" },
+      { key: "headers", label: "Headers (JSON)", placeholder: '{"X-Env": "prod"}' },
+      { key: "user_agent", label: "User agent" },
+      {
+        key: "browser_ws",
+        label: "Remote browser",
+        placeholder: "ws://chrome:9222/devtools/browser/…",
+        hint: "Your servers only: a Chromium started with --remote-debugging-port",
+      },
+      { key: "tls_skip_verify", label: "Accept any certificate", kind: "bool" },
     ],
   },
   {

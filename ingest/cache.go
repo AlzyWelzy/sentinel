@@ -120,6 +120,14 @@ func (c *cache) storeCheckResults(ctx context.Context, id hostIdentity, hc *host
 				pipe.HSet(ctx, checkResultKey+r.ID, diagnosisPrefix+field, d)
 			}
 		}
+		// A browser check's screenshot of the failing page, under its own
+		// key so readers of the results never load images; bounded in size.
+		if !r.OK && len(r.Screenshot) > 0 && len(r.Screenshot) <= maxScreenshotBytes {
+			if b, err := json.Marshal(storedScreenshot{Ts: r.TimestampMs, JPEG: r.Screenshot}); err == nil {
+				pipe.HSet(ctx, checkShotKey+r.ID, field, b)
+				pipe.Expire(ctx, checkShotKey+r.ID, checkResultTTL)
+			}
+		}
 		if !r.OK {
 			// The last failure is kept too: the next passing run replaces
 			// the current result before the alerter may have read it.
@@ -161,6 +169,16 @@ func (c *cache) takeQuota(ctx context.Context, kind, hostID string, n, perMinute
 }
 
 const diagnosisPrefix = "diag:"
+
+const (
+	checkShotKey       = "pg:checkshot:" // read by the API (services/checkresults.py)
+	maxScreenshotBytes = 256 << 10
+)
+
+type storedScreenshot struct {
+	Ts   int64  `json:"ts"`
+	JPEG []byte `json:"jpeg"`
+}
 
 type storedDiagnosis struct {
 	Ts        int64            `json:"ts"`

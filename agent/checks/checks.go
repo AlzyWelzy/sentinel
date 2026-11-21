@@ -64,6 +64,7 @@ type scheduled struct {
 	// every rediagnoseAfter while it keeps failing.
 	lastOK      bool
 	diagnosedAt time.Time
+	shotAt      time.Time
 }
 
 // checkState is what a check remembers between runs.
@@ -243,7 +244,11 @@ func (r *Runner) run(ctx context.Context, s *scheduled) (proto.CheckResult, []pr
 		LatencyMs:   float64(latency.Microseconds()) / 1000,
 		TimestampMs: time.Now().UnixMilli(),
 	}
-	if !out.ok && (s.lastOK || time.Since(s.diagnosedAt) > rediagnoseAfter) {
+	if !out.ok && len(out.screenshot) > 0 && (s.lastOK || time.Since(s.shotAt) > rediagnoseAfter) {
+		res.Screenshot = out.screenshot
+		s.shotAt = time.Now()
+	}
+	if !out.ok && c.Type != "browser" && (s.lastOK || time.Since(s.diagnosedAt) > rediagnoseAfter) {
 		if d := diagnose(context.WithoutCancel(ctx), c, c.Params["public_only"] == "true"); d != nil {
 			res.Diagnosis = d
 			s.diagnosedAt = time.Now()
@@ -263,10 +268,11 @@ func (r *Runner) run(ctx context.Context, s *scheduled) (proto.CheckResult, []pr
 }
 
 type outcome struct {
-	ok      bool
-	detail  string
-	latency time.Duration
-	extra   map[string]float64
+	ok         bool
+	detail     string
+	latency    time.Duration
+	extra      map[string]float64
+	screenshot []byte // browser checks: the page when it failed (JPEG)
 }
 
 func sample(name string, v float64, checkID string) proto.Sample {
@@ -821,6 +827,8 @@ func (r *Runner) dispatch(ctx context.Context, c proto.Check, s *scheduled) (out
 		return checkReachable(ctx, c.Target)
 	case "http":
 		return r.checkHTTP(ctx, c)
+	case "browser":
+		return r.checkBrowser(ctx, c)
 	case "tls":
 		return checkTLS(ctx, c)
 	case "dns":

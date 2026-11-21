@@ -29,6 +29,11 @@ jobs:
           - name: agent
             context: .
             dockerfile: deploy/agent-container/Dockerfile
+          # For probes that run real-browser checks: the agent with Chromium.
+          - name: agent-browser
+            context: .
+            dockerfile: deploy/agent-container/Dockerfile
+            args: BROWSER=1
           - name: web
             context: .
             dockerfile: web/Dockerfile
@@ -55,13 +60,15 @@ jobs:
           file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           # The API image carries the agent binaries of agent/VERSION.
-          build-args: AGENT_VERSION=${{ steps.tag.outputs.agent }}
+          build-args: |
+            AGENT_VERSION=${{ steps.tag.outputs.agent }}
+            ${{ matrix.args }}
           push: true
           # The agent image is tagged with agent/VERSION (production's
           # AGENT_IMAGE uses AGENT_VERSION), the rest with the release; :latest
           # too, for anyone running the agent container without a version.
           tags: |
-            ghcr.io/${{ steps.tag.outputs.owner }}/sentinel-${{ matrix.name }}:${{ matrix.name == 'agent' && steps.tag.outputs.agent || steps.tag.outputs.version }}
+            ghcr.io/${{ steps.tag.outputs.owner }}/sentinel-${{ matrix.name }}:${{ startsWith(matrix.name, 'agent') && steps.tag.outputs.agent || steps.tag.outputs.version }}
             ghcr.io/${{ steps.tag.outputs.owner }}/sentinel-${{ matrix.name }}:latest
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}

@@ -2945,6 +2945,67 @@
     }
    }
   },
+  "/v1/network/devices/{device_id}/insight": {
+   "get": {
+    "tags": [
+     "network"
+    ],
+    "summary": "Device Insight",
+    "description": "How a device has been: availability, its busiest and most troubled\nports, and when in the week its traffic happens.",
+    "operationId": "device_insight_v1_network_devices__device_id__insight_get",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "device_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Device Id"
+      }
+     },
+     {
+      "name": "days",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 90,
+       "minimum": 1,
+       "default": 7,
+       "title": "Days"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/InsightOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/v1/network/devices/{device_id}/interfaces/{ifindex}": {
    "patch": {
     "tags": [
@@ -5323,6 +5384,51 @@
       "HTTPBearer": []
      }
     ]
+   }
+  },
+  "/v1/checks/{check_id}/screenshot": {
+   "get": {
+    "summary": "Check Screenshot",
+    "description": "A browser check's newest failure screenshot (kept as long as its results).",
+    "operationId": "check_screenshot_v1_checks__check_id__screenshot_get",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "check_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Check Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "image/jpeg": {}
+      }
+     },
+     "404": {
+      "description": "none kept"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
    }
   },
   "/v1/checks/{check_id}/push-token": {
@@ -13169,7 +13275,8 @@
        "docker",
        "service",
        "push",
-       "group"
+       "group",
+       "browser"
       ],
       "title": "Type"
      },
@@ -16875,6 +16982,93 @@
     ],
     "title": "IncidentOut"
    },
+   "InsightOut": {
+    "properties": {
+     "days": {
+      "type": "integer",
+      "title": "Days"
+     },
+     "availability": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Availability",
+      "description": "% of polls that answered"
+     },
+     "busiest": {
+      "items": {
+       "$ref": "#/components/schemas/PortStat"
+      },
+      "type": "array",
+      "title": "Busiest",
+      "description": "average bits per second, in plus out"
+     },
+     "peaks": {
+      "items": {
+       "$ref": "#/components/schemas/PortStat"
+      },
+      "type": "array",
+      "title": "Peaks",
+      "description": "highest 5-minute rate, bits per second"
+     },
+     "errors": {
+      "items": {
+       "$ref": "#/components/schemas/PortStat"
+      },
+      "type": "array",
+      "title": "Errors",
+      "description": "in plus out errors over the period"
+     },
+     "flaps": {
+      "items": {
+       "$ref": "#/components/schemas/PortStat"
+      },
+      "type": "array",
+      "title": "Flaps",
+      "description": "times the port's state changed"
+     },
+     "heatmap": {
+      "items": {
+       "items": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      "type": "array",
+      "title": "Heatmap",
+      "description": "7 rows (oldest day first) x 24 hours (UTC): average bits per second"
+     },
+     "heatmap_start": {
+      "type": "integer",
+      "title": "Heatmap Start",
+      "description": "UTC midnight of the first row, unix seconds"
+     }
+    },
+    "type": "object",
+    "required": [
+     "days",
+     "availability",
+     "busiest",
+     "peaks",
+     "errors",
+     "flaps",
+     "heatmap",
+     "heatmap_start"
+    ],
+    "title": "InsightOut"
+   },
    "InterfaceOut": {
     "properties": {
      "ifindex": {
@@ -18728,6 +18922,24 @@
      "trap_port"
     ],
     "title": "PollerOut"
+   },
+   "PortStat": {
+    "properties": {
+     "ifname": {
+      "type": "string",
+      "title": "Ifname"
+     },
+     "value": {
+      "type": "number",
+      "title": "Value"
+     }
+    },
+    "type": "object",
+    "required": [
+     "ifname",
+     "value"
+    ],
+    "title": "PortStat"
    },
    "ProbeIn": {
     "properties": {
