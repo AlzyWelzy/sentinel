@@ -232,3 +232,16 @@ their next config refresh; an hour to be safe).
 | `WEBHOOK_SIGNING_SECRET` | Change, deploy, tell webhook customers the new value |
 | Database passwords | `ALTER ROLE … PASSWORD` in Postgres, update `prod.env`, deploy |
 | SMTP, Turnstile, VAPID | Change at the provider, update `prod.env`, deploy (new VAPID keys mean browsers subscribe again) |
+
+## Scheduled jobs on the server
+
+`/etc/cron.d/sentinel` (put `/snap/bin` on `PATH` for `gcloud`):
+
+```
+*/15 * * * * root cd /srv/sentinel && ./autoupdate.sh >/dev/null 2>&1
+30 2 * * *   root cd /srv/sentinel && ./clickhouse-backup.sh >>clickhouse-backup.log 2>&1
+15 3 * * *   root cd /srv/sentinel && ./vm-backup.sh backup >>vm-backup.log 2>&1
+45 4 * * *   root /srv/sentinel/offsite-backup.sh gs://<bucket> >>/srv/sentinel/offsite-backup.log 2>&1
+```
+
+The scripts must be executable (`chmod 755 *.sh postgres/*.sh`). `offsite-backup.sh` copies the Postgres, ClickHouse and VictoriaMetrics backups to a Cloud Storage bucket with a 30-day delete rule. The VM needs the `storage-rw` scope, and its service account needs `roles/storage.objectAdmin` on that bucket only.

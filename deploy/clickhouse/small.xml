@@ -3,7 +3,9 @@
 <clickhouse>
     <max_server_memory_usage_to_ram_ratio>0.25</max_server_memory_usage_to_ram_ratio>
     <mark_cache_size>268435456</mark_cache_size>
-    <background_pool_size>4</background_pool_size>
+    <!-- Must stay at least 10: ClickHouse refuses to load MergeTree tables when
+         background_pool_size * 2 is below 20 (exit code 36). -->
+    <background_pool_size>16</background_pool_size>
     <background_schedule_pool_size>4</background_schedule_pool_size>
     <merge_tree>
         <merge_max_block_size>1024</merge_max_block_size>

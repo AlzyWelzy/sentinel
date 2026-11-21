@@ -10,7 +10,8 @@
 #
 #   touch autoupdate.pause      skip runs
 #   autoupdate.log              what happened
-# GHCR read credentials: ~/.docker/config.json (docker login ghcr.io).
+# GHCR read credentials: ~/.docker/config.json (docker login ghcr.io), only
+# needed while the images are private.
 set -eu
 cd "$(dirname "$0")"
 exec 9>autoupdate.lock
@@ -21,10 +22,10 @@ REPO=${REGISTRY_OWNER:-alzywelzy}
 IMG=sentinel
 log() { echo "[$(date -u '+%F %T')] $*" >>autoupdate.log; }
 
-# Registry token from the stored docker login.
-auth=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.docker/config.json")))["auths"]["ghcr.io"]["auth"])')
+# Registry token from the stored docker login, or anonymous for public images.
+auth=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.docker/config.json")))["auths"]["ghcr.io"]["auth"])' 2>/dev/null || true)
 token() {
-	curl -fsS -H "Authorization: Basic $auth" \
+	curl -fsS ${auth:+-H "Authorization: Basic $auth"} \
 		"https://ghcr.io/token?service=ghcr.io&scope=repository:$REPO/$IMG-$1:pull" |
 		python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])'
 }
@@ -34,7 +35,7 @@ tags() {
 		grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true
 }
 
-current=$(sed -n 's/^SENTINEL_VERSION=//p' prod.env)
+current=$(sed -n 's/^SENTINEL_VERSION=\([0-9.]*\).*/\1/p' prod.env)
 newest=$(tags api | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
 [ -n "$newest" ] || exit 0
 [ "$newest" = "$current" ] && exit 0
@@ -95,6 +96,7 @@ if [ -n "$missing" ]; then
 	exit 1
 fi
 log "backup point before migrating"
+mkdir -p backups
 docker exec "$(docker ps -qf name=sentinel_postgres)" sh -c \
 	'pg_dump -U sentinel -Fc sentinel' >"backups/pre-$newest-$(date -u +%Y%m%dT%H%M%SZ).dump"
 
