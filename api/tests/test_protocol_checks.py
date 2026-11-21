@@ -2,6 +2,8 @@
 run on the probes but only against public addresses, and passwords and
 tokens are never answered back (an update that sends the mask keeps them)."""
 
+import uuid
+
 import pytest
 
 from app.routes.checks import MASK
@@ -59,7 +61,12 @@ BAD = [
     ("service", "a;reboot", {}, "service"),
     ("http", "https://x.example.com", {"headers": "[1]"}, "headers"),
     ("http", "https://x.example.com", {"json_path": "a", "json_op": "~="}, "json_op"),
-    ("http", "https://x.example.com", {"basic_user": "a", "bearer_token": "b"}, "not both"),
+    (
+        "http",
+        "https://x.example.com",
+        {"basic_user": "a", "bearer_token": "b"},
+        "one way to sign in",
+    ),
     ("grpc", "api.example.com:50051", {"metadata": "x"}, "metadata"),
     ("tcp", "db.example.com:22", {"invert": "yes"}, "invert"),
     ("ntp", "pool.ntp.org:99999", {}, "port"),
@@ -174,3 +181,90 @@ async def test_push_checks(alice: User, bob: User):
     # The token isn't in the export.
     token = r.json()["push_url"].rsplit("/", 1)[1]
     assert token not in (await alice.request("GET", "/v1/organisation/export")).text
+
+
+CERT = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
+KEY = "-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----"
+
+
+async def test_http_proxy_mtls_oauth(alice: User):
+    body = {"name": "api", "type": "http", "target": "https://api.example.com", "on_probes": True}
+    params = {
+        "proxy": "http://user:pr0xypass@proxy.example.com:3128",
+        "client_cert": CERT,
+        "client_key": KEY,
+        "oauth_token_url": "https://idp.example.com/token",
+        "oauth_client_id": "app",
+        "oauth_client_secret": "0authsecret",
+        "oauth_scopes": "read",
+        "oauth_auth_method": "post",
+    }
+    r = await alice.request("POST", "/v1/checks", json={**body, "params": params})
+    assert r.status_code == 201, r.text
+    c = r.json()
+    for secret in ("pr0xypass", "MIIE", "0authsecret"):
+        assert secret not in r.text
+    assert c["params"]["proxy"] == f"http://user:{MASK}@proxy.example.com:3128"
+    assert c["params"]["client_cert"] == CERT
+    # Sending the masks back keeps every secret.
+    r = await alice.request("PUT", f"/v1/checks/{c['id']}", json={**body, "params": c["params"]})
+    assert r.status_code == 200, r.text
+    from app.db import ServiceSession
+    from app.models import Check
+
+    async with ServiceSession() as db:
+        row = await db.get(Check, uuid.UUID(c["id"]))
+    assert row is not None
+    stored = row.params
+    assert stored["proxy"] == params["proxy"] and stored["client_key"] == KEY
+    assert stored["oauth_client_secret"] == "0authsecret"
+    assert "pr0xypass" not in (await alice.request("GET", "/v1/organisation/export")).text
+    assert "0authsecret" not in (await alice.request("GET", "/v1/audit-log")).text
+
+
+@pytest.mark.parametrize(
+    "params,why",
+    [
+        ({"proxy": "ftp://proxy.example.com"}, "URL"),
+        ({"proxy": "http://10.0.0.5:3128"}, "proxy at a public address"),
+        ({"client_cert": CERT}, "both client_cert and client_key"),
+        ({"client_cert": "nope", "client_key": KEY}, "PEM certificate"),
+        ({"oauth_token_url": "https://idp.example.com/t"}, "oauth_client_id"),
+        (
+            {
+                "oauth_token_url": "https://127.0.0.1/t",
+                "oauth_client_id": "a",
+                "oauth_client_secret": "b",
+            },
+            "public token URL",
+        ),
+        (
+            {
+                "oauth_token_url": "https://i.example.com/t",
+                "oauth_client_id": "a",
+                "oauth_client_secret": "b",
+                "oauth_auth_method": "jwt",
+            },
+            "basic or post",
+        ),
+        (
+            {
+                "oauth_token_url": "https://i.example.com/t",
+                "bearer_token": "x",
+                "oauth_client_id": "a",
+                "oauth_client_secret": "b",
+            },
+            "one way to sign in",
+        ),
+    ],
+)
+async def test_http_auth_refused(alice: User, params, why):
+    body = {"name": "x", "type": "http", "target": "https://a.example.com", "on_probes": True}
+    r = await alice.request("POST", "/v1/checks", json={**body, "params": params})
+    assert r.status_code == 422 and why in r.text, r.text
+
+
+async def test_params_are_bounded(alice: User):
+    body = {"name": "x", "type": "http", "target": "https://a.example.com", "on_probes": True}
+    r = await alice.request("POST", "/v1/checks", json={**body, "params": {"body": "x" * 20000}})
+    assert r.status_code == 422 and "too long" in r.text

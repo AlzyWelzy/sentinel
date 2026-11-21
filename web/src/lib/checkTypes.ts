@@ -4,7 +4,7 @@
 export type ParamField = {
   key: string;
   label: string;
-  kind?: "text" | "password" | "number" | "bool" | "select";
+  kind?: "text" | "password" | "number" | "bool" | "select" | "pem";
   options?: [string, string][];
   placeholder?: string;
   hint?: string;
@@ -93,6 +93,31 @@ export const CHECK_TYPES: CheckType[] = [
       { key: "basic_user", label: "Basic auth user" },
       { key: "basic_password", label: "Basic auth password", kind: "password" },
       { key: "bearer_token", label: "Bearer token", kind: "password" },
+      {
+        key: "oauth_token_url",
+        label: "OAuth token URL",
+        placeholder: "https://login.example.com/oauth/token",
+        hint: "Client credentials: a token is fetched and reused until it expires",
+      },
+      { key: "oauth_client_id", label: "OAuth client ID" },
+      { key: "oauth_client_secret", label: "OAuth client secret", kind: "password" },
+      { key: "oauth_scopes", label: "OAuth scopes", placeholder: "read:health" },
+      {
+        key: "oauth_auth_method",
+        label: "Send the client secret",
+        kind: "select",
+        options: [
+          ["basic", "As basic auth"],
+          ["post", "In the form body"],
+        ],
+      },
+      {
+        key: "proxy",
+        label: "Proxy",
+        placeholder: "http://proxy:3128 or socks5://proxy:1080",
+      },
+      { key: "client_cert", label: "Client certificate (PEM)", kind: "pem" },
+      { key: "client_key", label: "Client key (PEM)", kind: "pem" },
       { key: "tls_expiry_days", label: "Warn days before the certificate expires", kind: "number" },
       { key: "max_redirects", label: "Most redirects", kind: "number" },
       { key: "tls_skip_verify", label: "Accept any certificate", kind: "bool" },

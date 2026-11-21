@@ -70,7 +70,10 @@ PROBE_TYPES = set(CheckType.__args__) - LOCAL_TYPES
 # Answered as this placeholder, never in the clear; sending it back on an
 # update keeps the stored value.
 MASK = "••••••••"
-SECRET_PARAMS = {"password", "secret", "bearer_token", "basic_password"}
+SECRET_PARAMS = {
+    "password", "secret", "bearer_token", "basic_password", "client_key", "oauth_client_secret",
+}  # fmt: skip
+PROXY_SCHEMES = ("http", "https", "socks5", "socks5h")
 URL_TARGET_TYPES = {"redis", "postgres", "mysql", "mongodb"}
 HOSTNAME_RE = re.compile(
     r"^(?=.{1,253}$)([A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.?$"
@@ -126,6 +129,8 @@ def mask(c_type: str, target: str, params: dict[str, str]) -> tuple[str, dict[st
             target = u._replace(
                 netloc=u.netloc.replace(":" + u.password + "@", ":" + MASK + "@", 1)
             ).geturl()
+    if out.get("proxy") and (pw := urlparse(out["proxy"]).password):
+        out["proxy"] = out["proxy"].replace(":" + pw + "@", ":" + MASK + "@", 1)
     if c_type == "http" and "headers" in out:
         out["headers"] = (
             MASK
@@ -152,6 +157,9 @@ def unmask(
     """An update that sends MASK back keeps the stored secret."""
     old_params = old.params or {}
     params = {k: (old_params.get(k, "") if v == MASK else v) for k, v in params.items()}
+    if MASK in params.get("proxy", ""):
+        old_pw = urlparse(old_params.get("proxy", "")).password or ""
+        params["proxy"] = params["proxy"].replace(MASK, old_pw, 1)
     if MASK in target and old.type == c_type:
         old_pw = urlparse(old.target).password or ""
         target = target.replace(MASK, old_pw, 1)
@@ -184,6 +192,14 @@ PARAMS: dict[str, set[str]] = {
         "keyword_case_insensitive",
         "max_redirects",
         "cache_bust",
+        "proxy",
+        "client_cert",
+        "client_key",
+        "oauth_token_url",
+        "oauth_client_id",
+        "oauth_client_secret",
+        "oauth_scopes",
+        "oauth_auth_method",
     },
     "tls": {"tls_expiry_days", "timeout_seconds"},
     "websocket": {"subprotocol", "tls_skip_verify", "timeout_seconds"},
@@ -282,6 +298,11 @@ class CheckIn(BaseModel):
     def _params(cls, v: object) -> object:
         # Accept JSON numbers and booleans; agents read every param as text.
         if isinstance(v, dict):
+            if len(v) > 40:
+                raise ValueError("too many params")
+            for k, val in v.items():
+                if len(str(k)) > 64 or len(str(val)) > 16384:
+                    raise ValueError(f"param {str(k)[:64]} is too long (16384 characters at most)")
             return {
                 str(k): str(val).lower() if isinstance(val, bool) else str(val)
                 for k, val in v.items()
@@ -400,8 +421,28 @@ class CheckIn(BaseModel):
                     raise ValueError("headers must be a JSON object of strings")
             if p.get("body_encoding", "json") not in ("json", "form", "xml"):
                 raise ValueError("body_encoding is json, form or xml")
-            if "basic_user" in p and "bearer_token" in p:
-                raise ValueError("use basic_user or bearer_token, not both")
+            auths = [k for k in ("basic_user", "bearer_token", "oauth_token_url") if p.get(k)]
+            if len(auths) > 1:
+                raise ValueError(f"use one way to sign in, not {' and '.join(auths)}")
+            if proxy := p.get("proxy"):
+                if MASK not in proxy:
+                    host = _url_target(proxy, PROXY_SCHEMES)
+                    if self.on_probes and _is_private(host):
+                        raise ValueError("public probes can only use a proxy at a public address")
+            if bool(p.get("client_cert")) != bool(p.get("client_key")):
+                raise ValueError("a client certificate needs both client_cert and client_key")
+            if (cert := p.get("client_cert")) and "BEGIN CERTIFICATE" not in cert:
+                raise ValueError("client_cert is a PEM certificate (-----BEGIN CERTIFICATE-----)")
+            if (key := p.get("client_key")) and key != MASK and "PRIVATE KEY" not in key:
+                raise ValueError("client_key is a PEM private key")
+            if p.get("oauth_token_url"):
+                host = _url_target(p["oauth_token_url"], ("https", "http"))
+                if self.on_probes and _is_private(host):
+                    raise ValueError("public probes can only reach a public token URL")
+                if p.get("oauth_auth_method", "basic") not in ("basic", "post"):
+                    raise ValueError("oauth_auth_method is basic or post")
+                if not (p.get("oauth_client_id") and p.get("oauth_client_secret")):
+                    raise ValueError("OAuth needs oauth_client_id and oauth_client_secret")
         if "json_op" in p and p["json_op"] not in COMPARISONS:
             raise ValueError(f"json_op is one of {', '.join(sorted(COMPARISONS))}")
         if "op" in p and p["op"] not in COMPARISONS:

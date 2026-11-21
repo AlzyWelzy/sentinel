@@ -350,7 +350,17 @@ func (r *Runner) checkHTTP(ctx context.Context, c proto.Check) outcome {
 			req.Header.Set(k, v)
 		}
 	}
+	client, err := r.httpClient(ctx, c)
+	if err != nil {
+		return outcome{detail: err.Error()}
+	}
 	switch {
+	case c.Params["oauth_token_url"] != "":
+		tok, err := oauthToken(ctx, client, c.Params)
+		if err != nil {
+			return outcome{detail: "OAuth " + err.Error()}
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
 	case c.Params["bearer_token"] != "":
 		req.Header.Set("Authorization", "Bearer "+c.Params["bearer_token"])
 	case c.Params["basic_user"] != "":
@@ -360,19 +370,6 @@ func (r *Runner) checkHTTP(ctx context.Context, c proto.Check) outcome {
 		q := req.URL.Query()
 		q.Set("_sentinel", strconv.FormatInt(time.Now().UnixNano(), 36))
 		req.URL.RawQuery = q.Encode()
-	}
-	client := r.client
-	if c.Params["tls_skip_verify"] == "true" || c.Params["public_only"] == "true" {
-		t := http.DefaultTransport.(*http.Transport).Clone()
-		if c.Params["tls_skip_verify"] == "true" {
-			t.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // the user asked for it
-		}
-		if c.Params["public_only"] == "true" {
-			// Every connection, including redirects, goes through the guard.
-			t.DialContext = dialer(ctx).DialContext
-			t.Proxy = nil
-		}
-		client = &http.Client{Timeout: r.client.Timeout, Transport: t, CheckRedirect: r.client.CheckRedirect}
 	}
 	if c.Params["follow_redirects"] == "false" {
 		cl := *client

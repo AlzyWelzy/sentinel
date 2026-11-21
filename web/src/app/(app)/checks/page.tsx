@@ -303,6 +303,15 @@ export default function ChecksPage() {
                               </option>
                             ))}
                           </Select>
+                        ) : f.kind === "pem" ? (
+                          <textarea
+                            rows={3}
+                            value={form.params?.[f.key] ?? ""}
+                            onChange={(e) => setParam(f.key, e.target.value)}
+                            placeholder="-----BEGIN …-----"
+                            spellCheck={false}
+                            className="w-full rounded-[3px] border border-line-2 bg-panel px-3 py-1.5 font-mono text-xs text-ink focus:border-brand focus:ring-2 focus:ring-brand/25 focus:outline-none"
+                          />
                         ) : (
                           <Input
                             type={
