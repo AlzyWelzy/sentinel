@@ -848,6 +848,12 @@ async def verify_domain(page_id: uuid.UUID, t: Tenant) -> PageOut:
     info = _domain_out(page)
     if info is None or page.domain is None:
         raise HTTPException(status_code=422, detail="Set a domain first")
+    if settings.STATUS_DOMAIN_TARGET and not cfsaas.enabled():
+        # Behind a tunnel only Cloudflare can serve the domain; without the
+        # API token it would be "verified" yet unreachable.
+        raise HTTPException(
+            status_code=503, detail="Own domains aren't available on this server yet"
+        )
     if info.verified:
         return await _page_out(t, page)
     if info.txt_value not in await txt_records(info.txt_name):

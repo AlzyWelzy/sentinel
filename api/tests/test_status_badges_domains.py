@@ -111,3 +111,17 @@ async def test_own_domain(alice: User, bob: User, client: httpx.AsyncClient, mon
     assert (
         await client.get("/public/domain-check", params={"domain": "status.acme-corp.com"})
     ).status_code == 404
+
+
+async def test_own_domain_needs_cloudflare_behind_a_tunnel(alice: User, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "STATUS_DOMAIN_TARGET", "customers.example.net")
+    monkeypatch.setattr(settings, "CF_API_TOKEN", "")
+    p = await page(alice)
+    r = await alice.request(
+        "PUT", f"/v1/status-pages/{p['id']}/domain", json={"domain": "status.acme.io"}
+    )
+    assert r.status_code == 200 and r.json()["domain"]["cname"] == "customers.example.net"
+    r = await alice.request("POST", f"/v1/status-pages/{p['id']}/domain/verify")
+    assert r.status_code == 503
