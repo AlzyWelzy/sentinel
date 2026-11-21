@@ -27,15 +27,15 @@ down it to Caddy:
 | Name | Serves |
 |---|---|
 | `sentinel.rajpoot.app` | the web app, and the API under `/api` |
-| `ingest.sentinel.rajpoot.app` | agents |
-| `get.sentinel.rajpoot.app` | `install.sh`, `install.ps1`, agent binaries |
+| `sentinel-ingest.rajpoot.app` | agents |
+| `sentinel-get.rajpoot.app` | `install.sh`, `install.ps1`, agent binaries |
 
 Set it up once (Cloudflare dashboard › Zero Trust › Networks › Tunnels, or
 the API with a token that may edit tunnels and the zone's DNS):
 
 1. Create a tunnel (`sentinel`, managed in Cloudflare) and copy its token
    into `TUNNEL_TOKEN`.
-2. Public hostnames: each of the three, and `customers.sentinel.rajpoot.app`,
+2. Public hostnames: each of the three, and `sentinel-customers.rajpoot.app`,
    to `http://caddy:80`; a catch-all rule to `http://caddy:80` too, for
    customers' status page domains.
 3. DNS: each hostname a **proxied** CNAME to `<tunnel id>.cfargotunnel.com`
@@ -51,9 +51,9 @@ ingest and get hostnames: agents and installers aren't browsers.
 
 **Status pages on customers' own domains** go through Cloudflare for SaaS:
 enable it on the zone (SSL/TLS › Custom Hostnames), set the fallback origin
-to `customers.sentinel.rajpoot.app`, and give Sentinel `CF_API_TOKEN` (SSL
+to `sentinel-customers.rajpoot.app`, and give Sentinel `CF_API_TOKEN` (SSL
 and Certificates: Edit on the zone), `CF_ZONE_ID` and
-`STATUS_DOMAIN_TARGET=customers.sentinel.rajpoot.app`. A customer adds a TXT
+`STATUS_DOMAIN_TARGET=sentinel-customers.rajpoot.app`. A customer adds a TXT
 record (`_sentinel.<their domain>`) and a CNAME to that target, then presses
 Verify; Sentinel adds the custom hostname and Cloudflare issues its
 certificate. (The first 100 custom hostnames are free.)
@@ -211,7 +211,7 @@ check a server's charts reach back to before the backup.
   with the recommended rules plus `process_down` rules for `postgres`,
   `victoria-metrics` and `caddy`.
 - Add uptime checks for `https://sentinel.rajpoot.app/login`,
-  `https://ingest.sentinel.rajpoot.app/healthz` and the TLS certificate.
+  `https://sentinel-ingest.rajpoot.app/healthz` and the TLS certificate.
 - A monitor can't report its own death: use one external uptime service
   (any free one) on `https://sentinel.rajpoot.app/api/healthz`, alerting to
   a phone.

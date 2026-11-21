@@ -107,10 +107,10 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 ### Phase 1: Own infrastructure
 
 - [x] Images at `ghcr.io/alzywelzy/sentinel-*` (workflows, stack, autoupdate, agent image); Go module at the repo's own path.
-- [x] Product name and domain: Sentinel, `sentinel.rajpoot.app` (`APP_HOST`), `ingest.` and `get.` subdomains. Links come from `PUBLIC_APP_URL`; installers from `PUBLIC_DOWNLOAD_URL`.
+- [x] Product name and domain: Sentinel, `sentinel.rajpoot.app` (`APP_HOST`), `sentinel-ingest.rajpoot.app` and `sentinel-get.rajpoot.app` (one level deep: Cloudflare's free certificate covers only `*.rajpoot.app`). Links come from `PUBLIC_APP_URL`; installers from `PUBLIC_DOWNLOAD_URL`.
 - [x] Console stack, console env, sentinel gateway and Kuma files deleted; console keys removed from every env example.
 - [x] Ingest: 413 instead of a data-losing 400, per-token rate limits, timestamp window; VictoriaMetrics dedup; atomic spool writes (agent 0.9.0).
-- [ ] **Owner's accounts:** the server, DNS records, SMTP provider with SPF/DKIM/DMARC, Turnstile keys, VAPID keys. Steps in `DEPLOYMENT.md`. GitHub Actions needs no extra secrets (it publishes with `GITHUB_TOKEN`).
+- [x] **Owner's accounts (live 2026-11-21, v0.10.0):** GCP VM `sentinel-prod` (asia-south1-a, e2-custom-8-16384, 200 GB, `/srv/sentinel`, Swarm), no open web ports: a Cloudflare Tunnel (`cloudflared` in the stack) carries every hostname; Resend SMTP; superadmin `admin@rajpoot.app`; crons in `/etc/cron.d/sentinel` (autoupdate every 15 min, ClickHouse and VictoriaMetrics backups nightly). Still open: Turnstile and VAPID keys, and a Cloudflare token allowed to edit SSL for customers' own status page domains (`CF_API_TOKEN`). GitHub Actions publishes with `GITHUB_TOKEN`.
 
 ### Phase 2: Own accounts and login
 
@@ -211,6 +211,9 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - **A full disk breaks more than the build:** Docker Desktop's disk turns read-only (only a restart fixes it, and it restarts every container), and macOS purges `~/Library/Caches` (Playwright's Chromium went with it). Check `df -h /` before image builds; a Mailpit at its 500-message cap also slows the e2e sign-ups to timeouts (`DELETE /api/v1/messages`).
 - **Chromium's sandbox fails on Ubuntu 24.04** (AppArmor blocks unprivileged user namespaces) and in most containers: browser checks retry once without it and remember (`agent/checks/browser.go`). CI caught it; a Mac never shows it.
 - **Fixtures from real devices** (`netmon/testdata/walks`) are anonymised with `netmon/testdata/anonymise.py` (names, serials, IPs, MACs, customer words). Run it over every new recording and read the remaining strings before committing: the repo is public.
+
+- **ghcr packages belong to the repository that first pushed them:** after the history rewrite the images still belonged to `sentinel-archive`, and releases failed with `permission_denied: read_package`. Deleting the old packages let the release recreate them (then they're made public).
+- **Cloudflare's free edge certificate is one level deep:** `ingest.sentinel.rajpoot.app` failed the TLS handshake; hostnames are `sentinel-<name>.rajpoot.app`.
 
 ## Lessons from the production fleet
 

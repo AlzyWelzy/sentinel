@@ -153,7 +153,7 @@ export default function Landing() {
                 <span className="text-ink-3"># on your server</span>
                 {"\n"}
                 <span className="text-bad">$</span> curl -fsSL
-                https://get.sentinel.rajpoot.app/install.sh | sh -s -- --key pg_…
+                https://sentinel-get.rajpoot.app/install.sh | sh -s -- --key pg_…
               </pre>
             </div>
             <ExamplePanel />

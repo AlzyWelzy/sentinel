@@ -18,7 +18,7 @@ export default function Help() {
         root it installs directly; as another user it asks for sudo (or doas):
       </p>
       <pre>
-        curl -fsSL https://get.sentinel.rajpoot.app/install.sh | sh -s -- --key pg_… --tags
+        curl -fsSL https://sentinel-get.rajpoot.app/install.sh | sh -s -- --key pg_… --tags
         web,production
       </pre>
       <ul>
@@ -141,7 +141,7 @@ export default function Help() {
           in an elevated PowerShell, then start the service again.
         </li>
         <li>
-          The server must reach <code>ingest.sentinel.rajpoot.app</code> on port 443. Behind a
+          The server must reach <code>sentinel-ingest.rajpoot.app</code> on port 443. Behind a
           proxy, set <code>HTTPS_PROXY</code> for the service.
         </li>
       </ul>
@@ -162,7 +162,7 @@ export default function Help() {
         <b>bounced</b> was refused by its mail server: check the address and verify it again.
       </p>
       <h3>Remove the agent</h3>
-      <pre>curl -fsSL https://get.sentinel.rajpoot.app/install.sh | sh -s -- --uninstall</pre>
+      <pre>curl -fsSL https://sentinel-get.rajpoot.app/install.sh | sh -s -- --uninstall</pre>
       <p>
         On Windows, run the install command with <code>-Uninstall</code>. The server stays listed
         (as not reporting) until you remove it on its page.
