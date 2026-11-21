@@ -197,9 +197,15 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - Traps, live (`e2e/api/traps_live.py`): a real agent on SENTINEL_TRAP_PORT=11162 receives net-snmp `snmptrap` traps; VPN down opens an incident naming the tunnel, a wrong community is dropped, a 20-trap flood is one row, VPN up resolves it. Real FortiGates send traps to Beacon's production receiver on notify's UDP 162: never take that port; real-device traps weren't tried.
 - Network, real gear (2026-11-20, a temporary unprivileged poller reaching a dev stack through an SSH tunnel, removed afterwards): a FortiGate and two Arista EOS switches identified, 280 interfaces with rates (both ends of a 40G link agree), LLDP resolved between the switches both ways, and a server NIC's MAC matched to its ToR port with the server's upstream set automatically. Proxmox wasn't tried on real gear.
 
+### Verified live (production, 2026-11-21, v0.10.2)
+
+- Through the tunnel: app pages, API, `sentinel-ingest`, `sentinel-get` (installers and agent binaries), http→https redirect (Caddy), the visitor's own IP recorded.
+- A sign-up email, a not-reporting alert and its recovery sent through Resend on the first attempt (to `delivered@resend.dev`, Resend's test inbox; its "Live test" organisation monitors `sentinel-prod` itself).
+- `install.sh` from `sentinel-get` on `sentinel-prod`; a public status page and badge; ClickHouse tables; backups made, restored as a check and copied to Cloud Storage; autoupdate deploying releases on its own.
+
 ### Not verified here
 
-- Anything needing the real domain and accounts: TLS issuance, SMTP delivery to outside mailboxes, Turnstile, Web Push.
+- Turnstile in a real browser sign-up, Web Push to a real browser, delivery to outside mailboxes other than Resend's test inbox, customers' own status page domains (needs `CF_API_TOKEN`).
 - The installers on BSD and Windows run in CI (`installers` workflow, against `deploy/testing/installer-stub`), not on customer-like machines with real services for autoconfig to find.
 
 ## Lessons from building it
