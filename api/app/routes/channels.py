@@ -20,7 +20,7 @@ from sqlalchemy import select, update
 
 from app.config import settings
 from app.models import NotificationChannel, OutboundMessage
-from app.services import oncall
+from app.services import notifiers, oncall
 from app.services.secrets import hash_secret
 from app.tenancy import Tenant, TenantContext
 from app.validation import normalize_tag
@@ -45,9 +45,9 @@ CHAT_HOSTS = {
     "discord": ("discord.com", "discordapp.com"),
 }
 
-ChannelType = Literal[
+BUILTIN_TYPES = (
     "email", "sms", "voice", "webhook", "slack", "teams", "discord", "telegram", "pagerduty"
-]
+)  # fmt: skip
 Severity = Literal["critical", "warning", "info"]
 
 # Browsers' push services. The alerter POSTs to the subscription's endpoint,
@@ -83,14 +83,35 @@ OnlyTag = Annotated[
 
 
 class ChannelIn(BaseModel):
-    type: ChannelType
-    target: str = Field(min_length=3, max_length=500)
+    type: str = Field(
+        min_length=2,
+        max_length=40,
+        description="a built-in type, or a provider from GET /v1/channels/catalog",
+    )
+    target: str = Field(
+        default="", max_length=500, description="built-in types; catalog providers use fields"
+    )
+    fields: dict[str, str] = Field(
+        default_factory=dict, description="catalog providers: the provider's form fields"
+    )
     label: str | None = Field(default=None, max_length=100)
     min_severity: Severity = "info"
     only_tag: OnlyTag = None
 
     @model_validator(mode="after")
     def _validate_target(self) -> "ChannelIn":
+        if self.type in notifiers.catalog() and self.type not in BUILTIN_TYPES:
+            if not notifiers.enabled():
+                raise ValueError(f"{self.type} contacts aren't available")
+            self.fields = notifiers.validate(self.type, self.fields)
+            self.target = notifiers.target_for(self.type, self.fields)
+            return self
+        if self.fields:
+            raise ValueError(f"{self.type} contacts take a target, not fields")
+        if self.type not in BUILTIN_TYPES:
+            raise ValueError(f"unknown contact type {self.type}")
+        if len(self.target.strip()) < 3:
+            raise ValueError("target is required")
         if self.type not in settings.ENABLED_CHANNEL_TYPES:
             raise ValueError(
                 f"{self.type} contacts aren't available; use one of: "
@@ -178,10 +199,18 @@ class ChannelOut(BaseModel):
     quiet_hours: QuietHours | None = None
     only_tag: str | None = None
     created_at: datetime
+    provider: str | None = Field(default=None, description="catalog providers: the service's name")
+    fields: dict[str, str] | None = Field(
+        default=None, description="catalog providers: the form fields, secrets masked"
+    )
 
 
 class ChannelPatch(BaseModel):
     label: str | None = Field(default=None, max_length=100)
+    fields: dict[str, str] | None = Field(
+        default=None,
+        description="catalog providers: new fields (masked ones are kept); verified again",
+    )
     min_severity: Severity | None = None
     only_tag: OnlyTag = None
     quiet_hours: QuietHours | None = Field(default=None, description="null to turn them off")
@@ -218,10 +247,14 @@ class VerifyIn(BaseModel):
 
 
 def _out(c: NotificationChannel) -> ChannelOut:
+    entry = notifiers.catalog().get(c.type) if c.type not in BUILTIN_TYPES else None
+    fields = {k: str(v) for k, v in (c.config or {}).items()} if entry else None
     return ChannelOut(
         id=c.id,
         type=c.type,
-        target=mask_target(c.type, c.target),
+        provider=entry["label"] if entry else None,
+        fields=notifiers.masked(c.type, fields) if entry and fields is not None else None,
+        target=notifiers.describe(c.type, fields or {}) if entry else mask_target(c.type, c.target),
         label=c.label,
         source=c.source,
         is_default=c.is_default,
@@ -282,6 +315,32 @@ async def _send_code(t: TenantContext, channel: NotificationChannel) -> None:
     )
 
 
+class CatalogProvider(BaseModel):
+    type: str
+    label: str
+    group: str
+    docs: str | None = None
+    fields: list[dict]
+
+
+@router.get("/catalog")
+async def provider_catalog(t: Tenant) -> list[CatalogProvider]:
+    """The notification services a contact can be (besides the built-in types)."""
+    if not notifiers.enabled():
+        return []
+    return [
+        CatalogProvider(
+            type=d["type"],
+            label=d["label"],
+            group=d["group"],
+            docs=d.get("docs"),
+            fields=d["fields"],
+        )
+        for d in notifiers.catalog().values()
+        if d["type"] not in BUILTIN_TYPES
+    ]
+
+
 @router.get("")
 async def list_channels(t: Tenant) -> list[ChannelOut]:
     rows = await t.db.scalars(
@@ -312,6 +371,7 @@ async def create_channel(body: ChannelIn, t: Tenant) -> ChannelOut:
         is_default=False,
         min_severity=body.min_severity,
         only_tag=_tag(body.only_tag),
+        config=body.fields if body.fields else {},
     )
     t.db.add(channel)
     await t.db.flush()
@@ -378,6 +438,24 @@ async def update_channel(channel_id: uuid.UUID, body: ChannelPatch, t: Tenant) -
         channel.quiet_hours = body.quiet_hours.model_dump() if body.quiet_hours else None
     if "only_tag" in body.model_fields_set:
         channel.only_tag = _tag(body.only_tag)
+    if body.fields is not None:
+        if channel.type in BUILTIN_TYPES or channel.type not in notifiers.catalog():
+            raise HTTPException(status_code=422, detail="only catalog contacts have fields")
+        try:
+            fields = notifiers.validate(
+                channel.type, notifiers.unmask(channel.type, body.fields, channel.config or {})
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from None
+        if fields != (channel.config or {}):
+            # A new destination proves itself again before alerts go there.
+            channel.config = fields
+            channel.target = notifiers.target_for(channel.type, fields)
+            channel.verified_at = None
+            channel.undeliverable_at = None
+            channel.verification_sent_at = None
+            await t.db.flush()
+            await _send_code(t, channel)
     await t.db.flush()
     return _out(channel)
 

@@ -54,7 +54,9 @@ func (d *dispatcher) dispatchOnce(ctx context.Context) int {
 		s, ok := d.senders[it.Channel.Type]
 		var sendErr error
 		if !ok {
-			sendErr = permanent("no sender for channel type %q", it.Channel.Type)
+			// Retried, not failed: during a deploy the API can know a
+			// contact type a moment before this alerter does.
+			sendErr = fmt.Errorf("no sender for channel type %q (an older alerter?)", it.Channel.Type)
 		} else {
 			sendCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 			if cs, ok := s.(configSender); ok {

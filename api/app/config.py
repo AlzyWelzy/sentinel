@@ -91,6 +91,9 @@ class Settings(BaseSettings):
 
     # Contact types customers can add. Others already saved keep working.
     ENABLED_CHANNEL_TYPES: Annotated[list[str], NoDecode] = ["email", "push"]
+    # The notification provider catalog (ntfy, Opsgenie, DingTalk, …): the
+    # customer's own accounts, so nothing to set up here.
+    CATALOG_CHANNELS: bool = True
 
     # Web Push (VAPID). The alerter holds the private key; browsers need the
     # public one to subscribe.

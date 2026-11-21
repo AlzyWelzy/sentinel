@@ -34,12 +34,32 @@ const TYPES: Record<string, { label: string; placeholder: string }> = {
   voice: { label: "Voice call", placeholder: "+15551234567" },
 };
 
+type CatalogField = {
+  key: string;
+  label: string;
+  hint?: string;
+  secret?: boolean;
+  required?: boolean;
+  url?: boolean;
+  hosts?: string[];
+  default?: string;
+  options?: [string, string][];
+};
+
 export default function ContactsPage() {
   const qc = useQueryClient();
   const me = useMe();
   const editable = canEdit(me.data?.role);
-  const [type, setType] = useState<components["schemas"]["ChannelIn"]["type"]>("email");
+  const [type, setType] = useState("email");
   const [target, setTarget] = useState("");
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const catalog = useQuery({
+    queryKey: ["channel-catalog"],
+    staleTime: Infinity,
+    queryFn: async () => unwrap(await api.GET("/v1/channels/catalog")),
+  });
+  const provider = catalog.data?.find((p) => p.type === type);
+  const groups = [...new Set(catalog.data?.map((p) => p.group) ?? [])];
   const [label, setLabel] = useState("");
   const [codes, setCodes] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
@@ -56,11 +76,14 @@ export default function ContactsPage() {
     mutationFn: async () =>
       unwrap(
         await api.POST("/v1/channels", {
-          body: { type, target, label: label || null, min_severity: "info" },
+          body: provider
+            ? { type, target: "", fields, label: label || null, min_severity: "info" }
+            : { type, target, label: label || null, min_severity: "info" },
         }),
       ),
     onSuccess: (c) => {
       setTarget("");
+      setFields({});
       setLabel("");
       done(c.verified ? "Contact added." : "Contact added. Enter the code we sent to verify it.");
     },
@@ -142,24 +165,47 @@ export default function ContactsPage() {
             <Field label="Type">
               <Select
                 value={type}
-                onChange={(e) => setType(e.target.value as typeof type)}
+                onChange={(e) => {
+                  setType(e.target.value);
+                  setFields({});
+                }}
                 className="w-full"
               >
-                {Object.entries(TYPES).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v.label}
-                  </option>
+                <optgroup label="Built in">
+                  {Object.entries(TYPES).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v.label}
+                    </option>
+                  ))}
+                </optgroup>
+                {groups.map((g) => (
+                  <optgroup key={g} label={g}>
+                    {catalog.data
+                      ?.filter((p) => p.group === g)
+                      .sort((a, b) => a.label.localeCompare(b.label))
+                      .map((p) => (
+                        <option key={p.type} value={p.type}>
+                          {p.label}
+                        </option>
+                      ))}
+                  </optgroup>
                 ))}
               </Select>
             </Field>
-            <Field label="Address">
-              <Input
-                required
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-                placeholder={TYPES[type]?.placeholder}
-              />
-            </Field>
+            {provider ? (
+              <p className="self-end pb-2 text-[13px] text-ink-2">
+                Fill in {provider.label} below.
+              </p>
+            ) : (
+              <Field label="Address">
+                <Input
+                  required
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value)}
+                  placeholder={TYPES[type]?.placeholder}
+                />
+              </Field>
+            )}
             <Field label="Label">
               <Input
                 value={label}
@@ -170,6 +216,44 @@ export default function ContactsPage() {
             <Button type="submit" variant="primary" loading={add.isPending}>
               Add
             </Button>
+            {provider && (
+              <div className="grid gap-3 sm:col-span-4 sm:grid-cols-3">
+                {(provider.fields as CatalogField[]).map((f) => (
+                  <Field
+                    key={f.key}
+                    label={f.required ? f.label : `${f.label} (optional)`}
+                    hint={f.hint}
+                  >
+                    {f.options ? (
+                      <Select
+                        value={fields[f.key] ?? f.default ?? ""}
+                        onChange={(e) => setFields({ ...fields, [f.key]: e.target.value })}
+                        className="w-full"
+                      >
+                        {f.options.map(([v, l]) => (
+                          <option key={v} value={v}>
+                            {l}
+                          </option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <Input
+                        required={f.required && !f.default}
+                        type={f.secret ? "password" : f.url ? "url" : "text"}
+                        autoComplete={f.secret ? "new-password" : "off"}
+                        spellCheck={false}
+                        value={fields[f.key] ?? ""}
+                        placeholder={
+                          f.default ??
+                          (f.hosts ? `https://${f.hosts[0]?.replace(/^\./, "")}/…` : "")
+                        }
+                        onChange={(e) => setFields({ ...fields, [f.key]: e.target.value })}
+                      />
+                    )}
+                  </Field>
+                ))}
+              </div>
+            )}
           </form>
           <p className="mt-2 text-xs text-ink-3">
             Some types may be turned off for this installation; the API says so if you pick one.
@@ -201,7 +285,7 @@ export default function ContactsPage() {
                     {c.label && <p className="text-xs text-ink-3">{c.target}</p>}
                   </td>
                   <td className="text-ink-2">
-                    {TYPES[c.type]?.label ?? c.type}
+                    {c.provider ?? TYPES[c.type]?.label ?? c.type}
                     {c.source === "team" && " · member"}
                   </td>
                   <td>

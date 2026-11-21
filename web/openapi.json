@@ -3497,6 +3497,34 @@
     }
    }
   },
+  "/v1/channels/catalog": {
+   "get": {
+    "summary": "Provider Catalog",
+    "description": "The notification services a contact can be (besides the built-in types).",
+    "operationId": "provider_catalog_v1_channels_catalog_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CatalogProvider"
+         },
+         "type": "array",
+         "title": "Response Provider Catalog V1 Channels Catalog Get"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
   "/v1/channels": {
    "get": {
     "summary": "List Channels",
@@ -12547,6 +12575,49 @@
     ],
     "title": "CapacityGroup"
    },
+   "CatalogProvider": {
+    "properties": {
+     "type": {
+      "type": "string",
+      "title": "Type"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "group": {
+      "type": "string",
+      "title": "Group"
+     },
+     "docs": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Docs"
+     },
+     "fields": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Fields"
+     }
+    },
+    "type": "object",
+    "required": [
+     "type",
+     "label",
+     "group",
+     "fields"
+    ],
+    "title": "CatalogProvider"
+   },
    "ChangePasswordIn": {
     "properties": {
      "current_password": {
@@ -12571,24 +12642,25 @@
     "properties": {
      "type": {
       "type": "string",
-      "enum": [
-       "email",
-       "sms",
-       "voice",
-       "webhook",
-       "slack",
-       "teams",
-       "discord",
-       "telegram",
-       "pagerduty"
-      ],
-      "title": "Type"
+      "maxLength": 40,
+      "minLength": 2,
+      "title": "Type",
+      "description": "a built-in type, or a provider from GET /v1/channels/catalog"
      },
      "target": {
       "type": "string",
       "maxLength": 500,
-      "minLength": 3,
-      "title": "Target"
+      "title": "Target",
+      "description": "built-in types; catalog providers use fields",
+      "default": ""
+     },
+     "fields": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object",
+      "title": "Fields",
+      "description": "catalog providers: the provider's form fields"
      },
      "label": {
       "anyOf": [
@@ -12629,8 +12701,7 @@
     },
     "type": "object",
     "required": [
-     "type",
-     "target"
+     "type"
     ],
     "title": "ChannelIn"
    },
@@ -12717,6 +12788,33 @@
       "type": "string",
       "format": "date-time",
       "title": "Created At"
+     },
+     "provider": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Provider",
+      "description": "catalog providers: the service's name"
+     },
+     "fields": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "type": "string"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fields",
+      "description": "catalog providers: the form fields, secrets masked"
      }
     },
     "type": "object",
@@ -12746,6 +12844,21 @@
        }
       ],
       "title": "Label"
+     },
+     "fields": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "type": "string"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fields",
+      "description": "catalog providers: new fields (masked ones are kept); verified again"
      },
      "min_severity": {
       "anyOf": [

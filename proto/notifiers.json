@@ -1,0 +1,3746 @@
+[
+ {
+  "type": "google_chat",
+  "label": "Google Chat",
+  "group": "Chat",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true,
+    "hosts": [
+     "chat.googleapis.com"
+    ]
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "text": "*{{.title}}*\n{{.text}}"
+   }
+  }
+ },
+ {
+  "type": "mattermost",
+  "label": "Mattermost",
+  "group": "Chat",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "channel",
+    "label": "Channel"
+   },
+   {
+    "key": "username",
+    "label": "Post as"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "text": "#### {{.emoji}} {{.title}}\n{{.text}}",
+    "channel": "opt:{{.channel}}",
+    "username": "opt:{{.username}}"
+   }
+  }
+ },
+ {
+  "type": "rocket_chat",
+  "label": "Rocket.Chat",
+  "group": "Chat",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "channel",
+    "label": "Channel"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "text": "{{.emoji}} *{{.title}}*\n{{.text}}",
+    "channel": "opt:{{.channel}}"
+   }
+  }
+ },
+ {
+  "type": "matrix",
+  "label": "Matrix",
+  "group": "Chat",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Homeserver URL",
+    "url": true,
+    "default": "https://matrix-client.matrix.org"
+   },
+   {
+    "key": "room_id",
+    "label": "Room ID",
+    "hint": "!abc123:matrix.org",
+    "required": true,
+    "pattern": "^![^:]+:.+$"
+   },
+   {
+    "key": "access_token",
+    "label": "Access token",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "PUT",
+   "url": "{{.server}}/_matrix/client/v3/rooms/{{path .room_id}}/send/m.room.message/{{.nonce}}",
+   "format": "json",
+   "body": {
+    "msgtype": "m.text",
+    "body": "{{.title}}\n\n{{.text}}"
+   },
+   "headers": {
+    "Authorization": "Bearer {{.access_token}}"
+   }
+  }
+ },
+ {
+  "type": "pumble",
+  "label": "Pumble",
+  "group": "Chat",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true,
+    "hosts": [
+     "api.pumble.com"
+    ]
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "text": "{{.emoji}} *{{.title}}*\n{{.text}}"
+   }
+  }
+ },
+ {
+  "type": "zoho_cliq",
+  "label": "Zoho Cliq",
+  "group": "Chat",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true,
+    "hosts": [
+     "cliq.zoho.com",
+     "cliq.zoho.eu",
+     "cliq.zoho.in",
+     "cliq.zoho.com.au",
+     "cliq.zoho.com.cn",
+     "cliq.zoho.jp",
+     "cliq.zohocloud.ca"
+    ]
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "text": "{{.emoji}} *{{.title}}*\n{{.text}}"
+   }
+  }
+ },
+ {
+  "type": "stackfield",
+  "label": "Stackfield",
+  "group": "Chat",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true,
+    "hosts": [
+     "www.stackfield.com"
+    ]
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "Title": "{{.emoji}} {{.title}}\n{{.text}}"
+   }
+  }
+ },
+ {
+  "type": "nextcloud_talk",
+  "label": "Nextcloud Talk",
+  "group": "Chat",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Nextcloud URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "conversation",
+    "label": "Conversation token",
+    "required": true
+   },
+   {
+    "key": "bot_secret",
+    "label": "Bot secret",
+    "hint": "from occ talk:bot:install",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/ocs/v2.php/apps/spreed/api/v1/bot/{{path .conversation}}/message",
+   "format": "json",
+   "body": {
+    "message": "{{.title}}\n\n{{.text}}",
+    "referenceId": "{{.nonce}}"
+   },
+   "headers": {
+    "OCS-APIRequest": "true",
+    "X-Nextcloud-Talk-Bot-Random": "{{.nonce}}",
+    "X-Nextcloud-Talk-Bot-Signature": "{{hmac256 .bot_secret (print .nonce .title \"\\n\\n\" .text)}}"
+   }
+  }
+ },
+ {
+  "type": "bitrix24",
+  "label": "Bitrix24",
+  "group": "Chat",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "hint": "https://<portal>.bitrix24.com/rest/<user>/<code>",
+    "secret": true,
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "user_id",
+    "label": "Notify user ID",
+    "required": true,
+    "pattern": "^[0-9]+$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}/im.notify.system.add.json",
+   "format": "form",
+   "body": {
+    "USER_ID": "{{.user_id}}",
+    "MESSAGE": "{{.title}}\n\n{{.text}}"
+   }
+  }
+ },
+ {
+  "type": "line",
+  "label": "LINE",
+  "group": "Chat",
+  "fields": [
+   {
+    "key": "access_token",
+    "label": "Channel access token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "User, group or room ID",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.line.me/v2/bot/message/push",
+   "format": "json",
+   "body": {
+    "to": "{{.to}}",
+    "messages": [
+     {
+      "type": "text",
+      "text": "{{trunc 5000 (print .title \"\\n\\n\" .text)}}"
+     }
+    ]
+   },
+   "headers": {
+    "Authorization": "Bearer {{.access_token}}"
+   }
+  }
+ },
+ {
+  "type": "google_sheets",
+  "label": "Google Sheets (Apps Script)",
+  "group": "Automation",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Apps Script web app URL",
+    "secret": true,
+    "required": true,
+    "url": true,
+    "hosts": [
+     "script.google.com"
+    ]
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "status": "{{.status}}",
+    "severity": "{{.severity}}",
+    "title": "{{.title}}",
+    "message": "{{.text}}",
+    "host": "{{.host}}",
+    "incident_id": "{{.incident_id}}"
+   }
+  }
+ },
+ {
+  "type": "fluxer",
+  "label": "Fluxer",
+  "group": "Chat",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "username",
+    "label": "Post as"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "content": "{{.emoji}} **{{.title}}**\n{{.text}}",
+    "username": "opt:{{.username}}"
+   }
+  }
+ },
+ {
+  "type": "ntfy",
+  "label": "ntfy",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Server URL",
+    "url": true,
+    "default": "https://ntfy.sh"
+   },
+   {
+    "key": "topic",
+    "label": "Topic",
+    "required": true,
+    "pattern": "^[A-Za-z0-9_-]{1,64}$"
+   },
+   {
+    "key": "token",
+    "label": "Access token",
+    "secret": true
+   },
+   {
+    "key": "username",
+    "label": "User"
+   },
+   {
+    "key": "password",
+    "label": "Password",
+    "secret": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/{{path .topic}}",
+   "format": "text",
+   "body": "{{.text}}",
+   "headers": {
+    "Title": "{{.title}}",
+    "Priority": "{{sev \"5\" \"4\" \"3\"}}",
+    "Tags": "{{res (sev \"rotating_light\" \"warning\" \"information_source\") \"white_check_mark\"}}",
+    "Click": "{{.link}}",
+    "Authorization": "{{if .token}}Bearer {{.token}}{{end}}"
+   },
+   "basic_auth": [
+    "{{if not .token}}{{.username}}{{end}}",
+    "{{.password}}"
+   ]
+  }
+ },
+ {
+  "type": "gotify",
+  "label": "Gotify",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Server URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "app_token",
+    "label": "Application token",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/message",
+   "format": "json",
+   "body": {
+    "title": "{{.title}}",
+    "message": "{{.text}}",
+    "priority": "int:{{sev \"8\" \"5\" \"2\"}}"
+   },
+   "headers": {
+    "X-Gotify-Key": "{{.app_token}}"
+   }
+  }
+ },
+ {
+  "type": "pushover",
+  "label": "Pushover",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "user_key",
+    "label": "User or group key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "app_token",
+    "label": "Application token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "device",
+    "label": "Device"
+   },
+   {
+    "key": "sound",
+    "label": "Sound"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.pushover.net/1/messages.json",
+   "format": "form",
+   "body": {
+    "token": "{{.app_token}}",
+    "user": "{{.user_key}}",
+    "title": "{{trunc 250 .title}}",
+    "message": "{{trunc 1024 .text}}",
+    "priority": "{{res (sev \"1\" \"0\" \"-1\") \"0\"}}",
+    "url": "opt:{{.link}}",
+    "device": "opt:{{.device}}",
+    "sound": "opt:{{.sound}}"
+   },
+   "ok_path": "status",
+   "ok_values": [
+    "1"
+   ]
+  }
+ },
+ {
+  "type": "pushbullet",
+  "label": "Pushbullet",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "access_token",
+    "label": "Access token",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.pushbullet.com/v2/pushes",
+   "format": "json",
+   "body": {
+    "type": "note",
+    "title": "{{.title}}",
+    "body": "{{.text}}"
+   },
+   "headers": {
+    "Access-Token": "{{.access_token}}"
+   }
+  }
+ },
+ {
+  "type": "pushdeer",
+  "label": "PushDeer",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Server URL",
+    "url": true,
+    "default": "https://api2.pushdeer.com"
+   },
+   {
+    "key": "push_key",
+    "label": "Push key",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/message/push",
+   "format": "form",
+   "body": {
+    "pushkey": "{{.push_key}}",
+    "text": "{{.title}}",
+    "desp": "{{.text}}",
+    "type": "markdown"
+   },
+   "ok_path": "code",
+   "ok_values": [
+    "0"
+   ]
+  }
+ },
+ {
+  "type": "pushy",
+  "label": "Pushy",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "Secret API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "device_token",
+    "label": "Device token or topic",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.pushy.me/push?api_key={{query .api_key}}",
+   "format": "json",
+   "body": {
+    "to": "{{.device_token}}",
+    "data": {
+     "title": "{{.title}}",
+     "message": "{{.text}}"
+    },
+    "notification": {
+     "title": "{{.title}}",
+     "body": "{{trunc 500 .text}}"
+    }
+   }
+  }
+ },
+ {
+  "type": "bark",
+  "label": "Bark",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Server URL",
+    "url": true,
+    "default": "https://api.day.app"
+   },
+   {
+    "key": "device_key",
+    "label": "Device key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "group",
+    "label": "Group"
+   },
+   {
+    "key": "sound",
+    "label": "Sound"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/push",
+   "format": "json",
+   "body": {
+    "device_key": "{{.device_key}}",
+    "title": "{{.title}}",
+    "body": "{{.text}}",
+    "group": "opt:{{.group}}",
+    "sound": "opt:{{.sound}}",
+    "level": "{{sev \"critical\" \"timeSensitive\" \"active\"}}",
+    "url": "opt:{{.link}}"
+   },
+   "ok_path": "code",
+   "ok_values": [
+    "200"
+   ]
+  }
+ },
+ {
+  "type": "gorush",
+  "label": "Gorush",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Server URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "device_token",
+    "label": "Device token",
+    "required": true
+   },
+   {
+    "key": "platform",
+    "label": "Platform",
+    "required": true,
+    "default": "2",
+    "options": [
+     [
+      "1",
+      "iOS"
+     ],
+     [
+      "2",
+      "Android"
+     ],
+     [
+      "3",
+      "Huawei"
+     ]
+    ]
+   },
+   {
+    "key": "topic",
+    "label": "Topic (iOS bundle ID)"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/api/push",
+   "format": "json",
+   "body": {
+    "notifications": [
+     {
+      "tokens": [
+       "{{.device_token}}"
+      ],
+      "platform": "int:{{.platform}}",
+      "title": "{{.title}}",
+      "message": "{{.text}}",
+      "topic": "opt:{{.topic}}",
+      "priority": "{{sev \"high\" \"normal\" \"normal\"}}"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "type": "techulus_push",
+  "label": "Push by Techulus",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "channel",
+    "label": "Channel"
+   },
+   {
+    "key": "sound",
+    "label": "Sound"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://push.techulus.com/api/v1/notify/{{path .api_key}}",
+   "format": "json",
+   "body": {
+    "title": "{{.title}}",
+    "body": "{{.text}}",
+    "channel": "opt:{{.channel}}",
+    "sound": "opt:{{.sound}}"
+   }
+  }
+ },
+ {
+  "type": "lunasea",
+  "label": "LunaSea",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "target",
+    "label": "Send to",
+    "required": true,
+    "default": "user",
+    "options": [
+     [
+      "user",
+      "User"
+     ],
+     [
+      "device",
+      "Device"
+     ]
+    ]
+   },
+   {
+    "key": "id",
+    "label": "User or device ID",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://notify.lunasea.app/v1/custom/{{.target}}/{{path .id}}",
+   "format": "json",
+   "body": {
+    "title": "{{.title}}",
+    "body": "{{.text}}"
+   }
+  }
+ },
+ {
+  "type": "signalgrid",
+  "label": "Signalgrid",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "client_key",
+    "label": "Client key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "channel",
+    "label": "Channel token",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.signalgrid.co/v1/push",
+   "format": "json",
+   "body": {
+    "client_key": "{{.client_key}}",
+    "channel": "{{.channel}}",
+    "title": "{{.title}}",
+    "body": "{{.text}}",
+    "type": "{{res (sev \"crit\" \"warn\" \"info\") \"success\"}}",
+    "critical": "bool:{{sev \"true\" \"false\" \"false\"}}"
+   }
+  }
+ },
+ {
+  "type": "notifyapp",
+  "label": "NotifyApp",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "device_id",
+    "label": "Device ID",
+    "required": true
+   },
+   {
+    "key": "token",
+    "label": "Token",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://push.getnotifyapp.com/notify-json/{{path .device_id}}?token={{query .token}}",
+   "format": "json",
+   "body": {
+    "title": "{{.title}}",
+    "text": "{{.text}}"
+   }
+  }
+ },
+ {
+  "type": "pinglet",
+  "label": "Pinglet",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "publish_url",
+    "label": "Publish URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.publish_url}}",
+   "format": "json",
+   "body": {
+    "title": "{{.title}}",
+    "message": "{{.text}}",
+    "status": "{{.status}}",
+    "severity": "{{.severity}}"
+   },
+   "headers": {
+    "Authorization": "Bearer {{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "notifery",
+  "label": "Notifery",
+  "group": "Push apps",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "group",
+    "label": "Group"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.notifery.com/event",
+   "format": "json",
+   "body": {
+    "title": "{{.title}}",
+    "message": "{{.text}}{{if .link}}\n\n{{.link}}{{end}}",
+    "group": "opt:{{.group}}",
+    "code": "int:{{res \"1\" \"0\"}}"
+   },
+   "headers": {
+    "x-api-key": "{{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "home_assistant",
+  "label": "Home Assistant",
+  "group": "Automation",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Home Assistant URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "token",
+    "label": "Long-lived access token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "service",
+    "label": "Notify service",
+    "hint": "e.g. mobile_app_my_phone",
+    "required": true,
+    "default": "notify"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/api/services/notify/{{path .service}}",
+   "format": "json",
+   "body": {
+    "title": "{{.title}}",
+    "message": "{{.text}}"
+   },
+   "headers": {
+    "Authorization": "Bearer {{.token}}"
+   }
+  }
+ },
+ {
+  "type": "indigo",
+  "label": "Indigo",
+  "group": "Automation",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Indigo URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "variable_id",
+    "label": "Variable ID",
+    "required": true,
+    "pattern": "^[0-9]+$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/v2/api/command",
+   "format": "json",
+   "body": {
+    "id": "sentinel",
+    "message": "indigo.variable.updateValue",
+    "objectId": "int:{{.variable_id}}",
+    "parameters": {
+     "value": "{{.title}}"
+    }
+   },
+   "headers": {
+    "Authorization": "Bearer {{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "opsgenie",
+  "label": "Opsgenie",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "region",
+    "label": "Region",
+    "required": true,
+    "default": "us",
+    "options": [
+     [
+      "us",
+      "US"
+     ],
+     [
+      "eu",
+      "EU"
+     ]
+    ]
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.{{if eq .region \"eu\"}}eu.{{end}}opsgenie.com/v2/alerts{{if eq .status \"resolved\"}}/{{path .incident_id}}/close?identifierType=alias{{end}}",
+   "format": "json",
+   "body": {
+    "message": "{{trunc 130 .summary}}",
+    "alias": "{{.incident_id}}",
+    "description": "{{trunc 15000 .text}}",
+    "priority": "{{sev \"P1\" \"P3\" \"P5\"}}",
+    "source": "Sentinel",
+    "note": "opt:{{res \"\" .text}}",
+    "entity": "opt:{{.host}}"
+   },
+   "headers": {
+    "Authorization": "GenieKey {{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "jira_ops",
+  "label": "Jira Service Management",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "cloud_id",
+    "label": "Cloud ID",
+    "required": true
+   },
+   {
+    "key": "email",
+    "label": "Atlassian account email",
+    "required": true
+   },
+   {
+    "key": "api_token",
+    "label": "API token",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.atlassian.com/jsm/ops/api/{{path .cloud_id}}/v1/alerts{{if eq .status \"resolved\"}}/{{path .incident_id}}/close?identifierType=alias{{end}}",
+   "format": "json",
+   "body": {
+    "message": "{{trunc 130 .summary}}",
+    "alias": "{{.incident_id}}",
+    "description": "{{trunc 15000 .text}}",
+    "priority": "{{sev \"P1\" \"P3\" \"P5\"}}",
+    "source": "Sentinel",
+    "note": "opt:{{res \"\" .text}}"
+   },
+   "basic_auth": [
+    "{{.email}}",
+    "{{.api_token}}"
+   ]
+  }
+ },
+ {
+  "type": "splunk_oncall",
+  "label": "Splunk On-Call (VictorOps)",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "rest_url",
+    "label": "REST endpoint URL",
+    "hint": "https://alert.victorops.com/integrations/generic/20131114/alert/<key>",
+    "secret": true,
+    "required": true,
+    "url": true,
+    "hosts": [
+     "alert.victorops.com"
+    ]
+   },
+   {
+    "key": "routing_key",
+    "label": "Routing key",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.rest_url}}/{{path .routing_key}}",
+   "format": "json",
+   "body": {
+    "message_type": "{{res (sev \"CRITICAL\" \"WARNING\" \"INFO\") \"RECOVERY\"}}",
+    "entity_id": "{{.incident_id}}",
+    "entity_display_name": "{{.summary}}",
+    "state_message": "{{.text}}",
+    "monitoring_tool": "Sentinel"
+   }
+  }
+ },
+ {
+  "type": "squadcast",
+  "label": "Squadcast",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true,
+    "hosts": [
+     "api.squadcast.com",
+     "api.eu.squadcast.com"
+    ]
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "message": "{{.summary}}",
+    "description": "{{.text}}",
+    "event_id": "{{.incident_id}}",
+    "status": "{{res \"trigger\" \"resolve\"}}",
+    "tags": {
+     "severity": "{{.severity}}"
+    }
+   }
+  }
+ },
+ {
+  "type": "zenduty",
+  "label": "Zenduty",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "integration_key",
+    "label": "Integration key",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://www.zenduty.com/api/events/{{path .integration_key}}/",
+   "format": "json",
+   "body": {
+    "alert_type": "{{res (sev \"critical\" \"warning\" \"info\") \"resolved\"}}",
+    "message": "{{trunc 500 .summary}}",
+    "summary": "{{.text}}",
+    "entity_id": "{{.incident_id}}"
+   }
+  }
+ },
+ {
+  "type": "grafana_oncall",
+  "label": "Grafana OnCall",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "alert_uid": "{{.incident_id}}",
+    "title": "{{.title}}",
+    "message": "{{.text}}",
+    "state": "{{res \"alerting\" \"ok\"}}",
+    "link_to_upstream_details": "opt:{{.link}}"
+   }
+  }
+ },
+ {
+  "type": "goalert",
+  "label": "GoAlert",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "server",
+    "label": "GoAlert URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "token",
+    "label": "Integration key",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/api/v2/generic/incoming",
+   "format": "form",
+   "body": {
+    "token": "{{.token}}",
+    "summary": "{{trunc 200 .summary}}",
+    "details": "{{.text}}",
+    "action": "{{res \"\" \"close\"}}",
+    "dedup": "{{.incident_id}}"
+   }
+  }
+ },
+ {
+  "type": "signl4",
+  "label": "SIGNL4",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "team_secret",
+    "label": "Team secret",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://connect.signl4.com/webhook/{{path .team_secret}}",
+   "format": "json",
+   "body": {
+    "Title": "{{.title}}",
+    "Message": "{{.text}}",
+    "X-S4-ExternalID": "{{.incident_id}}",
+    "X-S4-Status": "{{res \"new\" \"resolved\"}}",
+    "X-S4-Service": "Sentinel",
+    "X-S4-SourceSystem": "Sentinel"
+   }
+  }
+ },
+ {
+  "type": "pagertree",
+  "label": "PagerTree",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "integration_id",
+    "label": "Integration ID",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.pagertree.com/integration/{{path .integration_id}}",
+   "format": "json",
+   "body": {
+    "event_type": "{{res \"create\" \"resolve\"}}",
+    "Id": "{{.incident_id}}",
+    "Title": "{{.summary}}",
+    "Description": "{{.text}}",
+    "Urgency": "{{sev \"critical\" \"high\" \"low\"}}"
+   }
+  }
+ },
+ {
+  "type": "alerta",
+  "label": "Alerta",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Alerta API URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "environment",
+    "label": "Environment",
+    "required": true,
+    "default": "Production"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/alert",
+   "format": "json",
+   "body": {
+    "environment": "{{.environment}}",
+    "resource": "{{.host}}",
+    "event": "{{.rule}}",
+    "severity": "{{res (sev \"critical\" \"warning\" \"informational\") \"normal\"}}",
+    "service": [
+     "Sentinel"
+    ],
+    "text": "{{.text}}",
+    "origin": "sentinel",
+    "correlate": [],
+    "value": "{{.status}}"
+   },
+   "headers": {
+    "Authorization": "Key {{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "alertnow",
+  "label": "AlertNow",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "summary": "{{.title}}\n{{.text}}",
+    "status": "{{res \"CRITICAL\" \"RESOLVED\"}}",
+    "event_type": "{{.status}}",
+    "event_id": "{{.incident_id}}"
+   }
+  }
+ },
+ {
+  "type": "flashduty",
+  "label": "Flashduty",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "integration_key",
+    "label": "Integration key",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.flashcat.cloud/event/push/alert/standard?integration_key={{query .integration_key}}",
+   "format": "json",
+   "body": {
+    "title_rule": "{{trunc 512 .title}}",
+    "event_status": "{{res (sev \"Critical\" \"Warning\" \"Info\") \"Ok\"}}",
+    "alert_key": "{{.incident_id}}",
+    "description": "{{.text}}",
+    "labels": {
+     "host": "opt:{{.host}}"
+    }
+   }
+  }
+ },
+ {
+  "type": "heii_oncall",
+  "label": "Heii On-Call",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "trigger_id",
+    "label": "Trigger ID",
+    "required": true
+   },
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://heiioncall.com/triggers/{{path .trigger_id}}/{{res \"alert\" \"resolve\"}}",
+   "format": "json",
+   "body": {
+    "title": "{{.title}}",
+    "text": "{{.text}}"
+   },
+   "headers": {
+    "Authorization": "Bearer {{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "keep",
+  "label": "Keep",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Keep API URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/alerts/event",
+   "format": "json",
+   "body": {
+    "id": "{{.incident_id}}",
+    "name": "{{.summary}}",
+    "status": "{{res \"firing\" \"resolved\"}}",
+    "severity": "{{sev \"critical\" \"warning\" \"info\"}}",
+    "description": "{{.text}}",
+    "source": [
+     "sentinel"
+    ],
+    "url": "opt:{{.link}}"
+   },
+   "headers": {
+    "X-API-KEY": "{{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "opsimate",
+  "label": "OpsiMate",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "server",
+    "label": "OpsiMate URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "api_token",
+    "label": "API token",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/api/v1/alerts/custom/sentinel",
+   "format": "json",
+   "body": {
+    "id": "{{.incident_id}}",
+    "title": "{{.title}}",
+    "status": "{{.status}}",
+    "severity": "{{.severity}}",
+    "message": "{{.text}}"
+   },
+   "headers": {
+    "x-api-token": "{{.api_token}}"
+   }
+  }
+ },
+ {
+  "type": "halopsa",
+  "label": "HaloPSA",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "username",
+    "label": "User"
+   },
+   {
+    "key": "password",
+    "label": "Password",
+    "secret": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "title": "{{.title}}",
+    "status": "{{.status}}",
+    "message": "{{.text}}",
+    "monitor": "{{.rule}}",
+    "host": "{{.host}}",
+    "incident_id": "{{.incident_id}}",
+    "timestamp": "{{.ts}}"
+   },
+   "basic_auth": [
+    "{{.username}}",
+    "{{.password}}"
+   ]
+  }
+ },
+ {
+  "type": "flowtriq",
+  "label": "Flowtriq",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "source": "sentinel",
+    "status": "{{.status}}",
+    "monitor": "{{.rule}}",
+    "msg": "{{.text}}"
+   },
+   "headers": {
+    "X-API-Key": "{{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "trigv",
+  "label": "Trigv",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "channel",
+    "label": "Channel",
+    "required": true,
+    "default": "general"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.trigv.com/v1/events",
+   "format": "json",
+   "body": {
+    "channel": "{{.channel}}",
+    "title": "{{trunc 255 .title}}",
+    "description": "{{trunc 1000 .text}}",
+    "url": "opt:{{.link}}"
+   },
+   "headers": {
+    "Authorization": "Bearer {{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "clickup",
+  "label": "ClickUp (task)",
+  "group": "Incident tools",
+  "fields": [
+   {
+    "key": "api_token",
+    "label": "API token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "list_id",
+    "label": "List ID",
+    "required": true,
+    "pattern": "^[0-9]+$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.clickup.com/api/v2/list/{{path .list_id}}/task",
+   "format": "json",
+   "body": {
+    "name": "{{trunc 200 .title}}",
+    "markdown_description": "{{.text}}",
+    "priority": "int:{{sev \"1\" \"2\" \"3\"}}"
+   },
+   "headers": {
+    "Authorization": "{{.api_token}}"
+   }
+  }
+ },
+ {
+  "type": "signal",
+  "label": "Signal (signal-cli REST API)",
+  "group": "WhatsApp and Signal",
+  "fields": [
+   {
+    "key": "server",
+    "label": "signal-cli REST URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "number",
+    "label": "Sender number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "recipients",
+    "label": "Recipients",
+    "hint": "Numbers or group IDs, comma-separated",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/v2/send",
+   "format": "json",
+   "body": {
+    "message": "{{.title}}\n\n{{.text}}",
+    "number": "{{.number}}",
+    "recipients": "list:{{.recipients}}"
+   }
+  }
+ },
+ {
+  "type": "waha",
+  "label": "WhatsApp (WAHA)",
+  "group": "WhatsApp and Signal",
+  "fields": [
+   {
+    "key": "server",
+    "label": "WAHA URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "session",
+    "label": "Session",
+    "required": true,
+    "default": "default"
+   },
+   {
+    "key": "chat_id",
+    "label": "Chat ID",
+    "hint": "e.g. 919876543210@c.us",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/api/sendText",
+   "format": "json",
+   "body": {
+    "session": "{{.session}}",
+    "chatId": "{{.chat_id}}",
+    "text": "{{.title}}\n\n{{.text}}"
+   },
+   "headers": {
+    "X-Api-Key": "{{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "evolution",
+  "label": "WhatsApp (Evolution API)",
+  "group": "WhatsApp and Signal",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Evolution API URL",
+    "url": true,
+    "default": "https://evolapicloud.com"
+   },
+   {
+    "key": "instance",
+    "label": "Instance",
+    "required": true
+   },
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "number",
+    "label": "Recipient number or group",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/message/sendText/{{path .instance}}",
+   "format": "json",
+   "body": {
+    "number": "{{.number}}",
+    "text": "{{.title}}\n\n{{.text}}"
+   },
+   "headers": {
+    "apikey": "{{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "whapi",
+  "label": "WhatsApp (Whapi.Cloud)",
+  "group": "WhatsApp and Signal",
+  "fields": [
+   {
+    "key": "server",
+    "label": "API URL",
+    "url": true,
+    "default": "https://gate.whapi.cloud"
+   },
+   {
+    "key": "token",
+    "label": "Token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Recipient",
+    "hint": "phone number or group ID",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/messages/text",
+   "format": "json",
+   "body": {
+    "to": "{{.to}}",
+    "body": "{{.title}}\n\n{{.text}}"
+   },
+   "headers": {
+    "Authorization": "Bearer {{.token}}"
+   }
+  }
+ },
+ {
+  "type": "openwa",
+  "label": "WhatsApp (open-wa)",
+  "group": "WhatsApp and Signal",
+  "fields": [
+   {
+    "key": "server",
+    "label": "open-wa URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Chat ID",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/sendText",
+   "format": "json",
+   "body": {
+    "args": {
+     "to": "{{.to}}",
+     "content": "{{.title}}\n\n{{.text}}"
+    }
+   },
+   "headers": {
+    "api_key": "{{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "whatsapp_360",
+  "label": "WhatsApp (360messenger)",
+  "group": "WhatsApp and Signal",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "phone",
+    "label": "Phone number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.360messenger.com/v2/sendMessage",
+   "format": "form",
+   "body": {
+    "phonenumber": "{{.phone}}",
+    "text": "{{.title}}\n\n{{.text}}"
+   },
+   "headers": {
+    "Authorization": "Bearer {{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "onesender",
+  "label": "WhatsApp (OneSender)",
+  "group": "WhatsApp and Signal",
+  "fields": [
+   {
+    "key": "url",
+    "label": "OneSender API URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "token",
+    "label": "Token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Recipient",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.url}}",
+   "format": "json",
+   "body": {
+    "recipient_type": "individual",
+    "to": "{{.to}}",
+    "type": "text",
+    "text": {
+     "body": "{{.title}}\n\n{{.text}}"
+    }
+   },
+   "headers": {
+    "Authorization": "Bearer {{.token}}"
+   }
+  }
+ },
+ {
+  "type": "callmebot",
+  "label": "CallMeBot (WhatsApp)",
+  "group": "WhatsApp and Signal",
+  "fields": [
+   {
+    "key": "phone",
+    "label": "Phone number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "GET",
+   "url": "https://api.callmebot.com/whatsapp.php",
+   "format": "query",
+   "body": {
+    "phone": "{{.phone}}",
+    "text": "{{trunc 1000 .title}}",
+    "apikey": "{{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "threema",
+  "label": "Threema",
+  "group": "WhatsApp and Signal",
+  "fields": [
+   {
+    "key": "from",
+    "label": "Gateway ID",
+    "required": true,
+    "pattern": "^\\*[A-Z0-9]{7}$"
+   },
+   {
+    "key": "secret",
+    "label": "Secret",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Recipient Threema ID",
+    "required": true,
+    "pattern": "^[A-Z0-9*]{8}$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://msgapi.threema.ch/send_simple",
+   "format": "form",
+   "body": {
+    "from": "{{.from}}",
+    "to": "{{.to}}",
+    "secret": "{{.secret}}",
+    "text": "{{trunc 3500 (print .title \"\\n\\n\" .text)}}"
+   }
+  }
+ },
+ {
+  "type": "dingtalk",
+  "label": "DingTalk",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true,
+    "hosts": [
+     "oapi.dingtalk.com"
+    ]
+   },
+   {
+    "key": "secret",
+    "label": "Signing secret",
+    "secret": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}{{if .secret}}&timestamp={{.ts_ms}}&sign={{query (hmac256b64 .secret (print .ts_ms \"\\n\" .secret))}}{{end}}",
+   "format": "json",
+   "body": {
+    "msgtype": "markdown",
+    "markdown": {
+     "title": "{{trunc 64 .title}}",
+     "text": "### {{.title}}\n\n{{.text}}"
+    }
+   },
+   "ok_path": "errcode",
+   "ok_values": [
+    "0"
+   ]
+  }
+ },
+ {
+  "type": "feishu",
+  "label": "Feishu / Lark",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "secret": true,
+    "required": true,
+    "url": true,
+    "hosts": [
+     "open.feishu.cn",
+     "open.larksuite.com"
+    ]
+   },
+   {
+    "key": "secret",
+    "label": "Signing secret",
+    "secret": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}",
+   "format": "json",
+   "body": {
+    "msg_type": "text",
+    "content": {
+     "text": "{{.title}}\n\n{{.text}}"
+    },
+    "timestamp": "opt:{{if .secret}}{{.ts}}{{end}}",
+    "sign": "opt:{{if .secret}}{{hmac256b64 (print .ts \"\\n\" .secret) \"\"}}{{end}}"
+   },
+   "ok_path": "code",
+   "ok_values": [
+    "0"
+   ]
+  }
+ },
+ {
+  "type": "wecom",
+  "label": "WeCom (WeChat Work)",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "key",
+    "label": "Webhook key",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={{query .key}}",
+   "format": "json",
+   "body": {
+    "msgtype": "text",
+    "text": {
+     "content": "{{trunc 2000 (print .title \"\\n\\n\" .text)}}"
+    }
+   },
+   "ok_path": "errcode",
+   "ok_values": [
+    "0"
+   ]
+  }
+ },
+ {
+  "type": "serverchan",
+  "label": "ServerChan",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "send_key",
+    "label": "SendKey",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{if prefix .send_key \"sctp\"}}https://{{between .send_key \"sctp\" \"t\"}}.push.ft07.com/send/{{path .send_key}}.send{{else}}https://sctapi.ftqq.com/{{path .send_key}}.send{{end}}",
+   "format": "form",
+   "body": {
+    "title": "{{trunc 32 .title}}",
+    "desp": "{{.text}}"
+   },
+   "ok_path": "code",
+   "ok_values": [
+    "0"
+   ]
+  }
+ },
+ {
+  "type": "pushplus",
+  "label": "PushPlus",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "token",
+    "label": "Token",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://www.pushplus.plus/send",
+   "format": "json",
+   "body": {
+    "token": "{{.token}}",
+    "title": "{{.title}}",
+    "content": "{{.text}}",
+    "template": "txt"
+   },
+   "ok_path": "code",
+   "ok_values": [
+    "200"
+   ]
+  }
+ },
+ {
+  "type": "wxpusher",
+  "label": "WxPusher",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "spt",
+    "label": "SPT",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://wxpusher.zjiecode.com/api/send/message/simple-push",
+   "format": "json",
+   "body": {
+    "content": "{{.text}}",
+    "summary": "{{trunc 20 .title}}",
+    "contentType": "int:1",
+    "spt": "{{.spt}}"
+   },
+   "ok_path": "code",
+   "ok_values": [
+    "1000"
+   ]
+  }
+ },
+ {
+  "type": "wpush",
+  "label": "WPush",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "channel",
+    "label": "Channel",
+    "required": true,
+    "default": "wechat",
+    "options": [
+     [
+      "wechat",
+      "WeChat"
+     ],
+     [
+      "sms",
+      "SMS"
+     ],
+     [
+      "mail",
+      "Email"
+     ],
+     [
+      "feishu",
+      "Feishu"
+     ],
+     [
+      "dingtalk",
+      "DingTalk"
+     ],
+     [
+      "webhook",
+      "Webhook"
+     ],
+     [
+      "wechat_work",
+      "WeCom"
+     ]
+    ]
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.wpush.cn/api/v1/send",
+   "format": "json",
+   "body": {
+    "apikey": "{{.api_key}}",
+    "title": "{{.title}}",
+    "content": "{{.text}}",
+    "channel": "{{.channel}}"
+   },
+   "ok_path": "code",
+   "ok_values": [
+    "0"
+   ]
+  }
+ },
+ {
+  "type": "spugpush",
+  "label": "SpugPush",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "template_key",
+    "label": "Template key",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://push.spug.cc/send/{{path .template_key}}",
+   "format": "json",
+   "body": {
+    "title": "{{.title}}",
+    "content": "{{.text}}"
+   }
+  }
+ },
+ {
+  "type": "yzj",
+  "label": "Yunzhijia",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "token",
+    "label": "Token",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.webhook_url}}?yzjtype=0&yzjtoken={{query .token}}",
+   "format": "json",
+   "body": {
+    "content": "{{.title}}\n\n{{.text}}"
+   },
+   "ok_path": "success",
+   "ok_values": [
+    "true"
+   ]
+  }
+ },
+ {
+  "type": "kook",
+  "label": "KOOK",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "bot_token",
+    "label": "Bot token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "channel_id",
+    "label": "Channel ID",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://www.kookapp.cn/api/v3/message/create",
+   "format": "json",
+   "body": {
+    "target_id": "{{.channel_id}}",
+    "content": "**{{.title}}**\n{{.text}}",
+    "type": "int:9"
+   },
+   "headers": {
+    "Authorization": "Bot {{.bot_token}}"
+   },
+   "ok_path": "code",
+   "ok_values": [
+    "0"
+   ]
+  }
+ },
+ {
+  "type": "onebot",
+  "label": "OneBot (QQ)",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "server",
+    "label": "OneBot HTTP URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "access_token",
+    "label": "Access token",
+    "secret": true
+   },
+   {
+    "key": "kind",
+    "label": "Send to",
+    "required": true,
+    "default": "private",
+    "options": [
+     [
+      "private",
+      "a person"
+     ],
+     [
+      "group",
+      "a group"
+     ]
+    ]
+   },
+   {
+    "key": "to",
+    "label": "QQ number or group ID",
+    "required": true,
+    "pattern": "^[0-9]+$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/send_{{if eq .kind \"group\"}}group{{else}}private{{end}}_msg",
+   "format": "json",
+   "body": {
+    "user_id": "opt:{{if ne .kind \"group\"}}{{.to}}{{end}}",
+    "group_id": "opt:{{if eq .kind \"group\"}}{{.to}}{{end}}",
+    "message": "{{.title}}\n\n{{.text}}"
+   },
+   "headers": {
+    "Authorization": "{{if .access_token}}Bearer {{.access_token}}{{end}}"
+   }
+  }
+ },
+ {
+  "type": "milky",
+  "label": "Milky (QQ)",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Milky URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "access_token",
+    "label": "Access token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "kind",
+    "label": "Send to",
+    "required": true,
+    "default": "private",
+    "options": [
+     [
+      "private",
+      "a person"
+     ],
+     [
+      "group",
+      "a group"
+     ]
+    ]
+   },
+   {
+    "key": "to",
+    "label": "QQ number or group ID",
+    "required": true,
+    "pattern": "^[0-9]+$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/api/send_{{if eq .kind \"group\"}}group{{else}}private{{end}}_message",
+   "format": "json",
+   "body": {
+    "user_id": "opt:{{if ne .kind \"group\"}}{{.to}}{{end}}",
+    "group_id": "opt:{{if eq .kind \"group\"}}{{.to}}{{end}}",
+    "message": [
+     {
+      "type": "text",
+      "data": {
+       "text": "{{.title}}\n\n{{.text}}"
+      }
+     }
+    ]
+   },
+   "headers": {
+    "Authorization": "Bearer {{.access_token}}"
+   }
+  }
+ },
+ {
+  "type": "vk",
+  "label": "VK",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "access_token",
+    "label": "Community access token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "peer_id",
+    "label": "Peer ID",
+    "required": true,
+    "pattern": "^-?[0-9]+$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.vk.ru/method/messages.send",
+   "format": "form",
+   "body": {
+    "access_token": "{{.access_token}}",
+    "peer_id": "{{.peer_id}}",
+    "message": "{{trunc 4000 (print .title \"\\n\\n\" .text)}}",
+    "random_id": "{{.ts_ms}}",
+    "v": "5.199"
+   }
+  }
+ },
+ {
+  "type": "vk_teams",
+  "label": "VK Teams",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "server",
+    "label": "API URL",
+    "url": true,
+    "default": "https://myteam.mail.ru"
+   },
+   {
+    "key": "bot_token",
+    "label": "Bot token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "chat_id",
+    "label": "Chat ID",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "GET",
+   "url": "{{.server}}/bot/v1/messages/sendText",
+   "format": "query",
+   "body": {
+    "token": "{{.bot_token}}",
+    "chatId": "{{.chat_id}}",
+    "text": "{{.title}}\n\n{{.text}}"
+   },
+   "ok_path": "ok",
+   "ok_values": [
+    "true"
+   ]
+  }
+ },
+ {
+  "type": "max",
+  "label": "MAX",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "server",
+    "label": "API URL",
+    "url": true,
+    "default": "https://platform-api.max.ru"
+   },
+   {
+    "key": "bot_token",
+    "label": "Bot token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "chat_id",
+    "label": "Chat ID",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/messages?chat_id={{query .chat_id}}",
+   "format": "json",
+   "body": {
+    "text": "{{.title}}\n\n{{.text}}"
+   },
+   "headers": {
+    "Authorization": "{{.bot_token}}"
+   }
+  }
+ },
+ {
+  "type": "bale",
+  "label": "Bale",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "bot_token",
+    "label": "Bot token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "chat_id",
+    "label": "Chat ID",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://tapi.bale.ai/bot{{.bot_token}}/sendMessage",
+   "format": "json",
+   "body": {
+    "chat_id": "{{.chat_id}}",
+    "text": "{{.title}}\n\n{{.text}}"
+   },
+   "ok_path": "ok",
+   "ok_values": [
+    "true"
+   ]
+  }
+ },
+ {
+  "type": "onechat",
+  "label": "OneChat",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "access_token",
+    "label": "Access token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "bot_id",
+    "label": "Bot ID",
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Receiver ID",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://chat-api.one.th/message/api/v1/push_message",
+   "format": "json",
+   "body": {
+    "to": "{{.to}}",
+    "bot_id": "{{.bot_id}}",
+    "type": "text",
+    "message": "{{.title}}\n\n{{.text}}"
+   },
+   "headers": {
+    "Authorization": "Bearer {{.access_token}}"
+   }
+  }
+ },
+ {
+  "type": "freemobile",
+  "label": "Free Mobile (SMS to yourself)",
+  "group": "Regional",
+  "fields": [
+   {
+    "key": "user",
+    "label": "User ID",
+    "required": true
+   },
+   {
+    "key": "pass",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "GET",
+   "url": "https://smsapi.free-mobile.fr/sendmsg",
+   "format": "query",
+   "body": {
+    "user": "{{.user}}",
+    "pass": "{{.pass}}",
+    "msg": "{{trunc 900 (print .title \"\\n\" .text)}}"
+   }
+  }
+ },
+ {
+  "type": "twilio_own",
+  "label": "Twilio (your account)",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "account_sid",
+    "label": "Account SID",
+    "required": true,
+    "pattern": "^AC[0-9a-f]{32}$"
+   },
+   {
+    "key": "auth_token",
+    "label": "Auth token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "from",
+    "label": "From number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.twilio.com/2010-04-01/Accounts/{{path .account_sid}}/Messages.json",
+   "format": "form",
+   "body": {
+    "From": "{{.from}}",
+    "To": "{{.to}}",
+    "Body": "{{trunc 1500 .title}}"
+   },
+   "basic_auth": [
+    "{{.account_sid}}",
+    "{{.auth_token}}"
+   ]
+  }
+ },
+ {
+  "type": "46elks",
+  "label": "46elks",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "username",
+    "label": "API username",
+    "required": true
+   },
+   {
+    "key": "password",
+    "label": "API password",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "from",
+    "label": "Sender",
+    "hint": "name or number",
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.46elks.com/a1/sms",
+   "format": "form",
+   "body": {
+    "from": "{{.from}}",
+    "to": "{{.to}}",
+    "message": "{{trunc 1500 .title}}"
+   },
+   "basic_auth": [
+    "{{.username}}",
+    "{{.password}}"
+   ]
+  }
+ },
+ {
+  "type": "clicksend",
+  "label": "ClickSend",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "username",
+    "label": "Username",
+    "required": true
+   },
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "from",
+    "label": "Sender ID"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://rest.clicksend.com/v3/sms/send",
+   "format": "json",
+   "body": {
+    "messages": [
+     {
+      "source": "sentinel",
+      "to": "{{.to}}",
+      "from": "opt:{{.from}}",
+      "body": "{{trunc 1000 .title}}"
+     }
+    ]
+   },
+   "basic_auth": [
+    "{{.username}}",
+    "{{.api_key}}"
+   ]
+  }
+ },
+ {
+  "type": "plivo",
+  "label": "Plivo",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "auth_id",
+    "label": "Auth ID",
+    "required": true
+   },
+   {
+    "key": "auth_token",
+    "label": "Auth token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "from",
+    "label": "From number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.plivo.com/v1/Account/{{path .auth_id}}/Message/",
+   "format": "json",
+   "body": {
+    "src": "{{.from}}",
+    "dst": "{{.to}}",
+    "text": "{{trunc 1500 .title}}"
+   },
+   "basic_auth": [
+    "{{.auth_id}}",
+    "{{.auth_token}}"
+   ]
+  }
+ },
+ {
+  "type": "telnyx",
+  "label": "Telnyx",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "from",
+    "label": "From number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.telnyx.com/v2/messages",
+   "format": "json",
+   "body": {
+    "from": "{{.from}}",
+    "to": "{{.to}}",
+    "text": "{{trunc 1500 .title}}"
+   },
+   "headers": {
+    "Authorization": "Bearer {{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "sevenio",
+  "label": "seven.io",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "from",
+    "label": "Sender"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://gateway.seven.io/api/sms",
+   "format": "form",
+   "body": {
+    "to": "{{.to}}",
+    "text": "{{trunc 1500 .title}}",
+    "from": "opt:{{.from}}"
+   },
+   "headers": {
+    "X-Api-Key": "{{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "octopush",
+  "label": "Octopush",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "api_login",
+    "label": "API login",
+    "required": true
+   },
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "sender",
+    "label": "Sender"
+   },
+   {
+    "key": "type",
+    "label": "Type",
+    "required": true,
+    "default": "sms_premium",
+    "options": [
+     [
+      "sms_premium",
+      "Premium"
+     ],
+     [
+      "sms_low_cost",
+      "Low cost"
+     ]
+    ]
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.octopush.com/v1/public/sms-campaign/send",
+   "format": "json",
+   "body": {
+    "recipients": [
+     {
+      "phone_number": "{{.to}}"
+     }
+    ],
+    "text": "{{trunc 1000 .title}}",
+    "type": "{{.type}}",
+    "purpose": "alert",
+    "sender": "opt:{{.sender}}"
+   },
+   "headers": {
+    "api-key": "{{.api_key}}",
+    "api-login": "{{.api_login}}"
+   }
+  }
+ },
+ {
+  "type": "smspartner",
+  "label": "SMSPartner",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Numbers",
+    "hint": "comma-separated",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "sender",
+    "label": "Sender name"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.smspartner.fr/v1/send",
+   "format": "json",
+   "body": {
+    "apiKey": "{{.api_key}}",
+    "phoneNumbers": "{{.to}}",
+    "message": "{{trunc 600 .title}}",
+    "sender": "opt:{{.sender}}"
+   }
+  }
+ },
+ {
+  "type": "smsmanager",
+  "label": "SmsManager (smsmanager.cz)",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "gateway",
+    "label": "Gateway",
+    "required": true,
+    "default": "high",
+    "options": [
+     [
+      "high",
+      "High"
+     ],
+     [
+      "economy",
+      "Economy"
+     ],
+     [
+      "lowcost",
+      "Low cost"
+     ]
+    ]
+   }
+  ],
+  "request": {
+   "method": "GET",
+   "url": "https://http-api.smsmanager.cz/Send",
+   "format": "query",
+   "body": {
+    "apikey": "{{.api_key}}",
+    "number": "{{.to}}",
+    "message": "{{trunc 600 .title}}",
+    "gateway": "{{.gateway}}"
+   }
+  }
+ },
+ {
+  "type": "serwersms",
+  "label": "SerwerSMS.pl",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "username",
+    "label": "Username",
+    "required": true
+   },
+   {
+    "key": "password",
+    "label": "Password",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "sender",
+    "label": "Sender name"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api2.serwersms.pl/messages/send_sms",
+   "format": "json",
+   "body": {
+    "username": "{{.username}}",
+    "password": "{{.password}}",
+    "phone": "{{.to}}",
+    "text": "{{trunc 600 .title}}",
+    "sender": "opt:{{.sender}}"
+   },
+   "ok_path": "success",
+   "ok_values": [
+    "true"
+   ]
+  }
+ },
+ {
+  "type": "smsplanet",
+  "label": "SMSPlanet",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "api_token",
+    "label": "API token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Numbers",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "from",
+    "label": "Sender name",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api2.smsplanet.pl/sms",
+   "format": "form",
+   "body": {
+    "from": "{{.from}}",
+    "to": "{{.to}}",
+    "msg": "{{trunc 600 .title}}"
+   },
+   "headers": {
+    "Authorization": "Bearer {{.api_token}}"
+   }
+  }
+ },
+ {
+  "type": "promosms",
+  "label": "PromoSMS",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "login",
+    "label": "Login",
+    "required": true
+   },
+   {
+    "key": "password",
+    "label": "Password",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "sender",
+    "label": "Sender name",
+    "required": true
+   },
+   {
+    "key": "type",
+    "label": "SMS type",
+    "required": true,
+    "default": "2",
+    "options": [
+     [
+      "0",
+      "Flash"
+     ],
+     [
+      "1",
+      "Economic"
+     ],
+     [
+      "2",
+      "Full"
+     ],
+     [
+      "3",
+      "Speed"
+     ]
+    ]
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://promosms.com/api/rest/v3_2/sms",
+   "format": "json",
+   "body": {
+    "recipients": [
+     "{{.to}}"
+    ],
+    "text": "{{trunc 159 .title}}",
+    "long-sms": "bool:false",
+    "type": "int:{{.type}}",
+    "sender": "{{.sender}}"
+   },
+   "headers": {
+    "Accept": "text/json"
+   },
+   "basic_auth": [
+    "{{.login}}",
+    "{{.password}}"
+   ]
+  }
+ },
+ {
+  "type": "cellsynt",
+  "label": "Cellsynt",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "username",
+    "label": "Login",
+    "required": true
+   },
+   {
+    "key": "password",
+    "label": "Password",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Destination",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "originator",
+    "label": "Originator",
+    "required": true
+   },
+   {
+    "key": "originator_type",
+    "label": "Originator type",
+    "required": true,
+    "default": "alpha",
+    "options": [
+     [
+      "alpha",
+      "Name"
+     ],
+     [
+      "numeric",
+      "Number"
+     ]
+    ]
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://se-1.cellsynt.net/sms.php",
+   "format": "query",
+   "body": {
+    "username": "{{.username}}",
+    "password": "{{.password}}",
+    "destination": "{{.to}}",
+    "text": "{{trunc 600 .title}}",
+    "originatortype": "{{.originator_type}}",
+    "originator": "{{.originator}}",
+    "allowconcat": "6",
+    "charset": "UTF-8"
+   }
+  }
+ },
+ {
+  "type": "gtx_messaging",
+  "label": "GTX Messaging",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "from",
+    "label": "Sender",
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://rest.gtx-messaging.net/smsc/sendsms/{{path .api_key}}/json",
+   "format": "query",
+   "body": {
+    "from": "{{.from}}",
+    "to": "{{.to}}",
+    "text": "{{trunc 600 .title}}"
+   }
+  }
+ },
+ {
+  "type": "egosms",
+  "label": "EgoSMS",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "username",
+    "label": "Username",
+    "required": true
+   },
+   {
+    "key": "password",
+    "label": "Password",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "sender",
+    "label": "Sender",
+    "required": true,
+    "default": "EGOSMS"
+   }
+  ],
+  "request": {
+   "method": "GET",
+   "url": "https://www.egosms.co/api/v1/plain/",
+   "format": "query",
+   "body": {
+    "number": "{{.to}}",
+    "message": "{{trunc 600 .title}}",
+    "username": "{{.username}}",
+    "password": "{{.password}}",
+    "sender": "{{.sender}}",
+    "priority": "0"
+   }
+  }
+ },
+ {
+  "type": "bearsms",
+  "label": "BearSMS",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "username",
+    "label": "Username",
+    "required": true
+   },
+   {
+    "key": "hash_key",
+    "label": "Hash key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To number",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "from",
+    "label": "Sender ID"
+   }
+  ],
+  "request": {
+   "method": "GET",
+   "url": "https://app.bearsms.com/index.php",
+   "format": "query",
+   "body": {
+    "app": "ws",
+    "u": "{{.username}}",
+    "h": "{{.hash_key}}",
+    "op": "pv",
+    "to": "{{.to}}",
+    "msg": "{{trunc 600 .title}}",
+    "from": "opt:{{.from}}"
+   }
+  }
+ },
+ {
+  "type": "smsc",
+  "label": "SMSC",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "login",
+    "label": "Login",
+    "required": true
+   },
+   {
+    "key": "password",
+    "label": "Password",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Numbers",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "sender",
+    "label": "Sender"
+   }
+  ],
+  "request": {
+   "method": "GET",
+   "url": "https://smsc.kz/sys/send.php",
+   "format": "query",
+   "body": {
+    "login": "{{.login}}",
+    "psw": "{{.password}}",
+    "phones": "{{.to}}",
+    "mes": "{{trunc 600 .title}}",
+    "sender": "opt:{{.sender}}",
+    "fmt": "3",
+    "charset": "utf-8"
+   }
+  }
+ },
+ {
+  "type": "smseagle",
+  "label": "SMSEagle",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "server",
+    "label": "SMSEagle URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "token",
+    "label": "API access token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Numbers",
+    "hint": "comma-separated",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/api/v2/messages/sms",
+   "format": "json",
+   "body": {
+    "to": "list:{{.to}}",
+    "text": "{{trunc 600 .title}}"
+   },
+   "headers": {
+    "access-token": "{{.token}}"
+   }
+  }
+ },
+ {
+  "type": "sms_gateway",
+  "label": "SMS Gateway for Android",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Gateway URL",
+    "url": true,
+    "default": "https://api.sms-gate.app/3rdparty/v1"
+   },
+   {
+    "key": "username",
+    "label": "User",
+    "required": true
+   },
+   {
+    "key": "password",
+    "label": "Password",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Numbers",
+    "hint": "comma-separated",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/message",
+   "format": "json",
+   "body": {
+    "textMessage": {
+     "text": "{{trunc 600 .title}}"
+    },
+    "phoneNumbers": "list:{{.to}}"
+   },
+   "basic_auth": [
+    "{{.username}}",
+    "{{.password}}"
+   ]
+  }
+ },
+ {
+  "type": "ooredoo",
+  "label": "Ooredoo (Maldives)",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "server",
+    "label": "API URL",
+    "url": true,
+    "default": "https://o-papi1-lb01.ooredoo.mv/bulk_sms/v2"
+   },
+   {
+    "key": "token",
+    "label": "Bearer token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "username",
+    "label": "Username",
+    "required": true
+   },
+   {
+    "key": "access_key",
+    "label": "Access key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Numbers",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}",
+   "format": "form",
+   "body": {
+    "username": "{{.username}}",
+    "access_key": "{{b64 .access_key}}",
+    "message": "{{trunc 600 .title}}",
+    "batch": "{{.to}}"
+   },
+   "headers": {
+    "Authorization": "Bearer {{.token}}"
+   }
+  }
+ },
+ {
+  "type": "smsir",
+  "label": "SMS.ir",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Mobile number",
+    "required": true
+   },
+   {
+    "key": "template_id",
+    "label": "Template ID",
+    "hint": "a template with one parameter named alert",
+    "required": true,
+    "pattern": "^[0-9]+$"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.sms.ir/v1/send/verify",
+   "format": "json",
+   "body": {
+    "mobile": "{{.to}}",
+    "templateId": "int:{{.template_id}}",
+    "parameters": [
+     {
+      "name": "alert",
+      "value": "{{trunc 25 .summary}}"
+     }
+    ]
+   },
+   "headers": {
+    "X-API-Key": "{{.api_key}}",
+    "Accept": "application/json"
+   }
+  }
+ },
+ {
+  "type": "amootsms",
+  "label": "AmootSMS",
+  "group": "SMS",
+  "fields": [
+   {
+    "key": "token",
+    "label": "Token",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "Mobile numbers",
+    "required": true,
+    "pattern": "^\\+?[0-9 ,]{6,200}$"
+   },
+   {
+    "key": "line",
+    "label": "Line number",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://portal.amootsms.com/rest/SendSimple",
+   "format": "form",
+   "body": {
+    "SendDateTime": "",
+    "SMSMessageText": "{{trunc 600 .title}}",
+    "LineNumber": "{{.line}}",
+    "Mobiles": "{{.to}}"
+   },
+   "headers": {
+    "Authorization": "{{.token}}"
+   }
+  }
+ },
+ {
+  "type": "resend",
+  "label": "Resend",
+  "group": "Email services",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "from",
+    "label": "From address",
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To address",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.resend.com/emails",
+   "format": "json",
+   "body": {
+    "from": "{{.from}}",
+    "to": [
+     "{{.to}}"
+    ],
+    "subject": "{{.title}}",
+    "text": "{{.text}}"
+   },
+   "headers": {
+    "Authorization": "Bearer {{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "sendgrid",
+  "label": "SendGrid",
+  "group": "Email services",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "from",
+    "label": "From address",
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To address",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.sendgrid.com/v3/mail/send",
+   "format": "json",
+   "body": {
+    "personalizations": [
+     {
+      "to": [
+       {
+        "email": "{{.to}}"
+       }
+      ]
+     }
+    ],
+    "from": {
+     "email": "{{.from}}"
+    },
+    "subject": "{{.title}}",
+    "content": [
+     {
+      "type": "text/plain",
+      "value": "{{.text}}"
+     }
+    ]
+   },
+   "headers": {
+    "Authorization": "Bearer {{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "brevo",
+  "label": "Brevo",
+  "group": "Email services",
+  "fields": [
+   {
+    "key": "api_key",
+    "label": "API key",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "from",
+    "label": "From address",
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To address",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.brevo.com/v3/smtp/email",
+   "format": "json",
+   "body": {
+    "sender": {
+     "email": "{{.from}}"
+    },
+    "to": [
+     {
+      "email": "{{.to}}"
+     }
+    ],
+    "subject": "{{.title}}",
+    "textContent": "{{.text}}"
+   },
+   "headers": {
+    "api-key": "{{.api_key}}"
+   }
+  }
+ },
+ {
+  "type": "turbosmtp",
+  "label": "turboSMTP",
+  "group": "Email services",
+  "fields": [
+   {
+    "key": "consumer_key",
+    "label": "Consumer key",
+    "required": true
+   },
+   {
+    "key": "consumer_secret",
+    "label": "Consumer secret",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "from",
+    "label": "From address",
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To address",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://api.turbo-smtp.com/api/v2/mail/send",
+   "format": "json",
+   "body": {
+    "from": "{{.from}}",
+    "to": "{{.to}}",
+    "subject": "{{.title}}",
+    "content": "{{.text}}"
+   },
+   "headers": {
+    "consumerKey": "{{.consumer_key}}",
+    "consumerSecret": "{{.consumer_secret}}"
+   }
+  }
+ }
+]

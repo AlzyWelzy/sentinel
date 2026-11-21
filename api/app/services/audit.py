@@ -27,6 +27,7 @@ REDACT = (
     "webhook_url",
     "headers",
     "community",
+    "fields",  # a catalog contact's form: many providers' secrets have plain names
 )
 # user:password@ in a URL (database check targets, proxies).
 URL_PASSWORD = re.compile(r"(\w[\w+.-]*://[^/@:\s]*:)[^/@\s]+@")

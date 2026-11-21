@@ -90,7 +90,7 @@ func senders(mail *emailSender) map[string]sender {
 	webhook := newWebhookSender(os.Getenv("WEBHOOK_SIGNING_SECRET"), os.Getenv("ALLOW_PRIVATE_WEBHOOKS") == "true")
 	public := &http.Client{Timeout: 15 * time.Second}
 	twilio := env("TWILIO_API_URL", "https://api.twilio.com")
-	return map[string]sender{
+	out := map[string]sender{
 		"email":   mail,
 		"webhook": webhook,
 		"sms": &smsSender{
@@ -119,6 +119,18 @@ func senders(mail *emailSender) map[string]sender {
 			client:     public,
 		},
 	}
+	// The catalog providers. Customer URLs and self-hosted servers go
+	// through the webhook client, which refuses private addresses.
+	catalog, err := catalogSenders(webhook.client)
+	if err != nil {
+		panic("notification catalog: " + err.Error()) // embedded: a bad build, not bad input
+	}
+	for t, s := range catalog {
+		if _, taken := out[t]; !taken {
+			out[t] = s
+		}
+	}
+	return out
 }
 
 // emailTransport sends through SMTP or a provider's SMTP relay (SES,

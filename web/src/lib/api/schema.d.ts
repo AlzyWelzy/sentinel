@@ -1241,6 +1241,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/channels/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Provider Catalog
+         * @description The notification services a contact can be (besides the built-in types).
+         */
+        get: operations["provider_catalog_v1_channels_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/channels": {
         parameters: {
             query?: never;
@@ -3813,6 +3833,21 @@ export interface components {
             /** Hottest */
             hottest: components["schemas"]["HotServer"][];
         };
+        /** CatalogProvider */
+        CatalogProvider: {
+            /** Type */
+            type: string;
+            /** Label */
+            label: string;
+            /** Group */
+            group: string;
+            /** Docs */
+            docs?: string | null;
+            /** Fields */
+            fields: {
+                [key: string]: unknown;
+            }[];
+        };
         /** ChangePasswordIn */
         ChangePasswordIn: {
             /** Current Password */
@@ -3824,11 +3859,22 @@ export interface components {
         ChannelIn: {
             /**
              * Type
-             * @enum {string}
+             * @description a built-in type, or a provider from GET /v1/channels/catalog
              */
-            type: "email" | "sms" | "voice" | "webhook" | "slack" | "teams" | "discord" | "telegram" | "pagerduty";
-            /** Target */
+            type: string;
+            /**
+             * Target
+             * @description built-in types; catalog providers use fields
+             * @default
+             */
             target: string;
+            /**
+             * Fields
+             * @description catalog providers: the provider's form fields
+             */
+            fields?: {
+                [key: string]: string;
+            };
             /** Label */
             label?: string | null;
             /**
@@ -3879,11 +3925,30 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Provider
+             * @description catalog providers: the service's name
+             */
+            provider?: string | null;
+            /**
+             * Fields
+             * @description catalog providers: the form fields, secrets masked
+             */
+            fields?: {
+                [key: string]: string;
+            } | null;
         };
         /** ChannelPatch */
         ChannelPatch: {
             /** Label */
             label?: string | null;
+            /**
+             * Fields
+             * @description catalog providers: new fields (masked ones are kept); verified again
+             */
+            fields?: {
+                [key: string]: string;
+            } | null;
             /** Min Severity */
             min_severity?: ("critical" | "warning" | "info") | null;
             /**
@@ -9520,6 +9585,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provider_catalog_v1_channels_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogProvider"][];
                 };
             };
         };
