@@ -10,6 +10,7 @@ their interfaces and neighbours, and the topology built from LLDP.
 import ipaddress
 import math
 import re
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -783,6 +784,96 @@ async def device_traffic(
     except metrics.MetricsUnavailable:
         raise HTTPException(503, "Metrics are unavailable right now") from None
     return TrafficOut(series=out)
+
+
+class PortStat(BaseModel):
+    ifname: str
+    value: float
+
+
+class InsightOut(BaseModel):
+    days: int
+    availability: float | None = Field(description="% of polls that answered")
+    busiest: list[PortStat] = Field(description="average bits per second, in plus out")
+    peaks: list[PortStat] = Field(description="highest 5-minute rate, bits per second")
+    errors: list[PortStat] = Field(description="in plus out errors over the period")
+    flaps: list[PortStat] = Field(description="times the port's state changed")
+    heatmap: list[list[float | None]] = Field(
+        description="7 rows (oldest day first) x 24 hours (UTC): average bits per second"
+    )
+    heatmap_start: int = Field(description="UTC midnight of the first row, unix seconds")
+
+
+def _top(rows: list[tuple[dict[str, str], float]], n: int = 10) -> list[PortStat]:
+    stats = [
+        PortStat(ifname=lbl.get("ifname", "?"), value=round(v, 3))
+        for lbl, v in rows
+        if v == v and v > 0  # NaN and idle ports aren't news
+    ]
+    return sorted(stats, key=lambda x: -x.value)[:n]
+
+
+@router.get("/devices/{device_id}/insight")
+async def device_insight(
+    device_id: uuid.UUID, t: Tenant, days: Annotated[int, Query(ge=1, le=90)] = 7
+) -> InsightOut:
+    """How a device has been: availability, its busiest and most troubled
+    ports, and when in the week its traffic happens."""
+    h = await _get_device(t, device_id)
+    sel = f'host_id="{h.id}"'
+    win = f"{days}d"
+    octets = f'{{__name__=~"sentinel_net_if_(in|out)_octets_total",{sel}}}'
+    now = int(time.time())
+    first = (now // 86400 - 6) * 86400
+    try:
+        avail = await metrics.query_instant(
+            t.tenant_id, f"avg_over_time(sentinel_net_snmp_up{{{sel}}}[{win}]) * 100"
+        )
+        busiest = await metrics.query_instant(
+            t.tenant_id, f"sum by (ifname) (increase({octets}[{win}])) * 8 / {days * 86400}"
+        )
+        peaks = await metrics.query_instant(
+            t.tenant_id,
+            f"max_over_time((sum by (ifname) (rate({octets}[5m])) * 8)[{win}:5m])",
+        )
+        errors = await metrics.query_instant(
+            t.tenant_id,
+            'sum by (ifname) (increase({__name__=~"sentinel_net_if_(in|out)_errors_total",'
+            + sel
+            + f"}}[{win}]))",
+        )
+        flaps = await metrics.query_instant(
+            t.tenant_id, f"changes(sentinel_net_if_oper_status{{{sel}}}[{win}])"
+        )
+        hourly = await metrics.query_series(
+            t.tenant_id, f"sum(rate({octets}[1h])) * 8", first + 3600, now, 3600, []
+        )
+        # The hour under way so far.
+        so_far = max(now % 3600, 120)
+        current = await metrics.query_instant(t.tenant_id, f"sum(rate({octets}[{so_far}s])) * 8")
+    except metrics.MetricsUnavailable:
+        raise HTTPException(503, "Metrics are unavailable right now") from None
+    grid: list[list[float | None]] = [[None] * 24 for _ in range(7)]
+    for series in hourly:
+        for ts, v in series["points"]:
+            start = int(ts) - 3600  # the hour that ended at ts
+            d, hr = divmod((start - first) // 3600, 24)
+            if 0 <= d < 7 and v == v:
+                grid[d][hr] = round(v, 1)
+    if current and current[0][1] == current[0][1]:
+        d, hr = divmod((now - first) // 3600, 24)
+        if 0 <= d < 7:
+            grid[d][hr] = round(current[0][1], 1)
+    return InsightOut(
+        days=days,
+        availability=round(min(avail[0][1], 100.0), 3) if avail else None,
+        busiest=_top(busiest),
+        peaks=_top(peaks),
+        errors=_top(errors),
+        flaps=_top(flaps),
+        heatmap=grid,
+        heatmap_start=first,
+    )
 
 
 class InterfacePatch(BaseModel):

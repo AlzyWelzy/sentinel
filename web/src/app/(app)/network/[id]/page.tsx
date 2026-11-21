@@ -43,6 +43,130 @@ const EFFECT: Record<string, Effect> = {
   clear: { label: "Clears alert", tone: "ok" },
 };
 
+const DAYS = [1, 7, 30, 90];
+
+function StatList({
+  title,
+  rows,
+  fmt,
+}: {
+  title: string;
+  rows: { ifname: string; value: number }[];
+  fmt: (v: number) => string;
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-[13px] font-medium">{title}</p>
+      {rows.length === 0 ? (
+        <p className="text-xs text-ink-3">None</p>
+      ) : (
+        <ul className="space-y-1 text-[13px]">
+          {rows.slice(0, 5).map((r) => (
+            <li key={r.ifname} className="flex justify-between gap-3">
+              <span className="truncate font-mono text-xs">{r.ifname}</span>
+              <span className="tabular-nums text-ink-2">{fmt(r.value)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** How the device has been: availability, ports worth a look, and when in
+ * the week its traffic happens. */
+function Insight({ id }: { id: string }) {
+  const [days, setDays] = useState(7);
+  const q = useQuery({
+    queryKey: ["device-insight", id, days],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/network/devices/{device_id}/insight", {
+          params: { path: { device_id: id }, query: { days } },
+        }),
+      ),
+  });
+  const ins = q.data;
+  const max = Math.max(1, ...(ins?.heatmap.flat().map((v) => v ?? 0) ?? [1]));
+  const day = (i: number) =>
+    new Date(((ins?.heatmap_start ?? 0) + i * 86400) * 1000).toLocaleDateString(undefined, {
+      weekday: "short",
+      timeZone: "UTC",
+    });
+  return (
+    <Card
+      title="Insight"
+      actions={
+        <Select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Period">
+          {DAYS.map((d) => (
+            <option key={d} value={d}>
+              {d === 1 ? "Last day" : `Last ${d} days`}
+            </option>
+          ))}
+        </Select>
+      }
+    >
+      {q.isLoading ? (
+        <Loading />
+      ) : q.error ? (
+        <ErrorState message={errorText(q.error)} />
+      ) : ins ? (
+        <div className="space-y-6">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
+            <div>
+              <p className="mb-2 text-[13px] font-medium">Availability</p>
+              <p className="text-2xl font-semibold tabular-nums">
+                {ins.availability == null ? "—" : `${ins.availability.toFixed(2)}%`}
+              </p>
+            </div>
+            <StatList title="Busiest (average)" rows={ins.busiest} fmt={bps} />
+            <StatList title="Highest peaks" rows={ins.peaks} fmt={bps} />
+            <StatList
+              title="Errors"
+              rows={ins.errors}
+              fmt={(v) => Math.round(v).toLocaleString()}
+            />
+            <StatList title="State changes" rows={ins.flaps} fmt={(v) => String(Math.round(v))} />
+          </div>
+          <div className="overflow-x-auto">
+            <p className="mb-2 text-[13px] font-medium">Traffic by hour, last 7 days (UTC)</p>
+            <table className="border-separate border-spacing-[2px] text-[10px] text-ink-3">
+              <tbody>
+                {ins.heatmap.map((row, i) => (
+                  <tr key={i}>
+                    <th className="pr-2 text-left font-normal">{day(i)}</th>
+                    {row.map((v, h) => (
+                      <td
+                        key={h}
+                        title={`${day(i)} ${String(h).padStart(2, "0")}:00 · ${v == null ? "no data" : bps(v)}`}
+                        className="h-4 w-4 min-w-4 rounded-[2px]"
+                        style={{
+                          background:
+                            v == null
+                              ? "var(--color-line)"
+                              : `color-mix(in oklab, var(--color-brand) ${Math.round(15 + (85 * v) / max)}%, transparent)`,
+                        }}
+                      />
+                    ))}
+                  </tr>
+                ))}
+                <tr>
+                  <th />
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <td key={h} className="text-center">
+                      {h % 6 === 0 ? h : ""}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
 /** SNMP traps from this device: what each one did, newest first. */
 function TrapEvents({
   id,
@@ -574,6 +698,9 @@ function SNMPDetail({
       </div>
       <div className="mb-6">
         <Traffic id={id} interfaces={d.interfaces} />
+      </div>
+      <div className="mb-6">
+        <Insight id={id} />
       </div>
       <div className="mb-6">
         <Card
