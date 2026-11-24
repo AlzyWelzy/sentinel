@@ -121,4 +121,3 @@ func TestNostrBadSettingsArePermanent(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
-

@@ -1,29 +1,41 @@
 # Sentinel roadmap
 
-What to build next, in order. Each item ends with something that runs on sentinel.rajpoot.app.
+What's done, what's waiting on an account or a key, and what to build next.
 
-## Now: finish going live
+## Built and waiting for a key
 
-1. **Turnstile and Web Push keys.** Sign-up has no bot protection until Turnstile keys are set, and Web Push needs VAPID keys generated on the server.
-2. **Customers' own status page domains.** Turn on Cloudflare for SaaS with the fallback origin `sentinel-customers.rajpoot.app`, and set `CF_API_TOKEN` with SSL and Certificates Edit.
-3. **Watching Sentinel itself.** Set up an external uptime monitor on sentinel.rajpoot.app and `sentinel-ingest`, plus an agent on `sentinel-prod` reporting to its own organisation.
-4. **Off-site backups.** Copy the nightly Postgres, ClickHouse and VictoriaMetrics backups to a GCS bucket with lifecycle rules, so the backups survive losing the VM.
-5. **Bounces and complaints from Resend by webhook.** These mark contacts undeliverable.
+Each of these is built, tested and deployed, and stays off until its setting is in `/srv/sentinel/prod.env`:
 
-## Next: what customers will ask for
+| Feature | Turn it on with |
+|---|---|
+| Plans and Razorpay subscriptions (Free, Pro, Business) | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_PLAN_PRO`, `RAZORPAY_PLAN_BUSINESS`; webhook `https://sentinel.rajpoot.app/api/webhooks/razorpay` with the `subscription.*` events |
+| Bounces and complaints from Resend | `RESEND_WEBHOOK_SECRET`; webhook `https://sentinel.rajpoot.app/api/webhooks/resend` with `email.bounced` and `email.complained` |
+| AI incident summaries | `ANTHROPIC_API_KEY` |
+| Customers' status pages on their own domains | `CF_API_TOKEN` with SSL and Certificates Edit; Cloudflare for SaaS with fallback origin `sentinel-customers.rajpoot.app` |
+| Terraform Registry listing | Repository secrets `TF_GPG_PRIVATE_KEY` and `TF_GPG_PASSPHRASE`, then publish `alzywelzy/sentinel` on the Registry; releases come from `terraform-v*` tags |
 
-1. **Billing:** plans, limits per organisation (servers, checks, retention), and Stripe or Razorpay. Room for it is already kept.
-2. **Google and GitHub sign-in.**
-3. **IPDR on real gear:** a FortiGate and Arista sending to a real collector, plus a court-ready export format review.
-4. **Correlated outages:** suggest a dependency when several servers drop together (see Open ideas in AGENTS.md).
-5. **Mobile:** a PWA with push for on-call acknowledgement.
-6. **Public API docs and a Terraform provider release** (`terraform-provider-sentinel`).
+## Done
 
-## Later: room to grow
+- **Uptime checks from three regions:** probe VMs in europe-west1, us-central1 and asia-southeast1. A check alerts when two regions agree.
+- **Sentinel watches itself:** probe checks on the app, ingest and downloads, plus a Google Cloud Monitoring check that emails the owner if Sentinel can't alert.
+- **Backups off the server:** a nightly copy to Cloud Storage, kept 30 days.
+- **Dependency suggestions:** Insights finds servers that go quiet together and offers to set the dependency.
+- **Installable app:** Sentinel installs on phones and computers, and alerts arrive as notifications with Acknowledge on them.
+- **Developer access:** API reference at `/api/docs`, and a Terraform provider (tested against production with OpenTofu).
+- **Browser checks from Chrome Recorder:** checks import a Chrome DevTools Recorder export.
+- **Notifiers:** Microsoft 365 through Graph, Apprise and Nostr, making 103 notification providers.
+- **Access reviews and policies:** access reviews in Settings, and the operating policies in `docs/policies.md`.
 
-1. **Scale out:** a second VM in the Swarm, Postgres on Cloud SQL or a replica, and ClickHouse on its own disk.
-2. **Regions:** probes in several regions for uptime checks, and status from more than one place before declaring a site down.
-3. **AI incident summaries:** what changed, likely cause, and similar past incidents.
-4. **Synthetic transactions recorder:** record browser-check steps from a real browser.
-5. **The remaining Kuma notifiers:** Apprise, Nostr and Microsoft Graph.
-6. **SOC 2-style controls:** access reviews and the audit export already there, plus a written policy set.
+## Next
+
+1. **IPDR on real gear:** a FortiGate and Arista switches sending to a real collector, then a review of the export format with whoever will receive it.
+2. **Google and GitHub sign-in.** Skipped on 2026-11-24; this needs OAuth apps in the owner's accounts.
+3. **Usage-based limits:** enforce plan retention (metrics days, log days) as well as counts.
+4. **Mobile polish:** on-call schedule and incident list tuned for small screens, and a widget-style status view.
+5. **Status page subscriptions:** visitors subscribe to updates by email.
+
+## Later
+
+1. **Scale out:** a second Swarm node, Postgres with a replica or Cloud SQL, and ClickHouse on its own disk. Do this when the server stays above 60% CPU or memory.
+2. **More probe regions:** add them where customers are (South America, Africa, Australia).
+3. **SOC 2 audit:** pick an auditor, collect evidence against `docs/policies.md`, and run a readiness assessment.

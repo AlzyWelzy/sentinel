@@ -13,7 +13,7 @@ Sentinel is its own project. It does not rely on any other project, and work her
 - **Own infrastructure:** use only Sentinel's own accounts, registry (`ghcr.io/alzywelzy/sentinel-*`), domain, servers, secrets and email provider. Never use another organisation's resources.
 - **The repo** is `AlzyWelzy/sentinel` on GitHub (renamed from `pulsegrid-beyond` on 2026-11-20, history anonymised) and public; the Go module path matches it.
 
-`README.md` has the feature list, `ROADMAP.md` what to build next, `ARCHITECTURE.md` the components, data flow and delivery guarantees, `SECURITY.md` accounts, tenancy and the threat model, `DEPLOYMENT.md` the single-VPS setup, backups and restores. This file holds what they don't: how work is done here, where things stand, and what was learned running the inherited code on a real fleet of about 80 servers.
+`README.md` has the feature list, `ROADMAP.md` what to build next and what waits for a key, `docs/policies.md` the operating policies, `ARCHITECTURE.md` the components, data flow and delivery guarantees, `SECURITY.md` accounts, tenancy and the threat model, `DEPLOYMENT.md` the single-VPS setup, backups and restores. This file holds what they don't: how work is done here, where things stand, and what was learned running the inherited code on a real fleet of about 80 servers.
 
 ## Ground rules
 
@@ -181,7 +181,11 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 - [x] HTTP checks: proxy (http/https/socks5, through the probe guard), client certificate, OAuth client credentials (token cached until expiry); every HTTP method. Check params are capped (40 keys, 16 KB each).
 - [x] Real-browser checks (agent 0.12.0, `agent/checks/browser.go`, chromedp): steps (goto, click, type with `{{username}}`/`{{password}}`, wait, expect_text, expect_no_text, sleep), status, keyword, load time, script errors and failed requests as limits and metrics, a JPEG of the failing page (`pg:checkshot:<id>`, `GET /v1/checks/{id}/screenshot`). On probes all browser traffic goes through a loopback proxy using the public-address guard; remote browsers (`browser_ws`) only on customers' servers. One browser at a time per agent. Probe image: `sentinel-agent-browser` (Dockerfile `BROWSER=1`). Live: `e2e/api/browser_live.py`.
 - [x] Device insight (`GET /v1/network/devices/{id}/insight`, the device page's Insight card): availability, busiest and peak ports, errors, state changes, a 7×24 hourly traffic heatmap (UTC, the current hour included).
-- [ ] Kuma ideas still open: none of its monitor types are missing; Apprise, Nostr and Microsoft Graph notifiers aren't in the catalog. Kuma's source was read for lessons, not copied. Beacon's console tickets and JWT sign-on don't apply.
+- [x] Kuma notifiers: Microsoft 365 (Graph, OAuth client credentials in the catalog's `oauth`), Apprise API, Nostr (NIP-04 DMs, `alerter/nostr.go`); 103 providers.
+- [x] Plans (`proto/plans.json`, shared with ingest; a test keeps the copies equal): limits on servers, checks, status pages, members and IPDR only while Razorpay keys are set; organisations from before billing are `grandfathered`. Razorpay subscriptions, signed webhook (`billing_events` dedupes), superadmin `PUT /admin/v1/tenants/{id}/plan`. Migration 0041.
+- [x] Resend bounce/complaint webhook (Svix signature) marks contacts undeliverable; AI incident summaries (Claude, `services/ai_summary.py`, off without `ANTHROPIC_API_KEY`); dependency suggestions in Insights; installable PWA (`public/sw.js`, push with Acknowledge); Chrome Recorder import for browser checks (`web/src/lib/recorder.ts`, `npm test`); access reviews (migration 0042, `sentinel_members_with_2fa()`); `docs/policies.md`.
+- [x] Probes: VMs probe-eu/us/sg (Container-Optimized OS, cloud-init runs `sentinel-agent-browser:latest`) in the "Sentinel probes" organisation (`PROBE_ACCOUNT_IDS`); the project's org policy allows external IPs only for listed VMs (`compute.vmExternalIpAccess`), so add new VMs there first.
+- [x] Terraform provider releases from `terraform-v*` tags (`.github/workflows/terraform-provider.yml`); keeps only configured params in state.
 
 ### Verified end to end (dev stack, real containers)
 
@@ -222,6 +226,9 @@ Each phase ends with something that runs. **Done means:** a stranger can open se
 
 - **ghcr packages belong to the repository that first pushed them:** after the history rewrite the images still belonged to `sentinel-archive`, and releases failed with `permission_denied: read_package`. Deleting the old packages let the release recreate them (then they're made public).
 - **Cloudflare's free edge certificate is one level deep:** `ingest.sentinel.rajpoot.app` failed the TLS handshake; hostnames are `sentinel-<name>.rajpoot.app`.
+
+- **Polling sign-in from a script trips the per-IP login limit** (30 per 10 minutes) for everyone behind that address: use one API token (`pgt_`) for automation.
+- **`gcloud alpha`/`beta` components install interactively** and hang in scripts: call the REST API with `gcloud auth print-access-token` instead.
 
 ## Lessons from the production fleet
 

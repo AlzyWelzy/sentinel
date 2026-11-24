@@ -18,7 +18,8 @@ async def make_incident(user: User) -> str:
             (
                 await db.execute(
                     text(
-                        "INSERT INTO incidents (tenant_id, host_id, summary, rule_name, hostname, detail)"
+                        "INSERT INTO incidents"
+                        " (tenant_id, host_id, summary, rule_name, hostname, detail)"
                         " VALUES (:t, :h, 'Disk almost full on db-1', 'Disk', 'db-1',"
                         " '/var 96% used, 2.1 GB free') RETURNING id"
                     ),
