@@ -48,6 +48,12 @@ type catalogSender struct {
 	client *http.Client
 	mu     sync.Mutex
 	cache  map[string]*template.Template
+	tokens map[string]oauthToken // OAuth client: token URL + client id + scope
+}
+
+type oauthToken struct {
+	value   string
+	expires time.Time
 }
 
 func catalogSenders(client *http.Client) (map[string]sender, error) {
@@ -57,7 +63,13 @@ func catalogSenders(client *http.Client) (map[string]sender, error) {
 	}
 	out := map[string]sender{}
 	for _, d := range defs {
-		out[d.Type] = &catalogSender{def: d, client: client, cache: map[string]*template.Template{}}
+		if d.Request.Format == "nostr" {
+			out[d.Type] = &nostrSender{def: d}
+			continue
+		}
+		out[d.Type] = &catalogSender{
+			def: d, client: client, cache: map[string]*template.Template{}, tokens: map[string]oauthToken{},
+		}
 	}
 	return out, nil
 }
@@ -347,6 +359,13 @@ func (s *catalogSender) sendWithConfig(ctx context.Context, target string, cfg m
 			req.Header.Set(k, v)
 		}
 	}
+	if d.Request.OAuth != nil {
+		tok, err := s.oauthToken(ctx, vals)
+		if err != nil {
+			return redactErr(err, vals, d)
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
 	if d.Request.BasicAuth[0] != "" {
 		user, err := s.render(d.Request.BasicAuth[0], vals)
 		if err != nil {
@@ -455,4 +474,67 @@ func urlAllowed(raw string, hosts []string) error {
 		}
 	}
 	return fmt.Errorf("must be on %s", strings.TrimPrefix(hosts[0], "."))
+}
+
+// oauthToken gets an access token with the client credentials grant, kept
+// until a minute before it expires. A refused credential is permanent: the
+// contact's settings are wrong, not the service.
+func (s *catalogSender) oauthToken(ctx context.Context, vals map[string]string) (string, error) {
+	o := s.def.Request.OAuth
+	var parts [4]string
+	for i, src := range []string{o.TokenURL, o.ClientID, o.ClientSecret, o.Scope} {
+		v, err := s.render(src, vals)
+		if err != nil {
+			return "", err
+		}
+		parts[i] = v
+	}
+	tokenURL, id, secret, scope := parts[0], parts[1], parts[2], parts[3]
+	if u, err := url.Parse(tokenURL); err != nil || u.Scheme != "https" || u.Host == "" {
+		return "", permanent("%s: invalid token URL", s.def.Label)
+	}
+	key := tokenURL + "\x00" + id + "\x00" + scope + "\x00" + secret
+	s.mu.Lock()
+	if t, ok := s.tokens[key]; ok && time.Now().Before(t.expires) {
+		s.mu.Unlock()
+		return t.value, nil
+	}
+	s.mu.Unlock()
+	form := url.Values{"grant_type": {"client_credentials"}, "client_id": {id}, "client_secret": {secret}}
+	if scope != "" {
+		form.Set("scope", scope)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", permanent("%s: %v", s.def.Label, err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Sentinel/1")
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 429 {
+		return "", permanent("%s refused the sign-in (%s): check the app's ID, secret and permissions", s.def.Label, resp.Status)
+	}
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("%s sign-in returned %s", s.def.Label, resp.Status)
+	}
+	var t struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if json.Unmarshal(raw, &t) != nil || t.AccessToken == "" {
+		return "", fmt.Errorf("%s sign-in gave no access token", s.def.Label)
+	}
+	life := time.Duration(t.ExpiresIn)*time.Second - time.Minute
+	if life < time.Minute {
+		life = time.Minute
+	}
+	s.mu.Lock()
+	s.tokens[key] = oauthToken{value: t.AccessToken, expires: time.Now().Add(life)}
+	s.mu.Unlock()
+	return t.AccessToken, nil
 }

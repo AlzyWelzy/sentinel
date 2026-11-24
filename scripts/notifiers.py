@@ -7,10 +7,10 @@ validates contacts against it):
 Each provider is one HTTP request per alert; the template language is
 described in alerter/providers.go. Requests follow each service's
 documented API (Uptime Kuma's providers were read for which services are
-wanted and what they need; nothing is copied). Services needing more than
-one request, a binary or a signing scheme beyond HMAC (Apprise, Nostr,
-Microsoft Graph, Aliyun SMS, Teltonika routers on private addresses) are
-not here.
+wanted and what they need; nothing is copied). Microsoft Graph signs in first
+(the request's "oauth": client credentials, token cached); Nostr is signed
+and sent by its own code (alerter/nostr.go, format "nostr"). Aliyun SMS and
+Teltonika routers on private addresses are not here.
 """
 
 import json
@@ -627,6 +627,37 @@ PROVIDERS = [
       req("https://api.turbo-smtp.com/api/v2/mail/send",
           {"from": "{{.from}}", "to": "{{.to}}", "subject": T, "content": X},
           headers={"consumerKey": "{{.consumer_key}}", "consumerSecret": "{{.consumer_secret}}"})),
+    # Microsoft 365 mail through Graph, as an app registration with the
+    # Mail.Send application permission (admin consent) for the sending mailbox.
+    p("ms_graph", "Microsoft 365 (Graph)", EMAIL,
+      [f("tenant", "Directory (tenant) ID"), f("client_id", "Application (client) ID"),
+       f("client_secret", "Client secret", secret=True), f("from", "Send as (mailbox)"),
+       f("to", "To address")],
+      dict(req("https://graph.microsoft.com/v1.0/users/{{path .from}}/sendMail",
+               {"message": {"subject": T, "body": {"contentType": "Text", "content": X},
+                            "toRecipients": [{"emailAddress": {"address": "{{.to}}"}}]},
+                "saveToSentItems": "bool:false"}),
+           oauth={"token_url": "https://login.microsoftonline.com/{{path .tenant}}/oauth2/v2.0/token",
+                  "client_id": "{{.client_id}}", "client_secret": "{{.client_secret}}",
+                  "scope": "https://graph.microsoft.com/.default"}),
+      docs="https://learn.microsoft.com/graph/api/user-sendmail"),
+    # Apprise API (caronc/apprise-api): one server fans out to any service
+    # Apprise knows, from its own URLs or a stored configuration key.
+    p("apprise", "Apprise", AUTOMATION,
+      [server(label="Apprise API URL"), opt("key", "Configuration key"),
+       opt("urls", "Apprise URLs", secret=True, hint="Comma-separated; leave empty to use the key's stored URLs")],
+      req("{{.server}}/notify{{if .key}}/{{path .key}}{{end}}",
+          {"urls": "opt:{{.urls}}", "title": T, "body": X,
+           "type": '{{if eq .status "resolved"}}success{{else}}' + '{{sev "failure" "warning" "info"}}{{end}}'}),
+      docs="https://github.com/caronc/apprise-api"),
+    # Encrypted direct messages (NIP-04) to Nostr users; signed and sent by
+    # alerter/nostr.go to each relay.
+    p("nostr", "Nostr", CHAT,
+      [f("private_key", "Sender's private key (nsec)", secret=True, pattern=r"^(nsec1[02-9ac-hj-np-z]{58}|[0-9a-f]{64})$"),
+       f("recipients", "Recipients (npub, comma-separated)"),
+       f("relays", "Relays (wss://, comma-separated)", default="wss://relay.damus.io, wss://nos.lol")],
+      {"method": "POST", "url": "nostr:", "format": "nostr"},
+      docs="https://github.com/nostr-protocol/nips/blob/master/04.md"),
 ]
 
 

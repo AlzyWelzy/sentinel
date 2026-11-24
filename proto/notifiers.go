@@ -42,6 +42,17 @@ type NotifierRequest struct {
 	// value must be one of OKValues.
 	OKPath   string   `json:"ok_path,omitempty"`
 	OKValues []string `json:"ok_values,omitempty"`
+	// Services that want an OAuth 2.0 access token first (client
+	// credentials): the token is fetched, cached until it expires and sent
+	// as a Bearer token. Fields are templates like the rest.
+	OAuth *NotifierOAuth `json:"oauth,omitempty"`
+}
+
+type NotifierOAuth struct {
+	TokenURL     string `json:"token_url"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	Scope        string `json:"scope,omitempty"`
 }
 
 type Notifier struct {

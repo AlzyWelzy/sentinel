@@ -3742,5 +3742,133 @@
     "consumerSecret": "{{.consumer_secret}}"
    }
   }
+ },
+ {
+  "type": "ms_graph",
+  "label": "Microsoft 365 (Graph)",
+  "group": "Email services",
+  "fields": [
+   {
+    "key": "tenant",
+    "label": "Directory (tenant) ID",
+    "required": true
+   },
+   {
+    "key": "client_id",
+    "label": "Application (client) ID",
+    "required": true
+   },
+   {
+    "key": "client_secret",
+    "label": "Client secret",
+    "secret": true,
+    "required": true
+   },
+   {
+    "key": "from",
+    "label": "Send as (mailbox)",
+    "required": true
+   },
+   {
+    "key": "to",
+    "label": "To address",
+    "required": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "https://graph.microsoft.com/v1.0/users/{{path .from}}/sendMail",
+   "format": "json",
+   "body": {
+    "message": {
+     "subject": "{{.title}}",
+     "body": {
+      "contentType": "Text",
+      "content": "{{.text}}"
+     },
+     "toRecipients": [
+      {
+       "emailAddress": {
+        "address": "{{.to}}"
+       }
+      }
+     ]
+    },
+    "saveToSentItems": "bool:false"
+   },
+   "oauth": {
+    "token_url": "https://login.microsoftonline.com/{{path .tenant}}/oauth2/v2.0/token",
+    "client_id": "{{.client_id}}",
+    "client_secret": "{{.client_secret}}",
+    "scope": "https://graph.microsoft.com/.default"
+   }
+  },
+  "docs": "https://learn.microsoft.com/graph/api/user-sendmail"
+ },
+ {
+  "type": "apprise",
+  "label": "Apprise",
+  "group": "Automation",
+  "fields": [
+   {
+    "key": "server",
+    "label": "Apprise API URL",
+    "required": true,
+    "url": true
+   },
+   {
+    "key": "key",
+    "label": "Configuration key"
+   },
+   {
+    "key": "urls",
+    "label": "Apprise URLs",
+    "hint": "Comma-separated; leave empty to use the key's stored URLs",
+    "secret": true
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "{{.server}}/notify{{if .key}}/{{path .key}}{{end}}",
+   "format": "json",
+   "body": {
+    "urls": "opt:{{.urls}}",
+    "title": "{{.title}}",
+    "body": "{{.text}}",
+    "type": "{{if eq .status \"resolved\"}}success{{else}}{{sev \"failure\" \"warning\" \"info\"}}{{end}}"
+   }
+  },
+  "docs": "https://github.com/caronc/apprise-api"
+ },
+ {
+  "type": "nostr",
+  "label": "Nostr",
+  "group": "Chat",
+  "fields": [
+   {
+    "key": "private_key",
+    "label": "Sender's private key (nsec)",
+    "secret": true,
+    "required": true,
+    "pattern": "^(nsec1[02-9ac-hj-np-z]{58}|[0-9a-f]{64})$"
+   },
+   {
+    "key": "recipients",
+    "label": "Recipients (npub, comma-separated)",
+    "required": true
+   },
+   {
+    "key": "relays",
+    "label": "Relays (wss://, comma-separated)",
+    "required": true,
+    "default": "wss://relay.damus.io, wss://nos.lol"
+   }
+  ],
+  "request": {
+   "method": "POST",
+   "url": "nostr:",
+   "format": "nostr"
+  },
+  "docs": "https://github.com/nostr-protocol/nips/blob/master/04.md"
  }
 ]

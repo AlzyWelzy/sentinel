@@ -29,6 +29,11 @@ func (r *catalogRecorder) RoundTrip(req *http.Request) (*http.Response, error) {
 		raw, _ := io.ReadAll(req.Body)
 		b = string(raw)
 	}
+	if strings.Contains(req.URL.Path, "/oauth2/") {
+		// An OAuth sign-in before the message: answer it, don't count it.
+		return &http.Response{StatusCode: 200, Header: http.Header{},
+			Body: io.NopCloser(strings.NewReader(`{"access_token":"tok-1","expires_in":3600}`))}, nil
+	}
 	r.mu.Lock()
 	r.reqs = append(r.reqs, req)
 	r.body = append(r.body, b)
@@ -97,6 +102,12 @@ func TestEveryCatalogProviderSends(t *testing.T) {
 	builtin := senders(&emailSender{})
 	for _, d := range defs {
 		t.Run(d.Type, func(t *testing.T) {
+			if d.Request.Format == "nostr" {
+				if _, ok := builtin[d.Type].(*nostrSender); !ok {
+					t.Fatal("nostr isn't registered with its own sender")
+				}
+				return // nostr_test.go covers it
+			}
 			if _, ok := builtin[d.Type].(*catalogSender); !ok {
 				t.Fatalf("%s isn't registered as a catalog sender (a built-in sender has the name?)", d.Type)
 			}
@@ -114,7 +125,8 @@ func TestEveryCatalogProviderSends(t *testing.T) {
 				ok = d.Request.OKValues[0]
 			}
 			rec := &catalogRecorder{ok: okBody(d.Request.OKPath, ok)}
-			s := &catalogSender{def: d, client: &http.Client{Transport: rec}, cache: map[string]*template.Template{}}
+			s := &catalogSender{def: d, client: &http.Client{Transport: rec}, cache: map[string]*template.Template{},
+				tokens: map[string]oauthToken{}}
 			for _, kind := range []string{"alert_firing", "alert_resolved"} {
 				m := message{Subject: "[Sentinel] CRITICAL: db-1 disk full", Text: "Disk / is 97% full\nHost: db-1",
 					Event: map[string]any{"type": kind, "severity": "critical", "summary": "db-1 disk full",
