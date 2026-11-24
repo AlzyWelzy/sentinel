@@ -27,6 +27,8 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: { default: "Sentinel", template: "%s · Sentinel" },
+  icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "Sentinel", statusBarStyle: "black-translucent" },
   description:
     "Server and uptime monitoring with alerts that say exactly what failed. Metrics, logs, uptime checks and status pages.",
 };

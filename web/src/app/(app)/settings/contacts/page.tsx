@@ -17,6 +17,7 @@ import {
   Select,
   Table,
 } from "@/components/ui";
+import { DevicePush } from "@/components/device-push";
 import { api, errorText } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { unwrap } from "@/lib/queries";
@@ -153,6 +154,7 @@ export default function ContactsPage() {
           <Notice tone={msg.tone}>{msg.text}</Notice>
         </div>
       )}
+      <DevicePush />
       {editable && (
         <Card title="Add a contact" className="mb-6">
           <form
