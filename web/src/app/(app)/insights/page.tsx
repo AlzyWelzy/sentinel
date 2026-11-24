@@ -1,9 +1,19 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { Badge, Card, Empty, ErrorState, Loading, PageHeader, Table, cx } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  Empty,
+  ErrorState,
+  Loading,
+  PageHeader,
+  Table,
+  cx,
+} from "@/components/ui";
 import { api, errorText } from "@/lib/api/client";
 import { duration } from "@/lib/format";
 import { unwrap } from "@/lib/queries";
@@ -40,7 +50,65 @@ type Insights = {
     burn_rate_1h: number | null;
     status: string;
   }[];
+  dependencies: {
+    host_ids: string[];
+    hostnames: string[];
+    together: number;
+    upstream_host_id: string | null;
+    upstream_hostname: string | null;
+  }[];
 };
+
+type Suggestion = Insights["dependencies"][number];
+
+function DependencyRow({ s }: { s: Suggestion }) {
+  const qc = useQueryClient();
+  const apply = useMutation({
+    mutationFn: async () => {
+      for (const id of s.host_ids) {
+        unwrap(
+          await api.PATCH("/v1/hosts/{host_id}", {
+            params: { path: { host_id: id } },
+            body: { depends_on_host_id: s.upstream_host_id, clear_depends_on: false },
+          }),
+        );
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["insights"] }),
+  });
+  const names = s.hostnames.join(", ");
+  return (
+    <tr>
+      <td>
+        <span title={names} className="block max-w-[28rem] truncate font-medium">
+          {names}
+        </span>
+      </td>
+      <td className="text-right tabular">{s.together}</td>
+      <td>
+        {s.upstream_hostname ? (
+          <>
+            Depend on <span className="font-medium">{s.upstream_hostname}</span>: it was down first
+            in most of these outages.
+          </>
+        ) : (
+          <>
+            Nothing of yours went first: something in front of them (a router, a shared NAT, a link)
+            drops. Add it as a server or network device and make these depend on it.
+          </>
+        )}
+        {apply.error && <div className="text-bad mt-1 text-xs">{errorText(apply.error)}</div>}
+      </td>
+      <td className="text-right">
+        {s.upstream_host_id && (
+          <Button loading={apply.isPending} onClick={() => apply.mutate()}>
+            Set dependency
+          </Button>
+        )}
+      </td>
+    </tr>
+  );
+}
 
 const pct = (v: number | null | undefined) => (v == null ? "—" : `${v.toFixed(1)}%`);
 
@@ -157,6 +225,29 @@ export default function InsightsPage() {
                         </td>
                         <td className="text-ink-2">{h.advice ?? "—"}</td>
                       </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              )}
+            </Card>
+            <Card title="Servers that go quiet together" pad={false}>
+              {!(q.data.dependencies ?? []).length ? (
+                <Empty title="Nothing to suggest">
+                  No servers went quiet together three times or more.
+                </Empty>
+              ) : (
+                <Table>
+                  <thead>
+                    <tr>
+                      <th>Servers</th>
+                      <th className="text-right">Times together</th>
+                      <th>Suggestion</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {q.data.dependencies.map((s) => (
+                      <DependencyRow key={s.host_ids.join()} s={s} />
                     ))}
                   </tbody>
                 </Table>

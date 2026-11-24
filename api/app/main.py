@@ -34,6 +34,7 @@ from app.routes import (
     tokens,
     tools,
     v1,
+    webhooks,
 )
 from app.strictjson import FiniteJSON
 
@@ -90,6 +91,7 @@ app.include_router(insights.router)
 app.include_router(maintenance.router)
 app.include_router(ipdr.router)
 app.include_router(ack.router)
+app.include_router(webhooks.router)
 app.include_router(install.router)
 app.include_router(admin.router)
 

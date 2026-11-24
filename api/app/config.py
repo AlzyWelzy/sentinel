@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     # Signs the one-click acknowledge links in alerts; the alerter has the
     # same value. Empty: alerts carry no acknowledge link.
     ACK_SIGNING_SECRET: str = ""
+    # Resend webhook signing secret (whsec_…): bounces and complaints mark
+    # contacts undeliverable (routes/webhooks.py). Empty: the endpoint is off.
+    RESEND_WEBHOOK_SECRET: str = ""
 
     # Organisations (tenant ids) whose agents superadmins may turn into public probes.
     # Probes receive every account's uptime check targets, so only our own
