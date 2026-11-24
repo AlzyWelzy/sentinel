@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, text
 
 from app.models import Host
-from app.services import clickhouse, ipdr
+from app.services import billing, clickhouse, ipdr
 from app.services.heartbeats import redis
 from app.tenancy import Tenant, TenantContext
 from app.validation import Trimmed
@@ -118,6 +118,8 @@ async def get_settings(t: Tenant) -> SettingsOut:
 @router.put("/settings")
 async def put_settings(body: SettingsIn, t: Tenant) -> SettingsOut:
     uid, actor = _person(t, ipdr.APPROVER_ROLES)
+    if body.enabled:
+        await billing.require_ipdr(t.db, t.tenant_id)
     if body.enabled and not clickhouse.enabled():
         raise HTTPException(422, "This server has no evidence store (CLICKHOUSE_URL)")
     if body.collector_host_id is not None:

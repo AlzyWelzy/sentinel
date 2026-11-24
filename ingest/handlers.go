@@ -150,6 +150,10 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, errTenantSuspended):
 		httpError(w, http.StatusForbidden, "monitoring is suspended for this account")
 		return
+	case errors.Is(err, errHostLimit):
+		httpError(w, http.StatusPaymentRequired,
+			"this organisation's plan has no room for another server: upgrade it, or remove a server, in Sentinel")
+		return
 	case err != nil:
 		s.log.Error("register failed", "err", err)
 		httpError(w, http.StatusInternalServerError, "registration failed")

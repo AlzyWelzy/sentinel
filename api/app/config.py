@@ -98,6 +98,12 @@ class Settings(BaseSettings):
     # Resend webhook signing secret (whsec_…): bounces and complaints mark
     # contacts undeliverable (routes/webhooks.py). Empty: the endpoint is off.
     RESEND_WEBHOOK_SECRET: str = ""
+    # Razorpay: with the key id and secret set, plans limit organisations
+    # (services/billing.py); RAZORPAY_PLAN_PRO / _BUSINESS name Razorpay's
+    # plan ids. The webhook secret verifies /webhooks/razorpay.
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = ""
 
     # Organisations (tenant ids) whose agents superadmins may turn into public probes.
     # Probes receive every account's uptime check targets, so only our own

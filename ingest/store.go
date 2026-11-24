@@ -23,6 +23,7 @@ import (
 var (
 	errUnknownCredential = errors.New("unknown or revoked credential")
 	errTenantSuspended   = errors.New("tenant suspended")
+	errHostLimit         = errors.New("the plan's server limit is reached")
 )
 
 type hostIdentity struct {
@@ -33,6 +34,8 @@ type hostIdentity struct {
 
 type store struct {
 	pool *pgxpool.Pool
+	// billing: plan limits apply (Razorpay is set up). Off, no limits.
+	billing bool
 }
 
 // register exchanges an install key for a host record. Re-running it on the
@@ -49,12 +52,13 @@ func (s *store) register(
 	}
 	defer tx.Rollback(ctx)
 
-	var keyID, tenantStatus string
+	var keyID, tenantStatus, plan string
 	err = tx.QueryRow(ctx, `
-		SELECT ak.id, ak.tenant_id, t.status
+		SELECT ak.id, ak.tenant_id, t.status, t.plan
 		  FROM agent_keys ak JOIN tenants t ON t.id = ak.tenant_id
-		 WHERE ak.key_hash = $1 AND ak.revoked_at IS NULL`, keyHash,
-	).Scan(&keyID, &id.TenantID, &tenantStatus)
+		 WHERE ak.key_hash = $1 AND ak.revoked_at IS NULL
+		   FOR SHARE OF t`, keyHash,
+	).Scan(&keyID, &id.TenantID, &tenantStatus, &plan)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return id, "", errUnknownCredential
 	}
@@ -72,6 +76,17 @@ func (s *store) register(
 	).Scan(&oldTokenHash)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return id, "", err
+	}
+	if limit := proto.PlanByID(plan).Limits.Hosts; s.billing && limit != nil && errors.Is(err, pgx.ErrNoRows) {
+		var n int
+		if err := tx.QueryRow(ctx,
+			`SELECT count(*) FROM hosts WHERE tenant_id = $1 AND revoked_at IS NULL`, id.TenantID,
+		).Scan(&n); err != nil {
+			return id, "", err
+		}
+		if n >= *limit {
+			return id, "", errHostLimit
+		}
 	}
 
 	// Tags from the installer are added to any the host already has.

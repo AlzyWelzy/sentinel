@@ -49,6 +49,7 @@ const NAV: { title: string; items: Item[] }[] = [
 const SETTINGS: Item[] = [
   { href: "/settings/contacts", label: "Contacts", icon: "contacts" },
   { href: "/settings/organisation", label: "Organisation", icon: "organisation" },
+  { href: "/settings/billing", label: "Billing", icon: "billing" },
   { href: "/settings/tokens", label: "API tokens", icon: "tokens" },
   { href: "/settings/audit", label: "Audit log", icon: "audit" },
   { href: "/settings", label: "Your account", icon: "account" },

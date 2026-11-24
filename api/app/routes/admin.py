@@ -65,7 +65,17 @@ from app.routes.v1 import (
     install_command_windows,
     processes_of,
 )
-from app.services import audit, checkresults, heartbeats, hostpdf, metrics, oncall, rollout, tenants
+from app.services import (
+    audit,
+    billing,
+    checkresults,
+    heartbeats,
+    hostpdf,
+    metrics,
+    oncall,
+    rollout,
+    tenants,
+)
 from app.services.secrets import new_agent_key
 from app.tenancy import TenantContext, current_principal
 
@@ -118,6 +128,7 @@ class TenantSummary(BaseModel):
     hosts_online: int
     open_incidents: int
     created_at: datetime
+    plan: str = "free"
 
 
 async def _online_counts(db: AsyncSession, tenant_ids: list[uuid.UUID] | None = None) -> dict:
@@ -197,6 +208,7 @@ async def list_tenants(
             hosts_online=online.get(r.Tenant.id, 0),
             open_incidents=r.open_incidents,
             created_at=r.Tenant.created_at,
+            plan=r.Tenant.plan,
         )
         for r in rows
     ]
@@ -741,6 +753,24 @@ async def pin_tenant(tenant_id: uuid.UUID, body: PinIn, db: ServiceDB) -> dict:
     _require_available(body.version)
     tenant.agent_version_pin = body.version
     return {"tenant_id": str(tenant.id), "version": tenant.agent_version_pin}
+
+
+class PlanIn(BaseModel):
+    plan: str = Field(description="a plan id from the catalog, e.g. pro, business, grandfathered")
+
+
+@router.put("/tenants/{tenant_id}/plan")
+async def set_tenant_plan(tenant_id: uuid.UUID, body: PlanIn, db: ServiceDB) -> dict:
+    """Put an organisation on a plan by hand (an agreed deal, a refund, an
+    early account). A Razorpay subscription, if any, keeps billing until
+    it's cancelled there."""
+    tenant = await db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if body.plan not in {p["id"] for p in billing.plans()}:
+        raise HTTPException(status_code=422, detail="Unknown plan")
+    tenant.plan, tenant.plan_status = body.plan, "active"
+    return {"tenant_id": str(tenant.id), "plan": tenant.plan}
 
 
 # ── Probes (the one thing staff change here) ─────────────────────────────────

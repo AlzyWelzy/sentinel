@@ -38,7 +38,7 @@ from app.models import (
     StatusPageItem,
     StatusPageUpdate,
 )
-from app.services import badges, cfsaas, checkresults
+from app.services import badges, billing, cfsaas, checkresults
 from app.services.heartbeats import is_online, last_seen
 from app.services.metrics import MetricsUnavailable, query_instant, query_series
 from app.tenancy import Tenant, TenantContext
@@ -213,6 +213,7 @@ async def list_pages(t: Tenant) -> list[PageOut]:
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_page(body: PageIn, t: Tenant) -> PageOut:
+    await billing.require_room(t.db, t.tenant_id, "status_pages")
     count = len(
         list(await t.db.scalars(select(StatusPage.id).where(StatusPage.tenant_id == t.tenant_id)))
     )

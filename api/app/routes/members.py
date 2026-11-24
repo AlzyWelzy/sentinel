@@ -26,7 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db import ServiceSession
 from app.models import Tenant as TenantRow
 from app.models import TenantMember
-from app.services import export, invitations, tenants
+from app.services import billing, export, invitations, tenants
 from app.tenancy import Tenant, TenantContext, UserTenant
 from app.validation import Trimmed
 
@@ -207,6 +207,7 @@ async def invite_member(body: MemberIn, t: UserTenant) -> MemberOut:
     """Emails an invitation (valid 7 days). The person signs in or signs up
     with that address to accept it."""
     _require_manager(t)
+    await billing.require_room(t.db, t.tenant_id, "members")
     email = body.email.lower()
     count = await t.db.scalar(
         select(func.count()).select_from(TenantMember).where(TenantMember.tenant_id == t.tenant_id)

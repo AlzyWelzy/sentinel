@@ -42,6 +42,10 @@ class Tenant(Base):
     digest_timezone: Mapped[str] = mapped_column(Text, default="UTC")
     # Open, unacknowledged incidents are sent again this often; 0 is off.
     reminder_minutes: Mapped[int] = mapped_column(Integer, default=240)
+    plan: Mapped[str] = mapped_column(Text, default="free")
+    plan_status: Mapped[str] = mapped_column(Text, default="active")
+    razorpay_subscription_id: Mapped[str | None] = mapped_column(Text)
+    plan_renews_at: Mapped[datetime | None]
     digest_sent_at: Mapped[datetime | None]
 
 

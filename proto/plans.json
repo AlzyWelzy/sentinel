@@ -1,0 +1,34 @@
+{
+  "currency": "INR",
+  "plans": [
+    {
+      "id": "free",
+      "name": "Free",
+      "price_monthly": 0,
+      "limits": {"hosts": 5, "checks": 10, "status_pages": 1, "members": 3, "ipdr": false},
+      "blurb": "Five servers or devices, ten uptime checks, one status page."
+    },
+    {
+      "id": "pro",
+      "name": "Pro",
+      "price_monthly": 1999,
+      "limits": {"hosts": 50, "checks": 200, "status_pages": 10, "members": 20, "ipdr": false},
+      "blurb": "For a team running a real fleet."
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "price_monthly": 7999,
+      "limits": {"hosts": 500, "checks": 2000, "status_pages": 50, "members": 200, "ipdr": true},
+      "blurb": "Large fleets, IPDR evidence collection and second-person export approval."
+    },
+    {
+      "id": "grandfathered",
+      "name": "Early account",
+      "price_monthly": 0,
+      "hidden": true,
+      "limits": {"hosts": null, "checks": null, "status_pages": null, "members": null, "ipdr": true},
+      "blurb": "Here before plans existed: no limits."
+    }
+  ]
+}

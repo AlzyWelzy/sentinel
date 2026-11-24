@@ -26,7 +26,7 @@ from app.config import settings
 from app.db import ServiceSession
 from app.models import AlertRule, AlertState, Check, Host, Incident
 from app.routes.ranges import RANGES, Range
-from app.services import checkresults
+from app.services import billing, checkresults
 from app.services.heartbeats import is_online, last_seen
 from app.services.metrics import MetricsUnavailable, query_instant, query_series
 from app.tenancy import Tenant, TenantContext
@@ -779,6 +779,7 @@ async def list_checks(
 
 @router.post("/checks", status_code=status.HTTP_201_CREATED)
 async def create_check(body: CheckIn, t: Tenant) -> CheckOut:
+    await billing.require_room(t.db, t.tenant_id, "checks")
     await _check_host(t, body.host_id)
     await _check_parent(t, body.parent_id, None)
     count = await t.db.scalar(

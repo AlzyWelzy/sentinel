@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import Host, NetworkInterface, NetworkLink, NetworkTrap, SNMPCredential
 from app.routes.v1 import HostOut, _get_host, _hosts_out
-from app.services import devicesecrets, heartbeats, metrics
+from app.services import billing, devicesecrets, heartbeats, metrics
 from app.tenancy import Tenant, TenantContext
 from app.validation import Trimmed, normalize_tags
 
@@ -444,6 +444,7 @@ def _check_profile(name: str | None) -> str | None:
 async def add_devices(body: DevicesIn, t: Tenant) -> DevicesOut:
     """Adds devices to be polled by one of your servers. Each is named from
     its sysName at the first poll, unless named here."""
+    await billing.require_room(t.db, t.tenant_id, "hosts", len(body.addresses))
     await _get_credential(t, body.credential_id)
     await _check_poller(t, body.poller_host_id)
     profile = _check_profile(body.profile)

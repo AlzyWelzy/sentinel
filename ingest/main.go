@@ -92,7 +92,7 @@ func main() {
 
 	srv := &server{
 		cfg:     cfg,
-		store:   &store{pool: pool},
+		store:   &store{pool: pool, billing: os.Getenv("RAZORPAY_KEY_ID") != ""},
 		cache:   &cache{rdb: rdb},
 		vm:      &victoriaMetrics{baseURL: cfg.VictoriaMetrics, client: &http.Client{Timeout: 15 * time.Second}},
 		log:     log,

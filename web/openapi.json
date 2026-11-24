@@ -10342,6 +10342,88 @@
     }
    }
   },
+  "/v1/billing": {
+   "get": {
+    "summary": "Get Billing",
+    "operationId": "get_billing_v1_billing_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BillingOut"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/billing/subscribe": {
+   "post": {
+    "summary": "Subscribe",
+    "operationId": "subscribe_v1_billing_subscribe_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SubscribeIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SubscribeOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/billing/cancel": {
+   "post": {
+    "summary": "Cancel",
+    "operationId": "cancel_v1_billing_cancel_post",
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
   "/install.sh": {
    "get": {
     "summary": "Install Script",
@@ -11562,6 +11644,64 @@
          "type": "object",
          "additionalProperties": true,
          "title": "Response Pin Tenant Admin V1 Tenants  Tenant Id  Agent Pin Put"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/admin/v1/tenants/{tenant_id}/plan": {
+   "put": {
+    "summary": "Set Tenant Plan",
+    "description": "Put an organisation on a plan by hand (an agreed deal, a refund, an\nearly account). A Razorpay subscription, if any, keeps billing until\nit's cancelled there.",
+    "operationId": "set_tenant_plan_admin_v1_tenants__tenant_id__plan_put",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "tenant_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Tenant Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PlanIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Set Tenant Plan Admin V1 Tenants  Tenant Id  Plan Put"
         }
        }
       }
@@ -13138,6 +13278,67 @@
      "total_bytes"
     ],
     "title": "BillingDirection"
+   },
+   "BillingOut": {
+    "properties": {
+     "enabled": {
+      "type": "boolean",
+      "title": "Enabled"
+     },
+     "currency": {
+      "type": "string",
+      "title": "Currency"
+     },
+     "plan": {
+      "$ref": "#/components/schemas/PlanOut"
+     },
+     "plan_status": {
+      "type": "string",
+      "title": "Plan Status"
+     },
+     "renews_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Renews At"
+     },
+     "subscribed": {
+      "type": "boolean",
+      "title": "Subscribed"
+     },
+     "usage": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Usage"
+     },
+     "plans": {
+      "items": {
+       "$ref": "#/components/schemas/PlanOut"
+      },
+      "type": "array",
+      "title": "Plans"
+     }
+    },
+    "type": "object",
+    "required": [
+     "enabled",
+     "currency",
+     "plan",
+     "plan_status",
+     "renews_at",
+     "subscribed",
+     "usage",
+     "plans"
+    ],
+    "title": "BillingOut"
    },
    "BillingPort": {
     "properties": {
@@ -19652,6 +19853,59 @@
     "type": "object",
     "title": "PinIn"
    },
+   "PlanIn": {
+    "properties": {
+     "plan": {
+      "type": "string",
+      "title": "Plan",
+      "description": "a plan id from the catalog, e.g. pro, business, grandfathered"
+     }
+    },
+    "type": "object",
+    "required": [
+     "plan"
+    ],
+    "title": "PlanIn"
+   },
+   "PlanOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "price_monthly": {
+      "type": "integer",
+      "title": "Price Monthly"
+     },
+     "blurb": {
+      "type": "string",
+      "title": "Blurb"
+     },
+     "limits": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Limits"
+     },
+     "buyable": {
+      "type": "boolean",
+      "title": "Buyable"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "price_monthly",
+     "blurb",
+     "limits",
+     "buyable"
+    ],
+    "title": "PlanOut"
+   },
    "PluginOut": {
     "properties": {
      "name": {
@@ -23188,6 +23442,63 @@
     ],
     "title": "StaffIncident"
    },
+   "SubscribeIn": {
+    "properties": {
+     "plan": {
+      "type": "string",
+      "enum": [
+       "pro",
+       "business"
+      ],
+      "title": "Plan"
+     }
+    },
+    "type": "object",
+    "required": [
+     "plan"
+    ],
+    "title": "SubscribeIn"
+   },
+   "SubscribeOut": {
+    "properties": {
+     "subscription_id": {
+      "type": "string",
+      "title": "Subscription Id"
+     },
+     "key_id": {
+      "type": "string",
+      "title": "Key Id"
+     },
+     "plan": {
+      "type": "string",
+      "title": "Plan"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "email": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
+     }
+    },
+    "type": "object",
+    "required": [
+     "subscription_id",
+     "key_id",
+     "plan",
+     "name",
+     "email"
+    ],
+    "title": "SubscribeOut"
+   },
    "Summary": {
     "properties": {
      "start": {
@@ -23344,6 +23655,11 @@
       "type": "string",
       "format": "date-time",
       "title": "Created At"
+     },
+     "plan": {
+      "type": "string",
+      "title": "Plan",
+      "default": "free"
      }
     },
     "type": "object",

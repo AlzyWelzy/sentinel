@@ -3047,6 +3047,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/billing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Billing */
+        get: operations["get_billing_v1_billing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/subscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Subscribe */
+        post: operations["subscribe_v1_billing_subscribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancel_v1_billing_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/install.sh": {
         parameters: {
             query?: never;
@@ -3474,6 +3525,28 @@ export interface paths {
          * @description Hold one account's servers at a version (or let them follow the rollout).
          */
         put: operations["pin_tenant_admin_v1_tenants__tenant_id__agent_pin_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/v1/tenants/{tenant_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Tenant Plan
+         * @description Put an organisation on a plan by hand (an agreed deal, a refund, an
+         *     early account). A Razorpay subscription, if any, keeps billing until
+         *     it's cancelled there.
+         */
+        put: operations["set_tenant_plan_admin_v1_tenants__tenant_id__plan_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4051,6 +4124,26 @@ export interface components {
             avg_bps: number;
             /** Total Bytes */
             total_bytes: number;
+        };
+        /** BillingOut */
+        BillingOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Currency */
+            currency: string;
+            plan: components["schemas"]["PlanOut"];
+            /** Plan Status */
+            plan_status: string;
+            /** Renews At */
+            renews_at: string | null;
+            /** Subscribed */
+            subscribed: boolean;
+            /** Usage */
+            usage: {
+                [key: string]: number;
+            };
+            /** Plans */
+            plans: components["schemas"]["PlanOut"][];
         };
         /** BillingPort */
         BillingPort: {
@@ -6159,6 +6252,31 @@ export interface components {
              */
             version?: string | null;
         };
+        /** PlanIn */
+        PlanIn: {
+            /**
+             * Plan
+             * @description a plan id from the catalog, e.g. pro, business, grandfathered
+             */
+            plan: string;
+        };
+        /** PlanOut */
+        PlanOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Price Monthly */
+            price_monthly: number;
+            /** Blurb */
+            blurb: string;
+            /** Limits */
+            limits: {
+                [key: string]: unknown;
+            };
+            /** Buyable */
+            buyable: boolean;
+        };
         /** PluginOut */
         PluginOut: {
             /** Name */
@@ -7372,6 +7490,27 @@ export interface components {
             /** Account Email */
             account_email: string | null;
         };
+        /** SubscribeIn */
+        SubscribeIn: {
+            /**
+             * Plan
+             * @enum {string}
+             */
+            plan: "pro" | "business";
+        };
+        /** SubscribeOut */
+        SubscribeOut: {
+            /** Subscription Id */
+            subscription_id: string;
+            /** Key Id */
+            key_id: string;
+            /** Plan */
+            plan: string;
+            /** Name */
+            name: string;
+            /** Email */
+            email: string | null;
+        };
         /** Summary */
         Summary: {
             /**
@@ -7443,6 +7582,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Plan
+             * @default free
+             */
+            plan: string;
         };
         /** Tile */
         Tile: {
@@ -14200,6 +14344,77 @@ export interface operations {
             };
         };
     };
+    get_billing_v1_billing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingOut"];
+                };
+            };
+        };
+    };
+    subscribe_v1_billing_subscribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscribeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscribeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_v1_billing_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     install_script_install_sh_get: {
         parameters: {
             query?: never;
@@ -14924,6 +15139,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PinIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_tenant_plan_admin_v1_tenants__tenant_id__plan_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanIn"];
             };
         };
         responses: {

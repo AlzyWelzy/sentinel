@@ -13,6 +13,7 @@ from app.routes import (
     apps,
     audit,
     auth,
+    billing,
     channels,
     checks,
     dashboards,
@@ -92,6 +93,8 @@ app.include_router(maintenance.router)
 app.include_router(ipdr.router)
 app.include_router(ack.router)
 app.include_router(webhooks.router)
+app.include_router(billing.router)
+app.include_router(billing.hooks)
 app.include_router(install.router)
 app.include_router(admin.router)
 
