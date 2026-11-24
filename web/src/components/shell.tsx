@@ -51,6 +51,7 @@ const SETTINGS: Item[] = [
   { href: "/settings/organisation", label: "Organisation", icon: "organisation" },
   { href: "/settings/billing", label: "Billing", icon: "billing" },
   { href: "/settings/tokens", label: "API tokens", icon: "tokens" },
+  { href: "/settings/access", label: "Access review", icon: "access" },
   { href: "/settings/audit", label: "Audit log", icon: "audit" },
   { href: "/settings", label: "Your account", icon: "account" },
 ];

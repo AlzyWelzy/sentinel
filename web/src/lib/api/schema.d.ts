@@ -3088,6 +3088,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/access-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Review */
+        get: operations["get_review_v1_access_review_get"];
+        put?: never;
+        /**
+         * Record Review
+         * @description I've checked the list: everyone and every token here should have access.
+         */
+        post: operations["record_review_v1_access_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/billing": {
         parameters: {
             query?: never;
@@ -3896,6 +3917,19 @@ export interface components {
             generated_at: string;
             /** Model */
             model: string;
+        };
+        /** AccessReviewOut */
+        AccessReviewOut: {
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /** Reviewed By */
+            reviewed_by: string | null;
+            /** Due */
+            due: boolean;
+            /** Members */
+            members: components["schemas"]["MemberAccess"][];
+            /** Tokens */
+            tokens: components["schemas"]["TokenAccess"][];
         };
         /** AccountOut */
         AccountOut: {
@@ -6012,6 +6046,23 @@ export interface components {
              */
             impersonation_writes: boolean;
         };
+        /** MemberAccess */
+        MemberAccess: {
+            /** Email */
+            email: string;
+            /** Name */
+            name: string | null;
+            /** Role */
+            role: string;
+            /** Joined At */
+            joined_at: string | null;
+            /** Last Seen At */
+            last_seen_at: string | null;
+            /** Two Factor */
+            two_factor: boolean;
+            /** Pending */
+            pending: boolean;
+        };
         /** MemberIn */
         MemberIn: {
             /**
@@ -7662,6 +7713,22 @@ export interface components {
             reason: string | null;
             /** Tags */
             tags: string[];
+        };
+        /** TokenAccess */
+        TokenAccess: {
+            /** Name */
+            name: string;
+            /** Read Only */
+            read_only: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
         };
         /** TokenCreated */
         TokenCreated: {
@@ -14450,6 +14517,44 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_review_v1_access_review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessReviewOut"];
+                };
+            };
+        };
+    };
+    record_review_v1_access_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

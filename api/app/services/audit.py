@@ -49,6 +49,9 @@ POST /v1/alert-rules/{rule_id}/test alert_rule.test Sent a test alert for a rule
 PUT /v1/alert-rules/{rule_id} alert_rule.update Changed alert rule {name}
 DELETE /v1/alert-rules/{rule_id} alert_rule.delete Deleted an alert rule
 POST /v1/api-tokens api_token.create Created API token {name}
+POST /v1/billing/subscribe billing.subscribe Started a {plan} subscription
+POST /v1/billing/cancel billing.cancel Cancelled the plan subscription
+POST /v1/access-review access.review Reviewed who has access
 DELETE /v1/api-tokens/{token_id} api_token.revoke Revoked an API token
 POST /v1/channels contact.create Added alert contact {name}
 POST /v1/channels/push contact.push Turned on push in a browser

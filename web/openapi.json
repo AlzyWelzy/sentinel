@@ -10427,6 +10427,44 @@
     }
    }
   },
+  "/v1/access-review": {
+   "get": {
+    "summary": "Get Review",
+    "operationId": "get_review_v1_access_review_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AccessReviewOut"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   },
+   "post": {
+    "summary": "Record Review",
+    "description": "I've checked the list: everyone and every token here should have access.",
+    "operationId": "record_review_v1_access_review_post",
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
   "/v1/billing": {
    "get": {
     "summary": "Get Billing",
@@ -12675,6 +12713,60 @@
      "model"
     ],
     "title": "AISummaryOut"
+   },
+   "AccessReviewOut": {
+    "properties": {
+     "reviewed_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reviewed At"
+     },
+     "reviewed_by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reviewed By"
+     },
+     "due": {
+      "type": "boolean",
+      "title": "Due"
+     },
+     "members": {
+      "items": {
+       "$ref": "#/components/schemas/MemberAccess"
+      },
+      "type": "array",
+      "title": "Members"
+     },
+     "tokens": {
+      "items": {
+       "$ref": "#/components/schemas/TokenAccess"
+      },
+      "type": "array",
+      "title": "Tokens"
+     }
+    },
+    "type": "object",
+    "required": [
+     "reviewed_at",
+     "reviewed_by",
+     "due",
+     "members",
+     "tokens"
+    ],
+    "title": "AccessReviewOut"
    },
    "AccountOut": {
     "properties": {
@@ -19132,6 +19224,72 @@
     ],
     "title": "MeOut"
    },
+   "MemberAccess": {
+    "properties": {
+     "email": {
+      "type": "string",
+      "title": "Email"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "role": {
+      "type": "string",
+      "title": "Role"
+     },
+     "joined_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Joined At"
+     },
+     "last_seen_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Seen At"
+     },
+     "two_factor": {
+      "type": "boolean",
+      "title": "Two Factor"
+     },
+     "pending": {
+      "type": "boolean",
+      "title": "Pending"
+     }
+    },
+    "type": "object",
+    "required": [
+     "email",
+     "name",
+     "role",
+     "joined_at",
+     "last_seen_at",
+     "two_factor",
+     "pending"
+    ],
+    "title": "MemberAccess"
+   },
    "MemberIn": {
     "properties": {
      "email": {
@@ -23848,6 +24006,56 @@
      "tags"
     ],
     "title": "Tile"
+   },
+   "TokenAccess": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "read_only": {
+      "type": "boolean",
+      "title": "Read Only"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "last_used_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Used At"
+     },
+     "expires_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expires At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "read_only",
+     "created_at",
+     "last_used_at",
+     "expires_at"
+    ],
+    "title": "TokenAccess"
    },
    "TokenCreated": {
     "properties": {

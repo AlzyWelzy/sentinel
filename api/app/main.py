@@ -6,6 +6,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.config import settings
 from app.routes import (
+    access_review,
     ack,
     admin,
     alerts,
@@ -105,6 +106,7 @@ app.include_router(maintenance.router)
 app.include_router(ipdr.router)
 app.include_router(ack.router)
 app.include_router(webhooks.router)
+app.include_router(access_review.router)
 app.include_router(billing.router)
 app.include_router(billing.hooks)
 app.include_router(install.router)

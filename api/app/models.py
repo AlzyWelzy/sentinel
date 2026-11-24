@@ -46,6 +46,8 @@ class Tenant(Base):
     plan_status: Mapped[str] = mapped_column(Text, default="active")
     razorpay_subscription_id: Mapped[str | None] = mapped_column(Text)
     plan_renews_at: Mapped[datetime | None]
+    access_reviewed_at: Mapped[datetime | None]
+    access_reviewed_by: Mapped[str | None] = mapped_column(Text)
     digest_sent_at: Mapped[datetime | None]
 
 
