@@ -6,16 +6,17 @@ plus a `sentinel_hosts` data source.
 
 ## Authenticate
 
-Create an API token in the console (Monitoring → Servers → API) with
+In Sentinel, open **Settings → API tokens** and create a token with
 read-only **off**, then:
 
 ```sh
-export SENTINEL_API_URL=https://<console host>/api/sentinel
 export SENTINEL_TOKEN=pgt_...
+# Only for a self-hosted Sentinel (the default is https://sentinel.rajpoot.app/api):
+export SENTINEL_API_URL=https://<your host>/api
 ```
 
-Tokens act as the account that made them. They can't manage team members or
-other tokens.
+A token acts in the organisation it was made in. It can't manage members
+or other tokens.
 
 ## Resources
 
@@ -35,7 +36,34 @@ All resources support `terraform import <address> <id>`.
 
 See [examples/main.tf](examples/main.tf).
 
+## Install
+
+Releases are on GitHub (`terraform-v*` tags), built for Linux, macOS,
+Windows and FreeBSD, with `SHA256SUMS` (signed once a release key is set
+up). Until the provider is on the Terraform Registry, use a filesystem
+mirror:
+
+```sh
+v=0.1.0; os=darwin; arch=arm64   # or linux/amd64, windows/amd64 …
+d=~/.terraform.d/plugins/registry.terraform.io/alzywelzy/sentinel/$v/${os}_$arch
+mkdir -p "$d" && cd "$d"
+curl -fsSLO https://github.com/AlzyWelzy/sentinel/releases/download/terraform-v$v/terraform-provider-sentinel_${v}_${os}_$arch.zip
+unzip -o terraform-provider-sentinel_${v}_${os}_$arch.zip && rm terraform-provider-sentinel_*.zip
+```
+
+```hcl
+terraform {
+  required_providers {
+    sentinel = { source = "alzywelzy/sentinel", version = "~> 0.1" }
+  }
+}
+provider "sentinel" {}
+```
+
+The same works with OpenTofu (`~/.terraform.d/plugins` is read by both).
+
 ## Build and use locally
+
 
 ```sh
 go build -o ~/.terraform.d/plugins/terraform-provider-sentinel .

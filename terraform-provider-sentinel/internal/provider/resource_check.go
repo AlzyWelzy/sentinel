@@ -103,7 +103,7 @@ func (m *checkModel) toJSON(ctx context.Context, diags *diag.Diagnostics) checkJ
 func (m *checkModel) fromJSON(j checkJSON) {
 	m.ID = types.StringValue(j.ID)
 	m.Name, m.Type, m.Target = types.StringValue(j.Name), types.StringValue(j.Type), types.StringValue(j.Target)
-	m.Params = mapValue(j.Params)
+	m.Params = mapValue(keptParams(m.Params, j.Params))
 	m.IntervalSeconds = types.Int64Value(j.IntervalSeconds)
 	m.HostID, m.Tag = strValue(j.HostID), strValue(j.Tag)
 	m.OnProbes = types.BoolValue(j.OnProbes)

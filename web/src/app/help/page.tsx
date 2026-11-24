@@ -124,6 +124,28 @@ export default function Help() {
         </li>
       </ul>
 
+      <h2>Automate it: API and Terraform</h2>
+      <p>
+        Everything in Sentinel has an HTTP API. Create a token under Settings → API tokens
+        (read-only unless you turn that off) and send it as <code>Authorization: Bearer pgt_…</code>
+        . Add <code>X-Sentinel-Account: &lt;organisation id&gt;</code> to act in another
+        organisation you belong to.
+      </p>
+      <pre>
+        curl -H &quot;Authorization: Bearer $SENTINEL_TOKEN&quot;
+        https://sentinel.rajpoot.app/api/v1/hosts
+      </pre>
+      <p>
+        Every endpoint, with its fields and a way to try it:{" "}
+        <a href="/api/docs">interactive API reference</a> (also as{" "}
+        <a href="/api/openapi.json">OpenAPI JSON</a>). Checks, alert rules, maintenance windows,
+        status pages and install keys can also be kept in code with the{" "}
+        <a href="https://github.com/AlzyWelzy/sentinel/tree/main/terraform-provider-sentinel">
+          Terraform provider
+        </a>{" "}
+        (works with OpenTofu).
+      </p>
+
       <h2>Troubleshooting</h2>
       <h3>The server doesn&apos;t appear</h3>
       <ul>

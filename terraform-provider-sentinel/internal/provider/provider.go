@@ -38,7 +38,7 @@ func (p *sentinelProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 		Attributes: map[string]schema.Attribute{
 			"api_url": schema.StringAttribute{
 				Optional:    true,
-				Description: "Sentinel API base URL, e.g. https://<console host>/api/sentinel. Defaults to $SENTINEL_API_URL.",
+				Description: "Sentinel API base URL. Defaults to $SENTINEL_API_URL, then https://sentinel.rajpoot.app/api.",
 			},
 			"token": schema.StringAttribute{
 				Optional:    true,
@@ -55,11 +55,11 @@ func (p *sentinelProvider) Configure(ctx context.Context, req provider.Configure
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	url := firstSet(cfg.APIURL.ValueString(), os.Getenv("SENTINEL_API_URL"))
+	url := firstSet(cfg.APIURL.ValueString(), os.Getenv("SENTINEL_API_URL"), defaultAPIURL)
 	token := firstSet(cfg.Token.ValueString(), os.Getenv("SENTINEL_TOKEN"))
 	if url == "" {
 		resp.Diagnostics.AddError("Missing API URL",
-			"Set api_url in the provider block or SENTINEL_API_URL, e.g. https://<console host>/api/sentinel.")
+			"Set api_url in the provider block or SENTINEL_API_URL, e.g. "+defaultAPIURL+".")
 		return
 	}
 	if token == "" {
@@ -85,6 +85,9 @@ func (p *sentinelProvider) Resources(context.Context) []func() resource.Resource
 func (p *sentinelProvider) DataSources(context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{newHostsDataSource}
 }
+
+// The hosted Sentinel; self-hosted installs set api_url.
+const defaultAPIURL = "https://sentinel.rajpoot.app/api"
 
 func firstSet(v ...string) string {
 	for _, s := range v {

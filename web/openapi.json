@@ -2,7 +2,8 @@
  "openapi": "3.1.0",
  "info": {
   "title": "Sentinel API",
-  "version": "0.10.0"
+  "description": "Server, network and uptime monitoring. Authenticate with an API token from Settings \u2192 API tokens: `Authorization: Bearer pgt_\u2026`. A token acts in the organisation it was made in; read-only tokens can't change anything. To act in another organisation you belong to, sign in and send `X-Sentinel-Account: <organisation id>`. Limits: write endpoints are rate limited per token; list endpoints page with `limit` and `offset` where they take them.",
+  "version": "0.11.0"
  },
  "paths": {
   "/auth/config": {

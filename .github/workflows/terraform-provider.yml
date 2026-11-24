@@ -1,0 +1,62 @@
+name: terraform-provider
+
+# Tag terraform-vX.Y.Z to publish the provider. The zips, SHA256SUMS and the
+# registry manifest follow the Terraform Registry's layout; with the secrets
+# TF_GPG_PRIVATE_KEY (armored) and TF_GPG_PASSPHRASE set, SHA256SUMS is
+# signed (SHA256SUMS.sig), which the Registry requires.
+
+on:
+  push:
+    tags: ["terraform-v*"]
+  pull_request:
+    paths: ["terraform-provider-sentinel/**"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      HAS_GPG: ${{ secrets.TF_GPG_PRIVATE_KEY != '' }}
+    defaults:
+      run:
+        working-directory: terraform-provider-sentinel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: terraform-provider-sentinel/go.mod
+          cache-dependency-path: terraform-provider-sentinel/go.sum
+      - run: go vet ./... && go test ./...
+      - name: Build
+        run: |
+          v=${GITHUB_REF_NAME#terraform-v}
+          case "$GITHUB_REF_NAME" in terraform-v*) ;; *) v=0.0.0-dev ;; esac
+          name=terraform-provider-sentinel
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64; do
+            os=${target%/*}; arch=${target#*/}; ext=""; [ "$os" = windows ] && ext=.exe
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=$v" \
+              -o "dist/${name}_v$v$ext" .
+            (cd dist && zip -q "${name}_${v}_${os}_${arch}.zip" "${name}_v$v$ext" && rm "${name}_v$v$ext")
+          done
+          printf '{"version":1,"metadata":{"protocol_versions":["6.0"]}}\n' > "dist/${name}_${v}_manifest.json"
+          (cd dist && sha256sum ./*.zip "${name}_${v}_manifest.json" | sed 's| \./| |' > "${name}_${v}_SHA256SUMS")
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+      - name: Sign
+        if: startsWith(github.ref, 'refs/tags/terraform-v') && env.HAS_GPG == 'true'
+        env:
+          TF_GPG_PRIVATE_KEY: ${{ secrets.TF_GPG_PRIVATE_KEY }}
+          TF_GPG_PASSPHRASE: ${{ secrets.TF_GPG_PASSPHRASE }}
+        run: |
+          echo "$TF_GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$TF_GPG_PASSPHRASE" \
+            --detach-sign dist/terraform-provider-sentinel_${VERSION}_SHA256SUMS
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/terraform-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --title "Terraform provider $VERSION" \
+            --notes "Sentinel Terraform provider $VERSION. Install: see terraform-provider-sentinel/README.md."

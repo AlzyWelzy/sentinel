@@ -39,7 +39,19 @@ from app.routes import (
 )
 from app.strictjson import FiniteJSON
 
-app = FastAPI(title="Sentinel API", version="0.10.0", root_path=settings.API_ROOT_PATH)
+app = FastAPI(
+    title="Sentinel API",
+    version="0.11.0",
+    root_path=settings.API_ROOT_PATH,
+    description=(
+        "Server, network and uptime monitoring. Authenticate with an API token from"
+        " Settings → API tokens: `Authorization: Bearer pgt_…`. A token acts in the"
+        " organisation it was made in; read-only tokens can't change anything. To act in"
+        " another organisation you belong to, sign in and send `X-Sentinel-Account:"
+        " <organisation id>`. Limits: write endpoints are rate limited per token; list"
+        " endpoints page with `limit` and `offset` where they take them."
+    ),
+)
 
 app.add_middleware(FiniteJSON)
 app.add_middleware(

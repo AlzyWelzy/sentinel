@@ -99,6 +99,37 @@ func mapValue(m map[string]string) types.Map {
 	return types.MapValueMust(types.StringType, vals)
 }
 
+// paramMask is how the API answers a secret param (a password, a token).
+const paramMask = "••••••••"
+
+// keptParams is what goes into state from the API's params: only the keys
+// the configuration sets (the API fills in defaults such as an HTTP check's
+// method, which would otherwise look like drift), with secrets kept as
+// written since the API only ever returns them masked. With no params in
+// state (an import, or none configured), the API's all are taken.
+func keptParams(prior types.Map, api map[string]string) map[string]string {
+	if prior.IsNull() || prior.IsUnknown() {
+		return api
+	}
+	out := map[string]string{}
+	for k, v := range prior.Elements() {
+		s, ok := v.(types.String)
+		if !ok {
+			continue
+		}
+		got, present := api[k]
+		switch {
+		case !present:
+			continue // removed outside Terraform: the next plan puts it back
+		case got == paramMask:
+			out[k] = s.ValueString()
+		default:
+			out[k] = got
+		}
+	}
+	return out
+}
+
 // readGone handles an object deleted outside Terraform: drop it from state
 // so the next plan recreates it.
 func readGone(ctx context.Context, err error, resp *resource.ReadResponse) bool {
