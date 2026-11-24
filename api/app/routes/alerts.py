@@ -35,7 +35,7 @@ from app.models import (
     TenantMember,
 )
 from app.routes.channels import mask_target
-from app.services import backtest, heartbeats, oncall
+from app.services import ai_summary, backtest, heartbeats, oncall
 from app.services import logs as logstore
 from app.services.metrics import MetricsUnavailable
 from app.tenancy import Tenant, TenantContext
@@ -914,6 +914,35 @@ def _event(t: TenantContext, incident: Incident, kind: str, message: str) -> Non
             actor=_actor(t),
         )
     )
+
+
+class AISummaryOut(BaseModel):
+    what_changed: str
+    likely_cause: str
+    next_steps: list[str]
+    generated_at: str
+    model: str
+
+
+@router.get("/ai/status")
+async def ai_status(t: Tenant) -> dict[str, bool]:
+    """Whether AI incident summaries are available here."""
+    return {"enabled": ai_summary.enabled()}
+
+
+@router.post("/incidents/{incident_id}/ai-summary")
+async def incident_ai_summary(
+    incident_id: uuid.UUID, t: Tenant, refresh: bool = False
+) -> AISummaryOut:
+    """What changed, the likely cause and next steps, written by Claude from
+    the incident, its timeline and similar recent incidents. Kept 15 minutes."""
+    if not ai_summary.enabled():
+        raise HTTPException(status_code=404, detail="AI summaries aren't set up here")
+    incident = await _get_incident(t, incident_id)
+    try:
+        return AISummaryOut(**await ai_summary.summarize(t.db, incident, refresh=refresh))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from None
 
 
 @router.get("/incidents/{incident_id}")

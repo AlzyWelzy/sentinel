@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { AISummary } from "@/components/ai-summary";
 import { SeverityBadge } from "@/components/status";
 import {
   Badge,
@@ -205,6 +206,7 @@ export default function IncidentPage() {
               <p className="text-sm whitespace-pre-wrap">{i.detail}</p>
             </Card>
           )}
+          <AISummary incidentId={i.id} />
           {i.affected && i.affected.length > 0 && (
             <Card title={`Behind it, not reporting either · ${i.affected.length}`} pad={false}>
               <p className="border-b border-line px-4 py-3 text-sm text-ink-2">

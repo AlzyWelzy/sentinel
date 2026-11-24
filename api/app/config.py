@@ -101,6 +101,8 @@ class Settings(BaseSettings):
     # Razorpay: with the key id and secret set, plans limit organisations
     # (services/billing.py); RAZORPAY_PLAN_PRO / _BUSINESS name Razorpay's
     # plan ids. The webhook secret verifies /webhooks/razorpay.
+    # AI incident summaries (services/ai_summary.py); empty: off.
+    ANTHROPIC_API_KEY: str = ""
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
     RAZORPAY_WEBHOOK_SECRET: str = ""

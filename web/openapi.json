@@ -4375,6 +4375,90 @@
     }
    }
   },
+  "/v1/ai/status": {
+   "get": {
+    "summary": "Ai Status",
+    "description": "Whether AI incident summaries are available here.",
+    "operationId": "ai_status_v1_ai_status_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": {
+          "type": "boolean"
+         },
+         "type": "object",
+         "title": "Response Ai Status V1 Ai Status Get"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ]
+   }
+  },
+  "/v1/incidents/{incident_id}/ai-summary": {
+   "post": {
+    "summary": "Incident Ai Summary",
+    "description": "What changed, the likely cause and next steps, written by Claude from\nthe incident, its timeline and similar recent incidents. Kept 15 minutes.",
+    "operationId": "incident_ai_summary_v1_incidents__incident_id__ai_summary_post",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "incident_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Incident Id"
+      }
+     },
+     {
+      "name": "refresh",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Refresh"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AISummaryOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/v1/incidents/{incident_id}": {
    "get": {
     "summary": "Get Incident",
@@ -12556,6 +12640,42 @@
  },
  "components": {
   "schemas": {
+   "AISummaryOut": {
+    "properties": {
+     "what_changed": {
+      "type": "string",
+      "title": "What Changed"
+     },
+     "likely_cause": {
+      "type": "string",
+      "title": "Likely Cause"
+     },
+     "next_steps": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Next Steps"
+     },
+     "generated_at": {
+      "type": "string",
+      "title": "Generated At"
+     },
+     "model": {
+      "type": "string",
+      "title": "Model"
+     }
+    },
+    "type": "object",
+    "required": [
+     "what_changed",
+     "likely_cause",
+     "next_steps",
+     "generated_at",
+     "model"
+    ],
+    "title": "AISummaryOut"
+   },
    "AccountOut": {
     "properties": {
      "tenant_id": {
