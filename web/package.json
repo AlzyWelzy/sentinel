@@ -13,7 +13,8 @@
     "format:check": "prettier --check .",
     "api:schema": "cd ../api && uv run python -c \"import json; from app.main import app; print(json.dumps(app.openapi(), indent=1))\" > ../web/openapi.json",
     "api:types": "openapi-typescript openapi.json -o src/lib/api/schema.d.ts",
-    "api": "npm run api:schema && npm run api:types"
+    "api": "npm run api:schema && npm run api:types",
+    "test": "node --test src/lib/*.test.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "5.105.1",

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { RecorderImport } from "@/components/recorder-import";
 import {
   Badge,
   Button,
@@ -366,6 +367,17 @@ export default function ChecksPage() {
                             placeholder={f.placeholder}
                             autoComplete={f.kind === "password" ? "new-password" : "off"}
                             spellCheck={false}
+                          />
+                        )}
+                        {f.key === "steps" && (
+                          <RecorderImport
+                            onImport={(r) =>
+                              setForm({
+                                ...form,
+                                target: form.target || r.target || "",
+                                params: { ...(form.params ?? {}), steps: r.steps, ...r.secrets },
+                              })
+                            }
                           />
                         )}
                       </Field>
