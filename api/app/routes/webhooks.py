@@ -85,13 +85,16 @@ async def resend(request: Request, db: ServiceDB) -> None:
     addresses = sorted({a.strip().lower() for a in (to if isinstance(to, list) else [to]) if a})
     if not addresses:
         return
-    res = await db.execute(
-        text(
-            "UPDATE notification_channels"
-            "   SET undeliverable_at = now(), undeliverable_reason = :r, verified_at = NULL"
-            " WHERE type = 'email' AND lower(target) = ANY(:a) AND undeliverable_at IS NULL"
-        ),
-        {"r": reason, "a": addresses},
-    )
+    marked = (
+        await db.execute(
+            text(
+                "UPDATE notification_channels"
+                "   SET undeliverable_at = now(), undeliverable_reason = :r, verified_at = NULL"
+                " WHERE type = 'email' AND lower(target) = ANY(:a) AND undeliverable_at IS NULL"
+                " RETURNING id"
+            ),
+            {"r": reason, "a": addresses},
+        )
+    ).all()
     await db.commit()
-    log.info("email provider report", extra={"type": event.get("type"), "contacts": res.rowcount})
+    log.info("email provider report", extra={"type": event.get("type"), "contacts": len(marked)})

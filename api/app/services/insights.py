@@ -367,7 +367,7 @@ async def build(db: AsyncSession, tenant_id: uuid.UUID, days: int) -> Insights:
 async def dependency_suggestions(
     db: AsyncSession, tenant_id: uuid.UUID, since: datetime
 ) -> list[DependencySuggestion]:
-    events = [
+    events: list[tuple[uuid.UUID, datetime]] = [
         (r[0], r[1])
         for r in await db.execute(
             select(Incident.host_id, Incident.opened_at)
@@ -379,6 +379,7 @@ async def dependency_suggestions(
                 AlertRule.kind == "host_down",
             )
         )
+        if r[0] is not None
     ]
     groups = outage_groups(events)
     if not groups:
